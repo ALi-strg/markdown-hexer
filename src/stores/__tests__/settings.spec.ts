@@ -4,6 +4,7 @@ import { useSettingsStore } from "../settings";
 
 describe("settings store", () => {
   beforeEach(() => {
+    localStorage.clear();
     setActivePinia(createPinia());
   });
 
@@ -15,5 +16,43 @@ describe("settings store", () => {
   it("defaults to a curated font choice for both panes", () => {
     const settings = useSettingsStore();
     expect(settings.font).toBe("default");
+  });
+
+  it("changes the theme and persists it to localStorage", () => {
+    const settings = useSettingsStore();
+    settings.setTheme("dark");
+    expect(settings.theme).toBe("dark");
+    expect(localStorage.getItem("alimd:settings")).toBe(
+      JSON.stringify({ theme: "dark" }),
+    );
+  });
+
+  it("restores a persisted theme on the next launch", () => {
+    localStorage.setItem("alimd:settings", JSON.stringify({ theme: "light" }));
+    setActivePinia(createPinia());
+
+    const settings = useSettingsStore();
+    expect(settings.theme).toBe("light");
+  });
+
+  it("falls back to System for an unknown persisted theme", () => {
+    localStorage.setItem("alimd:settings", JSON.stringify({ theme: "neon" }));
+    setActivePinia(createPinia());
+
+    const settings = useSettingsStore();
+    expect(settings.theme).toBe("system");
+  });
+
+  it("falls back to System when the persisted blob is corrupt", () => {
+    localStorage.setItem("alimd:settings", "not json{{{");
+    setActivePinia(createPinia());
+
+    const settings = useSettingsStore();
+    expect(settings.theme).toBe("system");
+  });
+
+  it("stays System when nothing has been persisted", () => {
+    const settings = useSettingsStore();
+    expect(settings.theme).toBe("system");
   });
 });

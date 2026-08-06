@@ -2,7 +2,9 @@
   <div class="app" :data-theme="settings.theme" data-testid="app">
     <Toolbar
       :disabled="ui.layoutMode === 'preview'"
+      :theme="settings.theme"
       @format="onFormat"
+      @theme-change="onThemeChange"
     />
     <FindReplacePanel
       v-if="ui.findOverlayOpen"
@@ -47,7 +49,7 @@ import type { FormatOperation } from "./lib/formatting";
 import { pickOpenPath } from "./lib/openDialog";
 import { useSyncedScrolling } from "./lib/useSyncedScrolling";
 import { useDocumentStore } from "./stores/document";
-import { useSettingsStore } from "./stores/settings";
+import { useSettingsStore, type Theme } from "./stores/settings";
 import { useUiStore } from "./stores/ui";
 
 const document = useDocumentStore();
@@ -152,6 +154,12 @@ function onFormat(operation: FormatOperation) {
   if (view) {
     applyFormatting(view, operation);
   }
+}
+
+/// Applies a Theme chosen from the toolbar. The store persists it, so the next
+/// launch restores it; System keeps following the OS via CSS.
+function onThemeChange(theme: Theme) {
+  settings.setTheme(theme);
 }
 
 async function runNewDocument() {
@@ -295,6 +303,8 @@ watch(() => [document.filename, document.dirty], syncWindowTitle);
   display: flex;
   flex-direction: column;
   height: 100vh;
+  background: var(--background-color);
+  color: var(--text-color);
 }
 
 .workspace {

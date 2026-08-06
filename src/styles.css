@@ -23,6 +23,22 @@
   }
 }
 
+/* The CodeMirror Editor Pane follows the data-theme too, so dark stays dark
+   instead of defaulting to CodeMirror's white chrome. */
+[data-theme="dark"] .cm-editor,
+[data-theme="dark"] .cm-scroller {
+  background: var(--background-color);
+  color: var(--text-color);
+}
+
+@media (prefers-color-scheme: dark) {
+  [data-theme="system"] .cm-editor,
+  [data-theme="system"] .cm-scroller {
+    background: var(--background-color);
+    color: var(--text-color);
+  }
+}
+
 html,
 body {
   margin: 0;

@@ -7,6 +7,7 @@ import { Transaction } from "@codemirror/state";
 import App from "../App.vue";
 import { useUiStore } from "../stores/ui";
 import { useDocumentStore } from "../stores/document";
+import { useSettingsStore } from "../stores/settings";
 
 enableAutoUnmount(afterEach);
 
@@ -136,6 +137,7 @@ function mockWindow(): MockWindow {
 
 describe("App shell", () => {
   beforeEach(() => {
+    localStorage.clear();
     setActivePinia(createPinia());
     pickSavePathMock.mockReset();
     pickOpenPathMock.mockReset();
@@ -1176,5 +1178,55 @@ describe("App shell", () => {
 
     expect(event.defaultPrevented).toBe(true);
     expect(openUrlMock).toHaveBeenCalledWith("https://example.com");
+  });
+
+  it("shows a theme control in the toolbar bound to the System default", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const select = wrapper.find(
+      '[data-testid="toolbar-theme"]',
+    ).element as HTMLSelectElement;
+    expect(select.value).toBe("system");
+    expect(wrapper.find('[data-testid="app"]').attributes("data-theme")).toBe(
+      "system",
+    );
+  });
+
+  it("switches the Theme from the toolbar and updates data-theme", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const settings = useSettingsStore();
+
+    const select = wrapper.find('[data-testid="toolbar-theme"]');
+    await select.setValue("dark");
+
+    expect(settings.theme).toBe("dark");
+    expect(wrapper.find('[data-testid="app"]').attributes("data-theme")).toBe(
+      "dark",
+    );
+  });
+
+  it("persists the chosen Theme so the next launch restores it", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    await wrapper.find('[data-testid="toolbar-theme"]').setValue("light");
+    expect(localStorage.getItem("alimd:settings")).toBe(
+      JSON.stringify({ theme: "light" }),
+    );
+  });
+
+  it("keeps the theme control usable in Preview Only", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const ui = useUiStore();
+    ui.cycleLayoutMode();
+    await nextTick();
+
+    const select = wrapper.find('[data-testid="toolbar-theme"]');
+    expect((select.element as HTMLSelectElement).disabled).toBe(false);
+    await select.setValue("dark");
+    expect(wrapper.find('[data-testid="app"]').attributes("data-theme")).toBe(
+      "dark",
+    );
   });
 });
