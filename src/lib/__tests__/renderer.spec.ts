@@ -48,6 +48,11 @@ describe("renderMarkdown", () => {
     );
   });
 
+  it("keeps a relative image src untouched for the Preview Pane to resolve", () => {
+    const html = renderMarkdown("![pic](images/pic.png)");
+    expect(html).toContain('<img src="images/pic.png"');
+  });
+
   it("strips script tags so no script survives the pipeline", () => {
     const html = renderMarkdown("<script>alert(1)</script>ok");
     expect(html).not.toContain("<script");

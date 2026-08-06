@@ -34,6 +34,13 @@ export const useDocumentStore = defineStore("document", () => {
     content.value = text;
   }
 
+  /// Tells the Rust `asset://` protocol which directory to scope image serving
+  /// to. Called whenever the Document's canonical path changes so relative
+  /// image paths always resolve against the current Document's directory.
+  function syncAssetRoot() {
+    void invoke("set_asset_root", { documentPath: canonicalPath.value });
+  }
+
   /// Writes `text` to `path`, surfacing a failure as a toast. Does not update
   /// the Document's path, Dirty state, or Externally-Modified baseline.
   async function writeToDisk(path: string, text: string): Promise<boolean> {
@@ -58,6 +65,7 @@ export const useDocumentStore = defineStore("document", () => {
     canonicalPath.value = path;
     savedContent.value = content.value;
     diskContent.value = content.value;
+    syncAssetRoot();
     useUiStore().setLastDirectory(path);
     return true;
   }
@@ -88,6 +96,7 @@ export const useDocumentStore = defineStore("document", () => {
     canonicalPath.value = null;
     savedContent.value = "";
     diskContent.value = null;
+    syncAssetRoot();
   }
 
   /// Reads a file from disk and swaps it into the current Document.
@@ -112,6 +121,7 @@ export const useDocumentStore = defineStore("document", () => {
     canonicalPath.value = path;
     savedContent.value = text;
     diskContent.value = text;
+    syncAssetRoot();
     useUiStore().setLastDirectory(path);
     return true;
   }

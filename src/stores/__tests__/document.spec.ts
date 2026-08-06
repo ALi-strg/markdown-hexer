@@ -140,7 +140,7 @@ describe("document store", () => {
     document.mirrorContent("# v2");
     await document.save();
 
-    expect(invokeMock).toHaveBeenLastCalledWith("save_document", {
+    expect(invokeMock).toHaveBeenCalledWith("save_document", {
       path: "C:\\notes\\new.md",
       content: "# v2",
     });
@@ -245,6 +245,47 @@ describe("document store", () => {
     expect(document.content).toBe("# Safe");
     expect(document.canonicalPath).toBe("C:\\notes\\a.md");
     expect(ui.toast).toContain("not found");
+  });
+
+  it("scopes the asset protocol to the directory of an opened Document", async () => {
+    const document = useDocumentStore();
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "open_document") {
+        return Promise.resolve("# New file");
+      }
+      return Promise.resolve(undefined);
+    });
+
+    await document.openDocument("C:\\notes\\new.md");
+
+    expect(invokeMock).toHaveBeenCalledWith("set_asset_root", {
+      documentPath: "C:\\notes\\new.md",
+    });
+  });
+
+  it("re-scopes the asset protocol after Save As changes the path", async () => {
+    const document = useDocumentStore();
+    document.mirrorContent("# Hello");
+    pickSavePathMock.mockResolvedValue("C:\\notes\\drafts\\b.md");
+    invokeMock.mockClear();
+
+    await document.saveAs();
+
+    expect(invokeMock).toHaveBeenCalledWith("set_asset_root", {
+      documentPath: "C:\\notes\\drafts\\b.md",
+    });
+  });
+
+  it("clears the asset scope for a fresh Untitled Document", () => {
+    const document = useDocumentStore();
+    document.canonicalPath = "C:\\notes\\a.md";
+    invokeMock.mockClear();
+
+    document.newDocument();
+
+    expect(invokeMock).toHaveBeenCalledWith("set_asset_root", {
+      documentPath: null,
+    });
   });
 
   it("creates a fresh Untitled Document, discarding the current one", () => {

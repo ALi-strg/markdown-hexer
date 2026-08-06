@@ -12,6 +12,13 @@ enableAutoUnmount(afterEach);
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn().mockResolvedValue(undefined),
+  convertFileSrc: vi.fn(
+    (path: string) => `asset://localhost/${encodeURIComponent(path)}`,
+  ),
+}));
+
+vi.mock("@tauri-apps/plugin-opener", () => ({
+  openUrl: vi.fn(),
 }));
 
 vi.mock("@tauri-apps/api/window", () => ({
@@ -41,12 +48,14 @@ vi.mock("../lib/externalDialog", () => ({
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen, type Event } from "@tauri-apps/api/event";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { pickSavePath } from "../lib/saveDialog";
 import { pickOpenPath } from "../lib/openDialog";
 import { pickGuardChoice } from "../lib/guardDialog";
 import { pickExternalModificationChoice } from "../lib/externalDialog";
 
 const invokeMock = vi.mocked(invoke);
+const openUrlMock = vi.mocked(openUrl);
 const listenMock = vi.mocked(listen);
 const pickSavePathMock = vi.mocked(pickSavePath);
 const pickOpenPathMock = vi.mocked(pickOpenPath);
@@ -132,6 +141,7 @@ describe("App shell", () => {
     pickOpenPathMock.mockReset();
     pickGuardChoiceMock.mockReset();
     pickExternalChoiceMock.mockReset();
+    openUrlMock.mockReset();
     invokeMock.mockReset();
     invokeMock.mockResolvedValue(undefined);
     listenMock.mockReset();
@@ -1123,5 +1133,48 @@ describe("App shell", () => {
     await nextTick();
 
     expect(ui.findOverlayOpen).toBe(false);
+  });
+
+  it("renders a relative image against the opened Document's directory", async () => {
+    vi.useFakeTimers();
+    const wrapper = mount(App);
+    await flushPromises();
+    pickOpenPathMock.mockResolvedValue("C:\\notes\\b.md");
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "open_document") {
+        return Promise.resolve("![pic](img.png)");
+      }
+      return Promise.resolve(undefined);
+    });
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "o", ctrlKey: true }),
+    );
+    await flushPromises();
+    await nextTick();
+    vi.advanceTimersByTime(200);
+
+    const img = wrapper.find('[data-testid="preview-pane"] img');
+    expect(img.attributes("src")).toBe(
+      "asset://localhost/C%3A%5Cnotes%5Cimg.png",
+    );
+  });
+
+  it("opens a link clicked in the Preview Pane in the system browser", async () => {
+    vi.useFakeTimers();
+    const wrapper = mount(App);
+    await flushPromises();
+    const pane = wrapper.findComponent({ ref: "editorPane" });
+    const view = (pane.vm as unknown as { getView: () => EditorView }).getView();
+    view.dispatch({ changes: { from: 0, insert: "[docs](https://example.com)" } });
+    await nextTick();
+    vi.advanceTimersByTime(200);
+
+    const link = wrapper.find('[data-testid="preview-pane"] a');
+    const event = new MouseEvent("click", { bubbles: true, cancelable: true });
+    await link.element.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(openUrlMock).toHaveBeenCalledWith("https://example.com");
   });
 });

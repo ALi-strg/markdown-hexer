@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { EditorView } from "@codemirror/view";
@@ -6,6 +6,10 @@ import { EditorSelection } from "@codemirror/state";
 import EditorPane from "../EditorPane.vue";
 import { useDocumentStore } from "../../stores/document";
 import { applyFormatting } from "../../lib/editorFormatting";
+
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: vi.fn().mockResolvedValue(undefined),
+}));
 
 describe("EditorPane", () => {
   beforeEach(() => {

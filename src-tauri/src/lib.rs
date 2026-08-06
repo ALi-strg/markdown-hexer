@@ -1,3 +1,4 @@
+mod asset;
 mod confirm;
 mod external;
 mod inspect;
@@ -72,10 +73,17 @@ fn get_pending_file(state: tauri::State<instance::PendingFile>) -> Option<String
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
             handle_second_instance(app, argv);
         }))
+        .register_uri_scheme_protocol("asset", |ctx, request| {
+            let scope = ctx.app_handle().state::<asset::DocumentScope>();
+            let document_path = scope.0.lock().unwrap().clone();
+            asset::serve(request, document_path)
+        })
         .setup(|app| {
+            app.manage(asset::DocumentScope(std::sync::Mutex::new(None)));
             app.manage(instance::PendingFile::from_startup_args());
             Ok(())
         })
@@ -85,6 +93,7 @@ pub fn run() {
             open_document,
             inspect_document,
             get_pending_file,
+            asset::set_asset_root,
             confirm::show_confirm_discard,
             external::show_external_modified
         ])
