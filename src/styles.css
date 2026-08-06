@@ -15,6 +15,24 @@
   --panel-border-color: #30363d;
 }
 
+/* Font stacks: each curated choice overrides both pane variables, so one shared
+   pick applies to the Editor Pane and the Preview Pane. Default keeps the
+   current look (monospace source, sans prose). */
+[data-font="serif"] {
+  --editor-font-family: Georgia, "Times New Roman", serif;
+  --preview-font-family: Georgia, "Times New Roman", serif;
+}
+
+[data-font="sans"] {
+  --editor-font-family: "Segoe UI", system-ui, sans-serif;
+  --preview-font-family: "Segoe UI", system-ui, sans-serif;
+}
+
+[data-font="mono"] {
+  --editor-font-family: "Cascadia Mono", "JetBrains Mono", Consolas, monospace;
+  --preview-font-family: "Cascadia Mono", "JetBrains Mono", Consolas, monospace;
+}
+
 @media (prefers-color-scheme: dark) {
   [data-theme="system"] {
     --background-color: #0d1117;

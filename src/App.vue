@@ -1,10 +1,17 @@
 <template>
-  <div class="app" :data-theme="settings.theme" data-testid="app">
+  <div
+    class="app"
+    :data-theme="settings.theme"
+    :data-font="settings.font"
+    data-testid="app"
+  >
     <Toolbar
       :disabled="ui.layoutMode === 'preview'"
       :theme="settings.theme"
+      :font="settings.font"
       @format="onFormat"
       @theme-change="onThemeChange"
+      @font-change="onFontChange"
     />
     <FindReplacePanel
       v-if="ui.findOverlayOpen"
@@ -49,7 +56,11 @@ import type { FormatOperation } from "./lib/formatting";
 import { pickOpenPath } from "./lib/openDialog";
 import { useSyncedScrolling } from "./lib/useSyncedScrolling";
 import { useDocumentStore } from "./stores/document";
-import { useSettingsStore, type Theme } from "./stores/settings";
+import {
+  useSettingsStore,
+  type Font,
+  type Theme,
+} from "./stores/settings";
 import { useUiStore } from "./stores/ui";
 
 const document = useDocumentStore();
@@ -160,6 +171,13 @@ function onFormat(operation: FormatOperation) {
 /// launch restores it; System keeps following the OS via CSS.
 function onThemeChange(theme: Theme) {
   settings.setTheme(theme);
+}
+
+/// Applies a font stack chosen from the toolbar. The store persists it, so the
+/// next launch restores it; the app root's data-font drives the CSS variables
+/// that both panes consume.
+function onFontChange(font: Font) {
+  settings.setFont(font);
 }
 
 async function runNewDocument() {

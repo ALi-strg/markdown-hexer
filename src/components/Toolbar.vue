@@ -76,23 +76,44 @@
       <option value="light">Light</option>
       <option value="dark">Dark</option>
     </select>
+    <label class="toolbar-font-label" for="toolbar-font">Font</label>
+    <select
+      id="toolbar-font"
+      class="toolbar-font"
+      data-testid="toolbar-font"
+      :value="font"
+      title="Font"
+      @change="onFontChange"
+    >
+      <option v-for="option in FONTS" :key="option" :value="option">
+        {{ FONT_LABELS[option] }}
+      </option>
+    </select>
   </div>
 </template>
 
 <script setup lang="ts">
 import type { FormatOperation } from "../lib/formatting";
-import type { Theme } from "../stores/settings";
+import { FONTS, FONT_LABELS, type Font, type Theme } from "../stores/settings";
 
-defineProps<{ disabled: boolean; theme: Theme }>();
+defineProps<{ disabled: boolean; theme: Theme; font: Font }>();
 const emit = defineEmits<{
   format: [operation: FormatOperation];
   themeChange: [theme: Theme];
+  fontChange: [font: Font];
 }>();
 
 function onThemeChange(event: Event) {
   const value = (event.target as HTMLSelectElement).value;
   if (value === "system" || value === "light" || value === "dark") {
     emit("themeChange", value);
+  }
+}
+
+function onFontChange(event: Event) {
+  const value = (event.target as HTMLSelectElement).value;
+  if ((FONTS as string[]).includes(value)) {
+    emit("fontChange", value as Font);
   }
 }
 </script>
@@ -155,7 +176,8 @@ function onThemeChange(event: Event) {
   margin-right: 4px;
 }
 
-.toolbar-theme {
+.toolbar-theme,
+.toolbar-font {
   height: 26px;
   padding: 0 4px;
   border: 1px solid var(--border-color, #e0e0e0);
@@ -163,5 +185,12 @@ function onThemeChange(event: Event) {
   background: var(--input-background, transparent);
   color: var(--text-color, inherit);
   font-size: 0.85rem;
+}
+
+.toolbar-font-label {
+  font-size: 0.8rem;
+  color: var(--text-color, inherit);
+  margin-left: 8px;
+  margin-right: 4px;
 }
 </style>

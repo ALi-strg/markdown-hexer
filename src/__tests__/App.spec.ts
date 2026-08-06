@@ -1229,4 +1229,58 @@ describe("App shell", () => {
       "dark",
     );
   });
+
+  it("shows a font picker in the toolbar bound to the default", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const select = wrapper.find(
+      '[data-testid="toolbar-font"]',
+    ).element as HTMLSelectElement;
+    expect(select.value).toBe("default");
+    expect(
+      wrapper.findAll('[data-testid="toolbar-font"] option'),
+    ).toHaveLength(4);
+    expect(wrapper.find('[data-testid="app"]').attributes("data-font")).toBe(
+      "default",
+    );
+  });
+
+  it("switches the font from the toolbar and updates data-font", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const settings = useSettingsStore();
+
+    await wrapper.find('[data-testid="toolbar-font"]').setValue("serif");
+
+    expect(settings.font).toBe("serif");
+    expect(wrapper.find('[data-testid="app"]').attributes("data-font")).toBe(
+      "serif",
+    );
+  });
+
+  it("persists the chosen font so the next launch restores it", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+
+    await wrapper.find('[data-testid="toolbar-font"]').setValue("mono");
+
+    expect(localStorage.getItem("alimd:settings")).toBe(
+      JSON.stringify({ font: "mono" }),
+    );
+  });
+
+  it("keeps the font picker usable in Preview Only", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const ui = useUiStore();
+    ui.cycleLayoutMode();
+    await nextTick();
+
+    const select = wrapper.find('[data-testid="toolbar-font"]');
+    expect((select.element as HTMLSelectElement).disabled).toBe(false);
+    await select.setValue("sans");
+    expect(wrapper.find('[data-testid="app"]').attributes("data-font")).toBe(
+      "sans",
+    );
+  });
 });
