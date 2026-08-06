@@ -2,8 +2,10 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { EditorView } from "@codemirror/view";
+import { EditorSelection } from "@codemirror/state";
 import EditorPane from "../EditorPane.vue";
 import { useDocumentStore } from "../../stores/document";
+import { applyFormatting } from "../../lib/editorFormatting";
 
 describe("EditorPane", () => {
   beforeEach(() => {
@@ -65,5 +67,31 @@ describe("EditorPane", () => {
     );
 
     expect(view.state.doc.toString()).toBe("");
+  });
+
+  it("applies formatting through a CodeMirror transaction", async () => {
+    const { view } = await mountWithView();
+    view.dispatch({ changes: { from: 0, insert: "hello world" } });
+    view.dispatch({
+      selection: EditorSelection.range(0, 5),
+    });
+
+    applyFormatting(view, "bold");
+
+    expect(view.state.doc.toString()).toBe("**hello** world");
+  });
+
+  it("mirrors a formatting change into the document store", async () => {
+    const { view } = await mountWithView();
+    const document = useDocumentStore();
+    view.dispatch({ changes: { from: 0, insert: "hello" } });
+    view.dispatch({
+      selection: EditorSelection.range(0, 5),
+    });
+
+    applyFormatting(view, "bold");
+
+    expect(document.content).toBe("**hello**");
+    expect(document.dirty).toBe(true);
   });
 });

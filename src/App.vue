@@ -1,5 +1,9 @@
 <template>
   <div class="app" :data-theme="settings.theme" data-testid="app">
+    <Toolbar
+      :disabled="ui.layoutMode === 'preview'"
+      @format="onFormat"
+    />
     <div class="workspace" :class="`layout-${ui.layoutMode}`">
       <EditorPane
         ref="editorPane"
@@ -26,11 +30,15 @@ import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import type { EditorView } from "@codemirror/view";
 import EditorPane from "./components/EditorPane.vue";
 import PreviewPane from "./components/PreviewPane.vue";
+import Toolbar from "./components/Toolbar.vue";
 import { confirmDiscard } from "./lib/confirmDiscard";
+import { applyFormatting } from "./lib/editorFormatting";
+import type { FormatOperation } from "./lib/formatting";
 import { pickOpenPath } from "./lib/openDialog";
-import { useSyncedScrolling, type SyncedScrollingView } from "./lib/useSyncedScrolling";
+import { useSyncedScrolling } from "./lib/useSyncedScrolling";
 import { useDocumentStore } from "./stores/document";
 import { useSettingsStore } from "./stores/settings";
 import { useUiStore } from "./stores/ui";
@@ -40,7 +48,7 @@ const settings = useSettingsStore();
 const ui = useUiStore();
 
 const editorPane = ref<{
-  getView: () => SyncedScrollingView | null;
+  getView: () => EditorView | null;
   replaceContent: (text: string) => void;
 } | null>(null);
 const previewPane = ref<{
@@ -83,9 +91,32 @@ async function onKeydown(event: KeyboardEvent) {
     await runOpenDocument();
     return;
   }
+  if (modifier && (event.key === "b" || event.key === "B")) {
+    event.preventDefault();
+    onFormat("bold");
+    return;
+  }
+  if (modifier && (event.key === "i" || event.key === "I")) {
+    event.preventDefault();
+    onFormat("italic");
+    return;
+  }
   if (modifier && event.shiftKey && (event.key === "P" || event.key === "p")) {
     event.preventDefault();
     ui.cycleLayoutMode();
+  }
+}
+
+/// Applies a toolbar formatting operation to the Editor Pane. In Preview Only
+/// there is no visible Editor Pane to format, so the toolbar disables its
+/// buttons and the shortcuts no-op.
+function onFormat(operation: FormatOperation) {
+  if (ui.layoutMode === "preview") {
+    return;
+  }
+  const view = editorPane.value?.getView();
+  if (view) {
+    applyFormatting(view, operation);
   }
 }
 

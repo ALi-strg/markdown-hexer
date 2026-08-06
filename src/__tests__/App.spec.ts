@@ -2,7 +2,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { flushPromises, mount, enableAutoUnmount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { nextTick } from "vue";
-import type { EditorView } from "@codemirror/view";
+import { EditorView } from "@codemirror/view";
+import { Transaction } from "@codemirror/state";
 import App from "../App.vue";
 import { useUiStore } from "../stores/ui";
 import { useDocumentStore } from "../stores/document";
@@ -867,5 +868,89 @@ describe("App shell", () => {
       "open_document",
       expect.anything(),
     );
+  });
+
+  it("renders the formatting toolbar enabled in source-visible modes", () => {
+    const wrapper = mount(App);
+    const ids = [
+      "toolbar-bold",
+      "toolbar-italic",
+      "toolbar-heading",
+      "toolbar-list",
+      "toolbar-link",
+      "toolbar-code",
+    ];
+    for (const id of ids) {
+      const button = wrapper.find(`[data-testid="${id}"]`);
+      expect(button.exists()).toBe(true);
+      expect((button.element as HTMLButtonElement).disabled).toBe(false);
+    }
+  });
+
+  it("disables the formatting toolbar buttons in Preview Only", async () => {
+    const wrapper = mount(App);
+    const ui = useUiStore();
+    ui.cycleLayoutMode();
+    await nextTick();
+
+    const bold = wrapper.find('[data-testid="toolbar-bold"]');
+    expect((bold.element as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("applies bold to the selection via the toolbar button", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    const pane = wrapper.findComponent({ ref: "editorPane" });
+    const view = (pane.vm as unknown as { getView: () => EditorView }).getView();
+    view.dispatch({ changes: { from: 0, insert: "hello" } });
+    view.dispatch({
+      selection: { anchor: 0, head: 5 },
+      annotations: Transaction.addToHistory.of(false),
+    });
+
+    await wrapper.find('[data-testid="toolbar-bold"]').trigger("click");
+    await nextTick();
+
+    expect(document.content).toBe("**hello**");
+  });
+
+  it("applies italic to the selection via the Cmd/Ctrl+I shortcut", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    const pane = wrapper.findComponent({ ref: "editorPane" });
+    const view = (pane.vm as unknown as { getView: () => EditorView }).getView();
+    view.dispatch({ changes: { from: 0, insert: "hello" } });
+    view.dispatch({
+      selection: { anchor: 0, head: 5 },
+      annotations: Transaction.addToHistory.of(false),
+    });
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "i", ctrlKey: true }),
+    );
+    await nextTick();
+
+    expect(document.content).toBe("*hello*");
+  });
+
+  it("does not format via shortcut in Preview Only", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const ui = useUiStore();
+    ui.cycleLayoutMode();
+    await nextTick();
+    const document = useDocumentStore();
+    const pane = wrapper.findComponent({ ref: "editorPane" });
+    const view = (pane.vm as unknown as { getView: () => EditorView }).getView();
+    view.dispatch({ changes: { from: 0, insert: "hello" } });
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "b", ctrlKey: true }),
+    );
+    await nextTick();
+
+    expect(document.content).toBe("hello");
   });
 });
