@@ -50,6 +50,9 @@ const getCurrentWindowMock = vi.mocked(getCurrentWindow);
 interface MockWindow {
   getCloseHandler: () => (event: { preventDefault: () => void }) => Promise<void>;
   getFocusHandler: () => (event: { payload: boolean }) => void;
+  getDropHandler: () => (
+    event: { payload: { type: string; paths?: string[] } },
+  ) => void;
   destroy: ReturnType<typeof vi.fn>;
   close: ReturnType<typeof vi.fn>;
   unlisten: ReturnType<typeof vi.fn>;
@@ -59,6 +62,9 @@ function mockWindow(): MockWindow {
   let closeHandler: ((event: { preventDefault: () => void }) => Promise<void>) | null =
     null;
   let focusHandler: ((event: { payload: boolean }) => void) | null = null;
+  let dropHandler:
+    | ((event: { payload: { type: string; paths?: string[] } }) => void)
+    | null = null;
   const destroy = vi.fn();
   const close = vi.fn();
   const unlisten = vi.fn();
@@ -71,6 +77,10 @@ function mockWindow(): MockWindow {
       focusHandler = handler;
       return Promise.resolve(unlisten);
     }),
+    onDragDropEvent: vi.fn((handler: never) => {
+      dropHandler = handler;
+      return Promise.resolve(unlisten);
+    }),
     destroy,
     close,
   } as never);
@@ -79,6 +89,11 @@ function mockWindow(): MockWindow {
       closeHandler ?? (() => Promise.resolve()),
     getFocusHandler: () =>
       focusHandler ??
+      (() => {
+        // no-op
+      }),
+    getDropHandler: () =>
+      dropHandler ??
       (() => {
         // no-op
       }),
@@ -643,5 +658,112 @@ describe("App shell", () => {
     });
     expect(document.content).toBe("# My edits");
     expect(document.dirty).toBe(true);
+  });
+
+  it("opens a dropped file into the Document in Preview Only", async () => {
+    const window = mockWindow();
+    const wrapper = mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    const ui = useUiStore();
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "open_document") {
+        return Promise.resolve("# Dropped");
+      }
+      return Promise.resolve(undefined);
+    });
+
+    window.getDropHandler()({
+      payload: { type: "drop", paths: ["C:\\notes\\d.md"] },
+    });
+    await flushPromises();
+
+    expect(document.content).toBe("# Dropped");
+    expect(document.canonicalPath).toBe("C:\\notes\\d.md");
+    expect(document.filename).toBe("d.md");
+    expect(document.dirty).toBe(false);
+    expect(ui.layoutMode).toBe("preview");
+    const editorContent = wrapper.find(
+      '[data-testid="editor-pane"] .cm-content',
+    );
+    expect(editorContent.text()).toBe("# Dropped");
+  });
+
+  it("ignores drag events that are not drops", async () => {
+    const window = mockWindow();
+    mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "open_document") {
+        return Promise.resolve("# Dropped");
+      }
+      return Promise.resolve(undefined);
+    });
+
+    window.getDropHandler()({ payload: { type: "enter" } });
+    window.getDropHandler()({ payload: { type: "over" } });
+    window.getDropHandler()({ payload: { type: "leave" } });
+    await flushPromises();
+
+    expect(document.content).toBe("");
+    expect(document.canonicalPath).toBeNull();
+    expect(invokeMock).not.toHaveBeenCalledWith(
+      "open_document",
+      expect.anything(),
+    );
+  });
+
+  it("keeps the Dirty Document when the Confirm-Discard Guard is cancelled on a drop", async () => {
+    const window = mockWindow();
+    mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    document.mirrorContent("# My edits");
+    pickGuardChoiceMock.mockResolvedValue("cancel");
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "open_document") {
+        return Promise.resolve("# Dropped");
+      }
+      return Promise.resolve(undefined);
+    });
+
+    window.getDropHandler()({
+      payload: { type: "drop", paths: ["C:\\notes\\d.md"] },
+    });
+    await flushPromises();
+
+    expect(document.content).toBe("# My edits");
+    expect(document.dirty).toBe(true);
+    expect(document.canonicalPath).toBeNull();
+    expect(invokeMock).not.toHaveBeenCalledWith(
+      "open_document",
+      expect.anything(),
+    );
+  });
+
+  it("swaps a Dirty Document on a drop when the guard is dismissed", async () => {
+    const window = mockWindow();
+    mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    document.mirrorContent("# My edits");
+    pickGuardChoiceMock.mockResolvedValue("dont-save");
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "open_document") {
+        return Promise.resolve("# Dropped");
+      }
+      return Promise.resolve(undefined);
+    });
+
+    window.getDropHandler()({
+      payload: { type: "drop", paths: ["C:\\notes\\d.md"] },
+    });
+    await flushPromises();
+
+    expect(pickGuardChoiceMock).toHaveBeenCalled();
+    expect(document.content).toBe("# Dropped");
+    expect(document.canonicalPath).toBe("C:\\notes\\d.md");
+    expect(document.dirty).toBe(false);
   });
 });

@@ -98,6 +98,17 @@ async function runNewDocument() {
   ui.applyDocumentLoadMode(true);
 }
 
+/// Swaps the current Document for the file at `path` and applies the
+/// auto-chosen Layout Mode (Preview Only for an opened file). Shared by the
+/// native Open dialog and drag-and-drop so both use one code path.
+async function openPath(path: string) {
+  const opened = await document.openDocument(path);
+  if (opened) {
+    editorPane.value?.replaceContent(document.content);
+    ui.applyDocumentLoadMode(false);
+  }
+}
+
 async function runOpenDocument() {
   const decision = await confirmDiscard(document);
   if (decision === "cancel") {
@@ -109,16 +120,24 @@ async function runOpenDocument() {
   if (path === null) {
     return;
   }
-  const opened = await document.openDocument(path);
-  if (opened) {
-    editorPane.value?.replaceContent(document.content);
-    ui.applyDocumentLoadMode(false);
+  await openPath(path);
+}
+
+/// Opens a file dropped onto the window through the same Open flow as the
+/// native dialog: the Confirm-Discard Guard runs first when the current
+/// Document is Dirty, then the Document is swapped.
+async function runDropOpen(path: string) {
+  const decision = await confirmDiscard(document);
+  if (decision === "cancel") {
+    return;
   }
+  await openPath(path);
 }
 
 const appWindow = getCurrentWindow();
 let unlistenCloseRequested: (() => void) | null = null;
 let unlistenFocusChanged: (() => void) | null = null;
+let unlistenDragDrop: (() => void) | null = null;
 
 async function onCloseRequested(event: { preventDefault: () => void }) {
   if (!document.dirty) {
@@ -158,11 +177,18 @@ onMounted(async () => {
       onWindowFocused();
     }
   });
+  unlistenDragDrop = await appWindow.onDragDropEvent((event) => {
+    if (event.payload.type === "drop" && event.payload.paths.length > 0) {
+      runDropOpen(event.payload.paths[0]);
+    }
+  });
   if (import.meta.env.VITE_E2E === "1") {
     (globalThis as Record<string, unknown>).__triggerWindowClose = () =>
       appWindow.close();
     (globalThis as Record<string, unknown>).__triggerExternalCheck = () =>
       onWindowFocused();
+    (globalThis as Record<string, unknown>).__triggerDrop = (path: string) =>
+      runDropOpen(path);
   }
 });
 onBeforeUnmount(() => {
@@ -170,6 +196,7 @@ onBeforeUnmount(() => {
   syncedScrolling.detach();
   unlistenCloseRequested?.();
   unlistenFocusChanged?.();
+  unlistenDragDrop?.();
 });
 watch(() => [document.filename, document.dirty], syncWindowTitle);
 </script>
