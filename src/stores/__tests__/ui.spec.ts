@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { createPinia, setActivePinia } from "pinia";
 import { useUiStore } from "../ui";
 
@@ -62,5 +62,50 @@ describe("ui store", () => {
     setActivePinia(createPinia());
     const fresh = useUiStore();
     expect(fresh.layoutMode).toBe("split");
+  });
+
+  it("starts with no toast and no last-used directory", () => {
+    const ui = useUiStore();
+    expect(ui.toast).toBeNull();
+    expect(ui.lastDirectory).toBeNull();
+  });
+
+  it("shows a toast message until it auto-dismisses", () => {
+    vi.useFakeTimers();
+    try {
+      const ui = useUiStore();
+      ui.showToast("Save failed");
+      expect(ui.toast).toBe("Save failed");
+
+      vi.runAllTimers();
+      expect(ui.toast).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("replaces an active toast instead of stacking", () => {
+    vi.useFakeTimers();
+    try {
+      const ui = useUiStore();
+      ui.showToast("first");
+      ui.showToast("second");
+      expect(ui.toast).toBe("second");
+
+      vi.runAllTimers();
+      expect(ui.toast).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("remembers the last-used directory from a saved path", () => {
+    const ui = useUiStore();
+    ui.setLastDirectory("C:\\notes\\drafts\\note.md");
+    expect(ui.lastDirectory).toBe("C:/notes/drafts");
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 });

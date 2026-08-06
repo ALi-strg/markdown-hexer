@@ -60,6 +60,10 @@ export const config = {
   },
   onPrepare: () => {
     killOrphanedDrivers();
+    // The E2E build enables the app's test seam (VITE_E2E) so the save spec can
+    // bypass the native dialog via localStorage without shipping test hooks in
+    // production builds.
+    process.env.VITE_E2E = "1";
     spawnSync(
       process.platform === "win32" ? "npm.cmd" : "npm",
       ["run", "tauri", "build", "--", "--debug", "--no-bundle"],

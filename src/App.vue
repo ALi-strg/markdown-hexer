@@ -15,6 +15,9 @@
         :on-render="() => syncedScrolling.sync()"
       />
     </div>
+    <div v-if="ui.toast" class="toast" data-testid="toast" role="status">
+      {{ ui.toast }}
+    </div>
   </div>
 </template>
 
@@ -54,8 +57,17 @@ async function syncWindowTitle() {
   });
 }
 
-function onKeydown(event: KeyboardEvent) {
+async function onKeydown(event: KeyboardEvent) {
   const modifier = event.ctrlKey || event.metaKey;
+  if (modifier && (event.key === "s" || event.key === "S")) {
+    event.preventDefault();
+    if (event.shiftKey) {
+      await document.saveAs();
+    } else {
+      await document.save();
+    }
+    return;
+  }
   if (modifier && event.shiftKey && (event.key === "P" || event.key === "p")) {
     event.preventDefault();
     ui.cycleLayoutMode();
@@ -103,5 +115,19 @@ watch(() => [document.filename, document.dirty], syncWindowTitle);
 
 .layout-focus .editor-pane {
   flex: 1 1 100%;
+}
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  padding: 10px 16px;
+  border-radius: 6px;
+  background: var(--toast-background, #333);
+  color: var(--toast-color, #fff);
+  font-size: 0.9rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 100;
 }
 </style>

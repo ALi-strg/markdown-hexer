@@ -1,8 +1,12 @@
 import { defineStore } from "pinia";
 import { computed, ref } from "vue";
+import { invoke } from "@tauri-apps/api/core";
+import { pickSavePath } from "../lib/saveDialog";
+import { useUiStore } from "./ui";
 
 const UNTITLED_FILENAME = "Untitled.md";
 const APP_TITLE_SUFFIX = " — ALi-md-editor";
+const SAVE_FAILED_MESSAGE = "Save failed — your changes are not on disk";
 
 export const useDocumentStore = defineStore("document", () => {
   const content = ref("");
@@ -27,5 +31,50 @@ export const useDocumentStore = defineStore("document", () => {
     content.value = text;
   }
 
-  return { content, canonicalPath, dirty, filename, title, mirrorContent };
+  async function writeToPath(path: string): Promise<boolean> {
+    try {
+      await invoke("save_document", { path, content: content.value });
+    } catch (error) {
+      const ui = useUiStore();
+      ui.showToast(
+        typeof error === "string" && error.length > 0
+          ? `Save failed: ${error}`
+          : SAVE_FAILED_MESSAGE,
+      );
+      return false;
+    }
+    canonicalPath.value = path;
+    savedContent.value = content.value;
+    useUiStore().setLastDirectory(path);
+    return true;
+  }
+
+  async function save(): Promise<boolean> {
+    if (canonicalPath.value === null) {
+      return saveAs();
+    }
+    return writeToPath(canonicalPath.value);
+  }
+
+  async function saveAs(): Promise<boolean> {
+    const ui = useUiStore();
+    const path = await pickSavePath({
+      defaultPath: canonicalPath.value ?? ui.lastDirectory ?? undefined,
+    });
+    if (path === null) {
+      return false;
+    }
+    return writeToPath(path);
+  }
+
+  return {
+    content,
+    canonicalPath,
+    dirty,
+    filename,
+    title,
+    mirrorContent,
+    save,
+    saveAs,
+  };
 });
