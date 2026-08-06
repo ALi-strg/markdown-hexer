@@ -10,22 +10,66 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock("@tauri-apps/api/window", () => ({
+  getCurrentWindow: vi.fn(),
+}));
+
 vi.mock("../lib/saveDialog", () => ({
   pickSavePath: vi.fn(),
 }));
 
+vi.mock("../lib/guardDialog", () => ({
+  pickGuardChoice: vi.fn(),
+}));
+
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { pickSavePath } from "../lib/saveDialog";
+import { pickGuardChoice } from "../lib/guardDialog";
 
 const invokeMock = vi.mocked(invoke);
 const pickSavePathMock = vi.mocked(pickSavePath);
+const pickGuardChoiceMock = vi.mocked(pickGuardChoice);
+const getCurrentWindowMock = vi.mocked(getCurrentWindow);
+
+interface MockWindow {
+  getCloseHandler: () => (event: { preventDefault: () => void }) => Promise<void>;
+  destroy: ReturnType<typeof vi.fn>;
+  close: ReturnType<typeof vi.fn>;
+  unlisten: ReturnType<typeof vi.fn>;
+}
+
+function mockWindow(): MockWindow {
+  let closeHandler: ((event: { preventDefault: () => void }) => Promise<void>) | null =
+    null;
+  const destroy = vi.fn();
+  const close = vi.fn();
+  const unlisten = vi.fn();
+  getCurrentWindowMock.mockReturnValue({
+    onCloseRequested: vi.fn((handler: never) => {
+      closeHandler = handler;
+      return Promise.resolve(unlisten);
+    }),
+    destroy,
+    close,
+  } as never);
+  return {
+    getCloseHandler: () =>
+      closeHandler ?? (() => Promise.resolve()),
+    destroy,
+    close,
+    unlisten,
+  };
+}
 
 describe("App shell", () => {
   beforeEach(() => {
     setActivePinia(createPinia());
     pickSavePathMock.mockReset();
+    pickGuardChoiceMock.mockReset();
     invokeMock.mockReset();
     invokeMock.mockResolvedValue(undefined);
+    mockWindow();
   });
 
   afterEach(() => {
@@ -183,5 +227,78 @@ describe("App shell", () => {
     vi.runAllTimers();
     await nextTick();
     expect(wrapper.find('[data-testid="toast"]').exists()).toBe(false);
+  });
+
+  it("closes a clean Document without showing the Confirm-Discard Guard", async () => {
+    const window = mockWindow();
+    mount(App);
+    await flushPromises();
+    const event = { preventDefault: vi.fn() };
+
+    await window.getCloseHandler()(event);
+    await flushPromises();
+
+    expect(event.preventDefault).not.toHaveBeenCalled();
+    expect(pickGuardChoiceMock).not.toHaveBeenCalled();
+  });
+
+  it("aborts the close and keeps the Document Dirty when the guard is cancelled", async () => {
+    const window = mockWindow();
+    mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    document.mirrorContent("# Hello");
+    pickGuardChoiceMock.mockResolvedValue("cancel");
+    const event = { preventDefault: vi.fn() };
+
+    await window.getCloseHandler()(event);
+    await flushPromises();
+
+    expect(event.preventDefault).toHaveBeenCalled();
+    expect(window.destroy).not.toHaveBeenCalled();
+    expect(document.dirty).toBe(true);
+  });
+
+  it("saves an Untitled Document and closes the window when Save is chosen", async () => {
+    const window = mockWindow();
+    mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    document.mirrorContent("# Hello");
+    pickGuardChoiceMock.mockResolvedValue("save");
+    pickSavePathMock.mockResolvedValue("C:\\notes\\a.md");
+    invokeMock.mockClear();
+    const event = { preventDefault: vi.fn() };
+
+    await window.getCloseHandler()(event);
+    await flushPromises();
+
+    expect(event.preventDefault).toHaveBeenCalled();
+    expect(invokeMock).toHaveBeenCalledWith("save_document", {
+      path: "C:\\notes\\a.md",
+      content: "# Hello",
+    });
+    expect(document.canonicalPath).toBe("C:\\notes\\a.md");
+    expect(document.dirty).toBe(false);
+    expect(window.destroy).toHaveBeenCalled();
+  });
+
+  it("closes the window without writing when Don't Save is chosen", async () => {
+    const window = mockWindow();
+    mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    document.mirrorContent("# Hello");
+    pickGuardChoiceMock.mockResolvedValue("dont-save");
+    invokeMock.mockClear();
+    const event = { preventDefault: vi.fn() };
+
+    await window.getCloseHandler()(event);
+    await flushPromises();
+
+    expect(event.preventDefault).toHaveBeenCalled();
+    expect(window.destroy).toHaveBeenCalled();
+    expect(invokeMock).not.toHaveBeenCalledWith("save_document", expect.anything());
+    expect(document.dirty).toBe(true);
   });
 });

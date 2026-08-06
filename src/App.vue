@@ -24,8 +24,10 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import EditorPane from "./components/EditorPane.vue";
 import PreviewPane from "./components/PreviewPane.vue";
+import { confirmDiscard } from "./lib/confirmDiscard";
 import { useSyncedScrolling, type SyncedScrollingView } from "./lib/useSyncedScrolling";
 import { useDocumentStore } from "./stores/document";
 import { useSettingsStore } from "./stores/settings";
@@ -74,14 +76,40 @@ async function onKeydown(event: KeyboardEvent) {
   }
 }
 
-onMounted(() => {
+const appWindow = getCurrentWindow();
+let unlistenCloseRequested: (() => void) | null = null;
+
+async function onCloseRequested(event: { preventDefault: () => void }) {
+  if (!document.dirty) {
+    return;
+  }
+  event.preventDefault();
+  const decision = await confirmDiscard(document);
+  if (decision === "cancel") {
+    return;
+  }
+  // E2E seam: keep the window alive so the close-guard suite survives the
+  // single app instance a wdio run launches.
+  if (import.meta.env.VITE_E2E === "1") {
+    return;
+  }
+  await appWindow.destroy();
+}
+
+onMounted(async () => {
   syncWindowTitle();
   window.addEventListener("keydown", onKeydown);
   syncedScrolling.attach();
+  unlistenCloseRequested = await appWindow.onCloseRequested(onCloseRequested);
+  if (import.meta.env.VITE_E2E === "1") {
+    (globalThis as Record<string, unknown>).__triggerWindowClose = () =>
+      appWindow.close();
+  }
 });
 onBeforeUnmount(() => {
   window.removeEventListener("keydown", onKeydown);
   syncedScrolling.detach();
+  unlistenCloseRequested?.();
 });
 watch(() => [document.filename, document.dirty], syncWindowTitle);
 </script>

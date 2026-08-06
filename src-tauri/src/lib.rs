@@ -1,3 +1,4 @@
+mod confirm;
 mod save;
 mod title;
 
@@ -26,7 +27,11 @@ fn save_document(path: String, content: String) -> Result<(), String> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![set_document_title, save_document])
+        .invoke_handler(tauri::generate_handler![
+            set_document_title,
+            save_document,
+            confirm::show_confirm_discard
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
