@@ -1,4 +1,5 @@
 mod confirm;
+mod open;
 mod save;
 mod title;
 
@@ -23,6 +24,16 @@ fn save_document(path: String, content: String) -> Result<(), String> {
     save::write_document(&path, &content)
 }
 
+/// Reads a Document's content from a path chosen by the user.
+///
+/// The frontend resolves the path (an Open dialog) and calls this only after a
+/// path is known. A failed read keeps the current Document and surfaces the OS
+/// error as a toast.
+#[tauri::command]
+fn open_document(path: String) -> Result<String, String> {
+    open::read_document(&path)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -30,6 +41,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             set_document_title,
             save_document,
+            open_document,
             confirm::show_confirm_discard
         ])
         .run(tauri::generate_context!())

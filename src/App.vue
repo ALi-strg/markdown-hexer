@@ -28,6 +28,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import EditorPane from "./components/EditorPane.vue";
 import PreviewPane from "./components/PreviewPane.vue";
 import { confirmDiscard } from "./lib/confirmDiscard";
+import { pickOpenPath } from "./lib/openDialog";
 import { useSyncedScrolling, type SyncedScrollingView } from "./lib/useSyncedScrolling";
 import { useDocumentStore } from "./stores/document";
 import { useSettingsStore } from "./stores/settings";
@@ -39,6 +40,7 @@ const ui = useUiStore();
 
 const editorPane = ref<{
   getView: () => SyncedScrollingView | null;
+  replaceContent: (text: string) => void;
 } | null>(null);
 const previewPane = ref<{
   getPreviewHost: () => HTMLElement | null;
@@ -70,9 +72,47 @@ async function onKeydown(event: KeyboardEvent) {
     }
     return;
   }
+  if (modifier && (event.key === "n" || event.key === "N")) {
+    event.preventDefault();
+    await runNewDocument();
+    return;
+  }
+  if (modifier && (event.key === "o" || event.key === "O")) {
+    event.preventDefault();
+    await runOpenDocument();
+    return;
+  }
   if (modifier && event.shiftKey && (event.key === "P" || event.key === "p")) {
     event.preventDefault();
     ui.cycleLayoutMode();
+  }
+}
+
+async function runNewDocument() {
+  const decision = await confirmDiscard(document);
+  if (decision === "cancel") {
+    return;
+  }
+  document.newDocument();
+  editorPane.value?.replaceContent(document.content);
+  ui.applyDocumentLoadMode(true);
+}
+
+async function runOpenDocument() {
+  const decision = await confirmDiscard(document);
+  if (decision === "cancel") {
+    return;
+  }
+  const path = await pickOpenPath({
+    defaultPath: document.canonicalPath ?? ui.lastDirectory ?? undefined,
+  });
+  if (path === null) {
+    return;
+  }
+  const opened = await document.openDocument(path);
+  if (opened) {
+    editorPane.value?.replaceContent(document.content);
+    ui.applyDocumentLoadMode(false);
   }
 }
 

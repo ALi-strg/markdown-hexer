@@ -183,4 +183,73 @@ describe("document store", () => {
       defaultPath: "C:\\notes\\a.md",
     });
   });
+
+  it("opens a file into the Document, updating the title and clearing Dirty", async () => {
+    const document = useDocumentStore();
+    document.canonicalPath = "C:\\notes\\old.md";
+    document.mirrorContent("# Old");
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "open_document") {
+        return Promise.resolve("# New file");
+      }
+      return Promise.resolve(undefined);
+    });
+
+    const opened = await document.openDocument("C:\\notes\\new.md");
+
+    expect(opened).toBe(true);
+    expect(document.content).toBe("# New file");
+    expect(document.canonicalPath).toBe("C:\\notes\\new.md");
+    expect(document.filename).toBe("new.md");
+    expect(document.title).toBe("new.md — ALi-md-editor");
+    expect(document.dirty).toBe(false);
+  });
+
+  it("remembers the directory of an opened path", async () => {
+    const document = useDocumentStore();
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "open_document") {
+        return Promise.resolve("# Hello");
+      }
+      return Promise.resolve(undefined);
+    });
+    const ui = useUiStore();
+
+    await document.openDocument("C:\\notes\\drafts\\b.md");
+
+    expect(ui.lastDirectory).toBe("C:/notes/drafts");
+  });
+
+  it("keeps the current Document and shows a toast when the read fails", async () => {
+    const document = useDocumentStore();
+    document.canonicalPath = "C:\\notes\\a.md";
+    document.mirrorContent("# Safe");
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "open_document") {
+        return Promise.reject("not found");
+      }
+      return Promise.resolve(undefined);
+    });
+    const ui = useUiStore();
+
+    const opened = await document.openDocument("C:\\notes\\missing.md");
+
+    expect(opened).toBe(false);
+    expect(document.content).toBe("# Safe");
+    expect(document.canonicalPath).toBe("C:\\notes\\a.md");
+    expect(ui.toast).toContain("not found");
+  });
+
+  it("creates a fresh Untitled Document, discarding the current one", () => {
+    const document = useDocumentStore();
+    document.canonicalPath = "C:\\notes\\a.md";
+    document.mirrorContent("# Hello");
+
+    document.newDocument();
+
+    expect(document.content).toBe("");
+    expect(document.canonicalPath).toBeNull();
+    expect(document.filename).toBe("Untitled.md");
+    expect(document.dirty).toBe(false);
+  });
 });

@@ -39,4 +39,31 @@ describe("EditorPane", () => {
 
     expect(view.state.doc.toString()).toBe("Hello");
   });
+
+  it("replaces the editor content on a Document swap", async () => {
+    const { wrapper, view } = await mountWithView();
+    const document = useDocumentStore();
+    document.mirrorContent("# Draft");
+    document.canonicalPath = "C:\\notes\\a.md";
+
+    (wrapper.vm as unknown as { replaceContent: (text: string) => void }).replaceContent(
+      document.content,
+    );
+
+    expect(view.state.doc.toString()).toBe("# Draft");
+  });
+
+  it("replaces the editor content on a swap to an Untitled Document", async () => {
+    const { wrapper, view } = await mountWithView();
+
+    view.dispatch({ changes: { from: 0, insert: "# Draft" } });
+    const document = useDocumentStore();
+    document.newDocument();
+
+    (wrapper.vm as unknown as { replaceContent: (text: string) => void }).replaceContent(
+      document.content,
+    );
+
+    expect(view.state.doc.toString()).toBe("");
+  });
 });

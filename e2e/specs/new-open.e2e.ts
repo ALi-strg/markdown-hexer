@@ -1,0 +1,102 @@
+import path from "node:path";
+import os from "node:os";
+import fs from "node:fs";
+
+// The native Open dialog cannot be driven by WebdriverIO, so the E2E seeds the
+// app's test seam (enabled by VITE_E2E in the E2E build) with a real temp path
+// via localStorage. The read still runs through the real open_document command.
+describe("ALi-md-editor New & Open flows", () => {
+  const openPath = path.join(os.tmpdir(), `alimd-e2e-open-${Date.now()}.md`);
+  const openFilename = path.basename(openPath);
+
+  before(() => {
+    fs.writeFileSync(openPath, "# Opened file");
+  });
+
+  after(() => {
+    try {
+      fs.unlinkSync(openPath);
+    } catch {
+      // already removed
+    }
+  });
+
+  async function stubOpenDialog() {
+    await browser.execute((p) => {
+      localStorage.setItem("alimd:e2e:open-path", p);
+    }, openPath);
+  }
+
+  async function stubGuardChoice(choice: string) {
+    await browser.execute((c) => {
+      localStorage.setItem("alimd:e2e:guard-choice", c);
+    }, choice);
+  }
+
+  async function typeText(text: string) {
+    const editorContent = await $(
+      '[data-testid="editor-pane"] .cm-content',
+    );
+    await editorContent.waitForDisplayed({ timeout: 15000 });
+    await editorContent.click();
+    await editorContent.addValue(text);
+  }
+
+  it("creates an Untitled Document in Split View on Cmd/Ctrl+N", async () => {
+    await browser.pause(1000);
+    await typeText("# Draft");
+    await browser.waitUntil(
+      async () =>
+        (await browser.getTitle()) === "Untitled.md * — ALi-md-editor",
+      { timeout: 10000, timeoutMsg: "asterisk did not appear after typing" },
+    );
+
+    await stubGuardChoice("dont-save");
+    await browser.keys(["Control", "n"]);
+
+    await browser.waitUntil(
+      async () =>
+        (await browser.getTitle()) === "Untitled.md — ALi-md-editor",
+      { timeout: 10000, timeoutMsg: "New did not return to Untitled" },
+    );
+
+    const editorPane = await $('[data-testid="editor-pane"]');
+    const previewPane = await $('[data-testid="preview-pane"]');
+    expect(await editorPane.isDisplayed()).toBe(true);
+    expect(await previewPane.isDisplayed()).toBe(true);
+
+    const editorContent = await $(
+      '[data-testid="editor-pane"] .cm-content',
+    );
+    expect(await editorContent.getText()).not.toContain("# Draft");
+  });
+
+  it("opens a file into the Document in Preview Only on Cmd/Ctrl+O", async () => {
+    await stubOpenDialog();
+    await browser.keys(["Control", "o"]);
+
+    await browser.waitUntil(
+      async () =>
+        (await browser.getTitle()) === `${openFilename} — ALi-md-editor`,
+      {
+        timeout: 10000,
+        timeoutMsg: "title did not update to the opened filename",
+      },
+    );
+
+    const editorPane = await $('[data-testid="editor-pane"]');
+    await browser.waitUntil(async () => !(await editorPane.isDisplayed()), {
+      timeout: 10000,
+      timeoutMsg: "Editor Pane stayed visible after Open (expected Preview Only)",
+    });
+
+    const preview = await $('[data-testid="preview-pane"] .preview-host');
+    await browser.waitUntil(
+      async () => (await preview.getHTML()).includes("Opened file"),
+      {
+        timeout: 10000,
+        timeoutMsg: "Preview Pane did not render the opened content",
+      },
+    );
+  });
+});

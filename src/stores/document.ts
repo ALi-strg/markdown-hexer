@@ -7,6 +7,7 @@ import { useUiStore } from "./ui";
 const UNTITLED_FILENAME = "Untitled.md";
 const APP_TITLE_SUFFIX = " — ALi-md-editor";
 const SAVE_FAILED_MESSAGE = "Save failed — your changes are not on disk";
+const OPEN_FAILED_MESSAGE = "Open failed — the file could not be read";
 
 export const useDocumentStore = defineStore("document", () => {
   const content = ref("");
@@ -67,6 +68,40 @@ export const useDocumentStore = defineStore("document", () => {
     return writeToPath(path);
   }
 
+  /// Swaps the current Document for a fresh Untitled Document.
+  ///
+  /// The caller runs the Confirm-Discard Guard first when the Document is Dirty.
+  function newDocument() {
+    content.value = "";
+    canonicalPath.value = null;
+    savedContent.value = "";
+  }
+
+  /// Reads a file from disk and swaps it into the current Document.
+  ///
+  /// On success the path becomes canonical, the title updates to the filename,
+  /// and Dirty clears. A failed read keeps the current Document and surfaces the
+  /// error as a toast. Returns whether the swap happened.
+  async function openDocument(path: string): Promise<boolean> {
+    let text: string;
+    try {
+      text = await invoke<string>("open_document", { path });
+    } catch (error) {
+      const ui = useUiStore();
+      ui.showToast(
+        typeof error === "string" && error.length > 0
+          ? `Open failed: ${error}`
+          : OPEN_FAILED_MESSAGE,
+      );
+      return false;
+    }
+    content.value = text;
+    canonicalPath.value = path;
+    savedContent.value = text;
+    useUiStore().setLastDirectory(path);
+    return true;
+  }
+
   return {
     content,
     canonicalPath,
@@ -76,5 +111,7 @@ export const useDocumentStore = defineStore("document", () => {
     mirrorContent,
     save,
     saveAs,
+    newDocument,
+    openDocument,
   };
 });
