@@ -38,7 +38,7 @@ onBeforeUnmount(() => {
   view.value = null;
 });
 
-defineExpose({ view });
+defineExpose({ getView: () => view.value });
 
 </script>
 

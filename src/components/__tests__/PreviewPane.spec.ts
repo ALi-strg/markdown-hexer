@@ -84,4 +84,37 @@ describe("PreviewPane", () => {
     vi.advanceTimersByTime(200);
     expect(previewHtml(wrapper)).not.toContain("onerror");
   });
+
+  it("renders each block with a data-block-index anchor", async () => {
+    const wrapper = mount(PreviewPane, {
+      global: { plugins: [createPinia()] },
+    });
+    const document = useDocumentStore();
+
+    document.mirrorContent("# A\n\npara\n\n## B");
+    await nextTick();
+    vi.advanceTimersByTime(200);
+
+    const blocks = wrapper.find(".preview-host").element.querySelectorAll(
+      "[data-block-index]",
+    );
+    expect(blocks.length).toBe(3);
+    expect(blocks[0].getAttribute("data-block-index")).toBe("0");
+    expect(blocks[1].getAttribute("data-block-index")).toBe("1");
+    expect(blocks[2].getAttribute("data-block-index")).toBe("2");
+  });
+
+  it("notifies onRender after the Preview Pane re-renders", async () => {
+    const onRender = vi.fn();
+    mount(PreviewPane, {
+      props: { onRender },
+      global: { plugins: [createPinia()] },
+    });
+    const document = useDocumentStore();
+
+    document.mirrorContent("hi");
+    await nextTick();
+    vi.advanceTimersByTime(200);
+    expect(onRender).toHaveBeenCalledTimes(1);
+  });
 });

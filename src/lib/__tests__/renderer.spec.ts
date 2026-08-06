@@ -105,4 +105,30 @@ describe("renderMarkdown", () => {
     expect(html).toContain("token");
     expect(html).toContain("alert");
   });
+
+  it("wraps each block with a sequential data-block-index anchor", () => {
+    const html = renderMarkdown("# A\n\npara", { wrapBlocks: true });
+    expect(html).toContain('class="md-block"');
+    expect(html).toContain('data-block-index="0"');
+    expect(html).toContain('data-block-index="1"');
+    expect(html).not.toContain('data-block-index="2"');
+  });
+
+  it("keeps Prism highlighting inside wrapped code blocks", () => {
+    const html = renderMarkdown("```js\nconst x = 1;\n```", {
+      wrapBlocks: true,
+    });
+    expect(html).toContain('data-block-index="0"');
+    expect(html).toContain("token keyword");
+    expect(html).toContain('class="language-js"');
+  });
+
+  it("sanitizes wrapped block output", () => {
+    const html = renderMarkdown("<script>alert(1)</script>\n\npara", {
+      wrapBlocks: true,
+    });
+    expect(html).not.toContain("<script");
+    expect(html).toContain('data-block-index="0"');
+    expect(html).toContain("para");
+  });
 });

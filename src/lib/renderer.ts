@@ -2,6 +2,7 @@ import { Marked } from "marked";
 import { markedHighlight } from "marked-highlight";
 import DOMPurify from "dompurify";
 import Prism from "prismjs";
+import { SKIP_BLOCK_TOKEN_TYPES } from "./blockMap";
 import "prismjs/components/prism-typescript";
 import "prismjs/components/prism-python";
 import "prismjs/components/prism-json";
@@ -43,7 +44,40 @@ const marked = new Marked(
   }),
 );
 
-export function renderMarkdown(source: string): string {
+export interface RenderOptions {
+  wrapBlocks?: boolean;
+}
+
+function renderBlockAnchored(source: string): string {
+  const tokens = marked.lexer(source);
+  for (const token of tokens) {
+    if (token.type === "code") {
+      const highlighted = highlightCode(token.text, token.lang);
+      if (highlighted !== token.text) {
+        token.text = highlighted;
+        token.escaped = true;
+      }
+    }
+  }
+  const blockTokens = tokens.filter(
+    (token) => !SKIP_BLOCK_TOKEN_TYPES.has(token.type),
+  );
+  const html = blockTokens
+    .map(
+      (token, index) =>
+        `<div class="md-block" data-block-index="${index}">${marked.parser([token])}</div>`,
+    )
+    .join("");
+  return DOMPurify.sanitize(html);
+}
+
+export function renderMarkdown(
+  source: string,
+  options: RenderOptions = {},
+): string {
+  if (options.wrapBlocks) {
+    return renderBlockAnchored(source);
+  }
   const rawHtml = marked.parse(source, { async: false }) as string;
   return DOMPurify.sanitize(rawHtml);
 }
