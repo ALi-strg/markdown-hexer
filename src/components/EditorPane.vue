@@ -13,22 +13,33 @@ import { useDocumentStore } from "../stores/document";
 
 const document = useDocumentStore();
 const editorHost = ref<HTMLElement | null>(null);
-let view: EditorView | null = null;
+const view = ref<EditorView | null>(null);
 
 onMounted(() => {
-  view = new EditorView({
+  view.value = new EditorView({
     state: EditorState.create({
       doc: document.content,
-      extensions: [basicSetup, markdown()],
+      extensions: [
+        basicSetup,
+        markdown(),
+        EditorView.updateListener.of((update) => {
+          if (update.docChanged) {
+            document.mirrorContent(update.state.doc.toString());
+          }
+        }),
+      ],
     }),
     parent: editorHost.value!,
   });
 });
 
 onBeforeUnmount(() => {
-  view?.destroy();
-  view = null;
+  view.value?.destroy();
+  view.value = null;
 });
+
+defineExpose({ view });
+
 </script>
 
 <style scoped>

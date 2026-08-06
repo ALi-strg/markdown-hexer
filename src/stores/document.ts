@@ -7,7 +7,9 @@ const APP_TITLE_SUFFIX = " — ALi-md-editor";
 export const useDocumentStore = defineStore("document", () => {
   const content = ref("");
   const canonicalPath = ref<string | null>(null);
-  const dirty = ref(false);
+  const savedContent = ref("");
+
+  const dirty = computed(() => content.value !== savedContent.value);
 
   const filename = computed(() => {
     if (canonicalPath.value === null) {
@@ -21,5 +23,9 @@ export const useDocumentStore = defineStore("document", () => {
     return `${filename.value}${asterisk}${APP_TITLE_SUFFIX}`;
   });
 
-  return { content, canonicalPath, dirty, filename, title };
+  function mirrorContent(text: string) {
+    content.value = text;
+  }
+
+  return { content, canonicalPath, dirty, filename, title, mirrorContent };
 });

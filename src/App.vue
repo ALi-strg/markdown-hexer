@@ -21,6 +21,7 @@ const settings = useSettingsStore();
 const ui = useUiStore();
 
 async function syncWindowTitle() {
+  globalThis.document.title = document.title;
   await invoke("set_document_title", {
     filename: document.filename,
     dirty: document.dirty,
