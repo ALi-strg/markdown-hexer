@@ -17,6 +17,10 @@ vi.mock("@tauri-apps/api/window", () => ({
   getCurrentWindow: vi.fn(),
 }));
 
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: vi.fn(),
+}));
+
 vi.mock("../lib/saveDialog", () => ({
   pickSavePath: vi.fn(),
 }));
@@ -35,12 +39,14 @@ vi.mock("../lib/externalDialog", () => ({
 
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { listen, type Event } from "@tauri-apps/api/event";
 import { pickSavePath } from "../lib/saveDialog";
 import { pickOpenPath } from "../lib/openDialog";
 import { pickGuardChoice } from "../lib/guardDialog";
 import { pickExternalModificationChoice } from "../lib/externalDialog";
 
 const invokeMock = vi.mocked(invoke);
+const listenMock = vi.mocked(listen);
 const pickSavePathMock = vi.mocked(pickSavePath);
 const pickOpenPathMock = vi.mocked(pickOpenPath);
 const pickGuardChoiceMock = vi.mocked(pickGuardChoice);
@@ -53,6 +59,7 @@ interface MockWindow {
   getDropHandler: () => (
     event: { payload: { type: string; paths?: string[] } },
   ) => void;
+  getFileOpenHandler: () => (event: { payload: string }) => void;
   destroy: ReturnType<typeof vi.fn>;
   close: ReturnType<typeof vi.fn>;
   unlisten: ReturnType<typeof vi.fn>;
@@ -65,6 +72,7 @@ function mockWindow(): MockWindow {
   let dropHandler:
     | ((event: { payload: { type: string; paths?: string[] } }) => void)
     | null = null;
+  let fileOpenHandler: ((event: { payload: string }) => void) | null = null;
   const destroy = vi.fn();
   const close = vi.fn();
   const unlisten = vi.fn();
@@ -84,6 +92,14 @@ function mockWindow(): MockWindow {
     destroy,
     close,
   } as never);
+  listenMock.mockImplementation(
+    async (event: string, handler: (event: Event<unknown>) => void) => {
+      if (event === "file-open-requested") {
+        fileOpenHandler = handler as (event: { payload: string }) => void;
+      }
+      return unlisten;
+    },
+  );
   return {
     getCloseHandler: () =>
       closeHandler ?? (() => Promise.resolve()),
@@ -94,6 +110,11 @@ function mockWindow(): MockWindow {
       }),
     getDropHandler: () =>
       dropHandler ??
+      (() => {
+        // no-op
+      }),
+    getFileOpenHandler: () =>
+      fileOpenHandler ??
       (() => {
         // no-op
       }),
@@ -112,6 +133,7 @@ describe("App shell", () => {
     pickExternalChoiceMock.mockReset();
     invokeMock.mockReset();
     invokeMock.mockResolvedValue(undefined);
+    listenMock.mockReset();
     mockWindow();
   });
 
@@ -765,5 +787,85 @@ describe("App shell", () => {
     expect(document.content).toBe("# Dropped");
     expect(document.canonicalPath).toBe("C:\\notes\\d.md");
     expect(document.dirty).toBe(false);
+  });
+
+  it("opens a file the app was launched with through the Open flow", async () => {
+    const wrapper = mount(App);
+    const document = useDocumentStore();
+    const ui = useUiStore();
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "get_pending_file") {
+        return Promise.resolve("C:\\notes\\start.md");
+      }
+      if (command === "open_document") {
+        return Promise.resolve("# Launched");
+      }
+      return Promise.resolve(undefined);
+    });
+    await flushPromises();
+    await nextTick();
+
+    expect(document.content).toBe("# Launched");
+    expect(document.canonicalPath).toBe("C:\\notes\\start.md");
+    expect(document.filename).toBe("start.md");
+    expect(document.dirty).toBe(false);
+    expect(ui.layoutMode).toBe("preview");
+    const editorContent = wrapper.find(
+      '[data-testid="editor-pane"] .cm-content',
+    );
+    expect(editorContent.text()).toBe("# Launched");
+  });
+
+  it("opens a file forwarded by a second instance in the existing window", async () => {
+    const window = mockWindow();
+    mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "get_pending_file") {
+        return Promise.resolve(null);
+      }
+      if (command === "open_document") {
+        return Promise.resolve("# Forwarded");
+      }
+      return Promise.resolve(undefined);
+    });
+
+    window.getFileOpenHandler()({ payload: "C:\\notes\\fwd.md" });
+    await flushPromises();
+
+    expect(document.content).toBe("# Forwarded");
+    expect(document.canonicalPath).toBe("C:\\notes\\fwd.md");
+    expect(document.dirty).toBe(false);
+  });
+
+  it("runs the Confirm-Discard Guard when a second instance opens onto a Dirty Document", async () => {
+    const window = mockWindow();
+    mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    document.mirrorContent("# My edits");
+    pickGuardChoiceMock.mockResolvedValue("cancel");
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "get_pending_file") {
+        return Promise.resolve(null);
+      }
+      if (command === "open_document") {
+        return Promise.resolve("# Forwarded");
+      }
+      return Promise.resolve(undefined);
+    });
+
+    window.getFileOpenHandler()({ payload: "C:\\notes\\fwd.md" });
+    await flushPromises();
+
+    expect(pickGuardChoiceMock).toHaveBeenCalled();
+    expect(document.content).toBe("# My edits");
+    expect(document.dirty).toBe(true);
+    expect(document.canonicalPath).toBeNull();
+    expect(invokeMock).not.toHaveBeenCalledWith(
+      "open_document",
+      expect.anything(),
+    );
   });
 });

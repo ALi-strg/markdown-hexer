@@ -1,6 +1,7 @@
 mod confirm;
 mod external;
 mod inspect;
+mod instance;
 mod open;
 mod save;
 mod title;
@@ -46,15 +47,44 @@ fn inspect_document(path: String) -> Result<inspect::FileState, String> {
     inspect::inspect_document(&path)
 }
 
+use tauri::{Emitter, Manager};
+
+/// Handles a second launch of the app (e.g. double-clicking another `.md`
+/// file while the app is already running). Forwards the file path to the
+/// frontend, which runs the normal Open flow in the existing window. The
+/// single-instance plugin guarantees the second process never shows a window.
+fn handle_second_instance(app: &tauri::AppHandle, argv: Vec<String>) {
+    if let Some(path) = instance::extract_file_path(&argv) {
+        let pending = app.state::<instance::PendingFile>();
+        pending.set(path.clone());
+        let _ = app.emit("file-open-requested", path);
+    }
+}
+
+/// Returns and clears the file path that the frontend should open: either the
+/// file the app was launched with, or a file forwarded by a second instance.
+#[tauri::command]
+fn get_pending_file(state: tauri::State<instance::PendingFile>) -> Option<String> {
+    state.take()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            handle_second_instance(app, argv);
+        }))
+        .setup(|app| {
+            app.manage(instance::PendingFile::from_startup_args());
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             set_document_title,
             save_document,
             open_document,
             inspect_document,
+            get_pending_file,
             confirm::show_confirm_discard,
             external::show_external_modified
         ])

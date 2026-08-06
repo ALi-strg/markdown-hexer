@@ -24,6 +24,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import EditorPane from "./components/EditorPane.vue";
 import PreviewPane from "./components/PreviewPane.vue";
@@ -126,7 +127,7 @@ async function runOpenDocument() {
 /// Opens a file dropped onto the window through the same Open flow as the
 /// native dialog: the Confirm-Discard Guard runs first when the current
 /// Document is Dirty, then the Document is swapped.
-async function runDropOpen(path: string) {
+async function runGuardedOpen(path: string) {
   const decision = await confirmDiscard(document);
   if (decision === "cancel") {
     return;
@@ -134,10 +135,17 @@ async function runDropOpen(path: string) {
   await openPath(path);
 }
 
+/// Opens a file the OS asked us to open (launched with a file argument, or a
+/// path forwarded by a second instance). Shares the guarded Open flow.
+async function runLaunchFileOpen(path: string) {
+  await runGuardedOpen(path);
+}
+
 const appWindow = getCurrentWindow();
 let unlistenCloseRequested: (() => void) | null = null;
 let unlistenFocusChanged: (() => void) | null = null;
 let unlistenDragDrop: (() => void) | null = null;
+let unlistenFileOpen: (() => void) | null = null;
 
 async function onCloseRequested(event: { preventDefault: () => void }) {
   if (!document.dirty) {
@@ -179,16 +187,28 @@ onMounted(async () => {
   });
   unlistenDragDrop = await appWindow.onDragDropEvent((event) => {
     if (event.payload.type === "drop" && event.payload.paths.length > 0) {
-      runDropOpen(event.payload.paths[0]);
+      runGuardedOpen(event.payload.paths[0]);
     }
   });
+  unlistenFileOpen = await listen<string>("file-open-requested", (event) => {
+    runLaunchFileOpen(event.payload);
+  });
+  // Register the listener before pulling the pending path so a forward that
+  // arrives mid-startup is not lost: either the listener or the pull opens it.
+  const pendingFile = await invoke<string | null>("get_pending_file");
+  if (typeof pendingFile === "string") {
+    await runLaunchFileOpen(pendingFile);
+  }
   if (import.meta.env.VITE_E2E === "1") {
     (globalThis as Record<string, unknown>).__triggerWindowClose = () =>
       appWindow.close();
     (globalThis as Record<string, unknown>).__triggerExternalCheck = () =>
       onWindowFocused();
     (globalThis as Record<string, unknown>).__triggerDrop = (path: string) =>
-      runDropOpen(path);
+      runGuardedOpen(path);
+    (globalThis as Record<string, unknown>).__triggerFileOpen = (
+      path: string,
+    ) => runLaunchFileOpen(path);
   }
 });
 onBeforeUnmount(() => {
@@ -197,6 +217,7 @@ onBeforeUnmount(() => {
   unlistenCloseRequested?.();
   unlistenFocusChanged?.();
   unlistenDragDrop?.();
+  unlistenFileOpen?.();
 });
 watch(() => [document.filename, document.dirty], syncWindowTitle);
 </script>
