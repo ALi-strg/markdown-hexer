@@ -1,5 +1,21 @@
 import { describe, it, expect } from "vitest";
-import { renderMarkdown } from "../renderer";
+import { renderMarkdown, HIGHLIGHTED_LANGUAGES } from "../renderer";
+
+const SNIPPETS: Record<string, string> = {
+  markup: "<div>hi</div>",
+  css: "body { color: red; }",
+  clike: "if (true) {}",
+  javascript: "const x = 1;",
+  typescript: "const x: number = 1;",
+  python: "import os",
+  json: '{"a": 1}',
+  yaml: "a: 1",
+  bash: "echo hi",
+  sql: "SELECT * FROM t",
+  java: "class A {}",
+  go: "package main",
+  markdown: "**bold**",
+};
 
 describe("renderMarkdown", () => {
   it("renders an ATX heading", () => {
@@ -58,5 +74,35 @@ describe("renderMarkdown", () => {
     const html = renderMarkdown('<img src=x onerror="window.__pwned=1">');
     expect(html).not.toContain("onerror");
     expect((globalThis as Record<string, unknown>).__pwned).toBeUndefined();
+  });
+
+  it("highlights a fenced code block with Prism classes in the same render pass", () => {
+    const html = renderMarkdown("```js\nconst x = 1;\n```");
+    expect(html).toContain('class="language-js"');
+    expect(html).toContain('<span class="token keyword">const</span>');
+  });
+
+  it.each(HIGHLIGHTED_LANGUAGES)(
+    "highlights fenced %s blocks with Prism classes",
+    (lang) => {
+      const html = renderMarkdown(`\`\`\`${lang}\n${SNIPPETS[lang]}\n\`\`\``);
+      expect(html).toContain(`class="language-${lang}"`);
+      expect(html).toMatch(/class="token[ "]|class="token\b/);
+    },
+  );
+
+  it("falls back to escaped plain text for unknown languages", () => {
+    const html = renderMarkdown("```klingon\n<script>alert(1)</script>\n```");
+    expect(html).toContain('class="language-klingon"');
+    expect(html).not.toContain("<script");
+    expect(html).toContain("&lt;script&gt;");
+    expect(html).toContain("alert(1)");
+  });
+
+  it("keeps highlighted fenced code sanitized", () => {
+    const html = renderMarkdown("```html\n<script>alert(1)</script>\n```");
+    expect(html).not.toContain("<script");
+    expect(html).toContain("token");
+    expect(html).toContain("alert");
   });
 });

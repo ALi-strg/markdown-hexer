@@ -22,11 +22,14 @@
     "codemirror": "^6.0.2",
     "dompurify": "^3.4.13",
     "marked": "^18.0.9",
+    "marked-highlight": "^2.2.4",
     "pinia": "^4.0.2",
+    "prismjs": "^1.30.0",
     "vue": "^3.5.13"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2",
+    "@types/prismjs": "^1.26.6",
     "@vitejs/plugin-vue": "^5.2.1",
     "@vitest/coverage-v8": "^4.1.10",
     "@vue/test-utils": "^2.4.11",
