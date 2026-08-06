@@ -1,6 +1,8 @@
 use std::fs;
 use std::time::UNIX_EPOCH;
 
+use crate::encoding;
+
 /// The on-disk state of a Document's file: its content and last-modified time.
 ///
 /// The frontend compares `content` against the state it saw at load/save time
@@ -13,11 +15,12 @@ pub struct FileState {
 
 /// Inspects the Document's file on disk.
 ///
-/// Returns the file's UTF-8 content and modified time in milliseconds since the
-/// Unix epoch. Returns `Err` with the OS message when the file cannot be read
-/// (for example, it was deleted or moved while the app had it open).
+/// Returns the file's UTF-8 content (BOM stripped, matching the Open read) and
+/// modified time in milliseconds since the Unix epoch. Returns `Err` with the
+/// OS message when the file cannot be read (for example, it was deleted or
+/// moved while the app had it open).
 pub fn inspect_document(path: &str) -> Result<FileState, String> {
-    let content = fs::read_to_string(path).map_err(|e| e.to_string())?;
+    let content = encoding::read_utf8(path)?;
     let mtime_ms = fs::metadata(path)
         .ok()
         .and_then(|metadata| metadata.modified().ok())
@@ -51,6 +54,19 @@ mod tests {
 
         assert_eq!(state.content, "# On disk");
         assert!(state.mtime_ms > 0);
+
+        fs::remove_dir_all(dir).expect("clean up temp dir");
+    }
+
+    #[test]
+    fn strips_a_leading_bom_like_the_open_read() {
+        let dir = temp_dir("bom");
+        let path = dir.join("note.md");
+        fs::write(&path, b"\xEF\xBB\xBF# On disk").expect("write BOM fixture");
+
+        let state = inspect_document(path.to_str().unwrap()).expect("inspect should succeed");
+
+        assert_eq!(state.content, "# On disk");
 
         fs::remove_dir_all(dir).expect("clean up temp dir");
     }

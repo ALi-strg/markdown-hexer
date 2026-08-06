@@ -34,6 +34,19 @@ mod tests {
     }
 
     #[test]
+    fn writes_clean_utf8_without_a_bom() {
+        let dir = temp_dir("no-bom");
+        let path = dir.join("note.md");
+        write_document(path.to_str().unwrap(), "# Hello").expect("write should succeed");
+
+        let bytes = fs::read(&path).unwrap();
+        assert!(!bytes.starts_with(&[0xEF, 0xBB, 0xBF]));
+        assert_eq!(String::from_utf8(bytes).unwrap(), "# Hello");
+
+        fs::remove_dir_all(dir).expect("clean up temp dir");
+    }
+
+    #[test]
     fn returns_an_error_when_the_path_is_unwritable() {
         let dir = temp_dir("unwritable");
         let blocker = dir.join("blocker");

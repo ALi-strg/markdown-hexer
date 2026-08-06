@@ -1,16 +1,18 @@
-use std::fs;
+use crate::encoding;
 
 /// Reads a Document's content from disk as UTF-8.
 ///
-/// Returns `Err` with the OS message when the file cannot be read so the
-/// frontend can surface the failure and keep the current Document.
+/// Strips a single leading BOM so Notepad-era files open cleanly; files that
+/// are not valid UTF-8 return `Err` with the OS message so the frontend can
+/// surface the failure and keep the current Document.
 pub fn read_document(path: &str) -> Result<String, String> {
-    fs::read_to_string(path).map_err(|e| e.to_string())
+    encoding::read_utf8(path)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
 
     fn temp_dir(name: &str) -> std::path::PathBuf {
         let dir = std::env::temp_dir().join(format!(
@@ -29,6 +31,28 @@ mod tests {
         fs::write(&path, "# Hello").expect("write fixture");
 
         assert_eq!(read_document(path.to_str().unwrap()).unwrap(), "# Hello");
+
+        fs::remove_dir_all(dir).expect("clean up temp dir");
+    }
+
+    #[test]
+    fn strips_a_leading_bom_when_reading() {
+        let dir = temp_dir("bom");
+        let path = dir.join("note.md");
+        fs::write(&path, b"\xEF\xBB\xBF# Hello").expect("write BOM fixture");
+
+        assert_eq!(read_document(path.to_str().unwrap()).unwrap(), "# Hello");
+
+        fs::remove_dir_all(dir).expect("clean up temp dir");
+    }
+
+    #[test]
+    fn returns_an_error_for_a_file_that_is_not_utf8() {
+        let dir = temp_dir("non-utf8");
+        let path = dir.join("note.md");
+        fs::write(&path, [0xFF, 0xFE, b'#', b' ', b'X']).expect("write fixture");
+
+        assert!(read_document(path.to_str().unwrap()).is_err());
 
         fs::remove_dir_all(dir).expect("clean up temp dir");
     }

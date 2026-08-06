@@ -1,5 +1,6 @@
 mod asset;
 mod confirm;
+mod encoding;
 mod external;
 mod inspect;
 mod instance;
