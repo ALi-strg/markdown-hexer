@@ -17,6 +17,26 @@ describe("ui store", () => {
     expect(ui.dividerPosition).toBe(0.5);
   });
 
+  it("remembers the divider position across Layout Mode switches", () => {
+    const ui = useUiStore();
+    ui.dividerPosition = 0.7;
+    ui.cycleLayoutMode();
+    expect(ui.dividerPosition).toBe(0.7);
+    ui.cycleLayoutMode();
+    expect(ui.dividerPosition).toBe(0.7);
+    ui.cycleLayoutMode();
+    expect(ui.dividerPosition).toBe(0.7);
+  });
+
+  it("resets the divider position on launch", () => {
+    const ui = useUiStore();
+    ui.dividerPosition = 0.7;
+
+    setActivePinia(createPinia());
+    const fresh = useUiStore();
+    expect(fresh.dividerPosition).toBe(0.5);
+  });
+
   it("starts with the find overlay closed", () => {
     const ui = useUiStore();
     expect(ui.findOverlayOpen).toBe(false);

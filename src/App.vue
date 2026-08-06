@@ -18,19 +18,34 @@
       ref="findPanelRef"
       :get-view="getEditorView"
     />
-    <div class="workspace" :class="`layout-${ui.layoutMode}`">
+    <div
+      ref="workspaceRef"
+      class="workspace"
+      :class="`layout-${ui.layoutMode}`"
+    >
       <EditorPane
         ref="editorPane"
         v-show="ui.layoutMode !== 'preview'"
         class="pane editor-pane"
         data-testid="editor-pane"
+        :style="editorBasisStyle"
       />
+      <div
+        v-if="ui.layoutMode === 'split'"
+        ref="dividerRef"
+        class="divider"
+        data-testid="divider"
+        role="separator"
+        aria-orientation="vertical"
+        @pointerdown="onDividerPointerDown"
+      ></div>
       <PreviewPane
         ref="previewPane"
         v-show="ui.layoutMode !== 'focus'"
         class="pane preview-pane"
         data-testid="preview-pane"
         :on-render="() => syncedScrolling.sync()"
+        :style="previewBasisStyle"
       />
     </div>
     <div v-if="ui.toast" class="toast" data-testid="toast" role="status">
@@ -40,7 +55,14 @@
 </template>
 
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, nextTick, ref, watch } from "vue";
+import {
+  computed,
+  onBeforeUnmount,
+  onMounted,
+  nextTick,
+  ref,
+  watch,
+} from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -75,6 +97,78 @@ const previewPane = ref<{
   getPreviewHost: () => HTMLElement | null;
 } | null>(null);
 const findPanelRef = ref<{ focusQuery: () => void } | null>(null);
+const workspaceRef = ref<HTMLElement | null>(null);
+const dividerRef = ref<HTMLElement | null>(null);
+
+/// Balances the panes in Split View: the Editor Pane takes `dividerPosition`
+/// of the workspace width and the Preview Pane the remainder. Outside Split
+/// View the panes fill the workspace, so no basis is applied.
+const editorBasisStyle = computed(() =>
+  ui.layoutMode === "split"
+    ? { flexBasis: `${roundPercent(ui.dividerPosition)}%` }
+    : null,
+);
+const previewBasisStyle = computed(() =>
+  ui.layoutMode === "split"
+    ? { flexBasis: `${roundPercent(1 - ui.dividerPosition)}%` }
+    : null,
+);
+
+/// Formats a 0..1 fraction as a percentage string, avoiding float noise like
+/// `30.000000000000004%` in the rendered inline style.
+function roundPercent(fraction: number): number {
+  return Math.round(fraction * 1000) / 10;
+}
+
+const MIN_DIVIDER_POSITION = 0.15;
+const MAX_DIVIDER_POSITION = 0.85;
+
+function clampDividerPosition(position: number): number {
+  return Math.min(
+    MAX_DIVIDER_POSITION,
+    Math.max(MIN_DIVIDER_POSITION, position),
+  );
+}
+
+/// Starts a divider drag: tracks the pointer against the workspace width and
+/// writes the new balance into the ui store (which survives mode switches but
+/// not launches). Pointer capture keeps the drag going when the pointer leaves
+/// the divider; the listeners are torn down on release.
+function onDividerPointerDown(event: PointerEvent) {
+  if (event.button !== 0) {
+    return;
+  }
+  const divider = dividerRef.value;
+  const workspace = workspaceRef.value;
+  if (divider === null || workspace === null) {
+    return;
+  }
+  event.preventDefault();
+  if (typeof divider.setPointerCapture === "function") {
+    try {
+      divider.setPointerCapture(event.pointerId);
+    } catch {
+      // Pointer not active (e.g. synthetic events in tests).
+    }
+  }
+  const startX = event.clientX;
+  const startPosition = ui.dividerPosition;
+  const width = workspace.getBoundingClientRect().width;
+
+  const onPointerMove = (moveEvent: PointerEvent) => {
+    const delta = moveEvent.clientX - startX;
+    ui.dividerPosition =
+      width > 0
+        ? clampDividerPosition(startPosition + delta / width)
+        : startPosition;
+  };
+  const onPointerUp = () => {
+    divider.removeEventListener("pointermove", onPointerMove);
+    divider.removeEventListener("pointerup", onPointerUp);
+  };
+  divider.addEventListener("pointermove", onPointerMove);
+  divider.addEventListener("pointerup", onPointerUp);
+}
 
 const syncedScrolling = useSyncedScrolling({
   getView: () => editorPane.value?.getView() ?? null,
@@ -338,7 +432,18 @@ watch(() => [document.filename, document.dirty], syncWindowTitle);
 
 .layout-split .editor-pane,
 .layout-split .preview-pane {
-  flex: 1 1 50%;
+  flex: 1 1 auto;
+}
+
+.divider {
+  flex: 0 0 6px;
+  cursor: col-resize;
+  background: var(--border-color, #e0e0e0);
+  touch-action: none;
+}
+
+.divider:hover {
+  background: var(--accent-color, #888);
 }
 
 .layout-preview .preview-pane {

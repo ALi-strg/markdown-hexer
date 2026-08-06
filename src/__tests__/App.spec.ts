@@ -1283,4 +1283,151 @@ describe("App shell", () => {
       "sans",
     );
   });
+
+  it("drags the divider to rebalance the panes", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const ui = useUiStore();
+    const workspace = wrapper.find(".workspace").element;
+    vi.spyOn(workspace, "getBoundingClientRect").mockReturnValue({
+      width: 1000,
+    } as DOMRect);
+    const divider = wrapper.find('[data-testid="divider"]').element;
+
+    divider.dispatchEvent(
+      new PointerEvent("pointerdown", {
+        button: 0,
+        clientX: 500,
+        pointerId: 1,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+    divider.dispatchEvent(
+      new PointerEvent("pointermove", {
+        clientX: 700,
+        pointerId: 1,
+        bubbles: true,
+      }),
+    );
+    divider.dispatchEvent(
+      new PointerEvent("pointerup", { pointerId: 1, bubbles: true }),
+    );
+    await nextTick();
+
+    expect(ui.dividerPosition).toBeCloseTo(0.7, 5);
+    const editor = wrapper.find('[data-testid="editor-pane"]')
+      .element as HTMLElement;
+    expect(editor.style.flexBasis).toBe("70%");
+  });
+
+  it("shows a draggable divider in Split View", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const divider = wrapper.find('[data-testid="divider"]');
+    expect(divider.exists()).toBe(true);
+    expect(divider.attributes("role")).toBe("separator");
+  });
+
+  it("hides the divider outside Split View", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const ui = useUiStore();
+    ui.cycleLayoutMode();
+    await nextTick();
+    expect(wrapper.find('[data-testid="divider"]').exists()).toBe(false);
+  });
+
+  it("sizes the panes from the divider position", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const ui = useUiStore();
+    ui.dividerPosition = 0.7;
+    await nextTick();
+
+    const editor = wrapper.find('[data-testid="editor-pane"]')
+      .element as HTMLElement;
+    const preview = wrapper.find('[data-testid="preview-pane"]')
+      .element as HTMLElement;
+    expect(editor.style.flexBasis).toBe("70%");
+    expect(preview.style.flexBasis).toBe("30%");
+  });
+
+  it("keeps the divider position when cycling away from and back to Split View", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const ui = useUiStore();
+    const workspace = wrapper.find(".workspace").element;
+    vi.spyOn(workspace, "getBoundingClientRect").mockReturnValue({
+      width: 1000,
+    } as DOMRect);
+    const divider = wrapper.find('[data-testid="divider"]').element;
+    divider.dispatchEvent(
+      new PointerEvent("pointerdown", {
+        button: 0,
+        clientX: 500,
+        pointerId: 1,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+    divider.dispatchEvent(
+      new PointerEvent("pointermove", {
+        clientX: 700,
+        pointerId: 1,
+        bubbles: true,
+      }),
+    );
+    divider.dispatchEvent(
+      new PointerEvent("pointerup", { pointerId: 1, bubbles: true }),
+    );
+    await nextTick();
+    expect(ui.dividerPosition).toBeCloseTo(0.7, 5);
+
+    ui.cycleLayoutMode();
+    await nextTick();
+    ui.cycleLayoutMode();
+    await nextTick();
+    ui.cycleLayoutMode();
+    await nextTick();
+
+    expect(ui.layoutMode).toBe("split");
+    expect(ui.dividerPosition).toBeCloseTo(0.7, 5);
+    const editor = wrapper.find('[data-testid="editor-pane"]')
+      .element as HTMLElement;
+    expect(editor.style.flexBasis).toBe("70%");
+  });
+
+  it("clamps the divider position so both panes stay usable", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const ui = useUiStore();
+    const workspace = wrapper.find(".workspace").element;
+    vi.spyOn(workspace, "getBoundingClientRect").mockReturnValue({
+      width: 1000,
+    } as DOMRect);
+    const divider = wrapper.find('[data-testid="divider"]').element;
+    divider.dispatchEvent(
+      new PointerEvent("pointerdown", {
+        button: 0,
+        clientX: 500,
+        pointerId: 1,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+    divider.dispatchEvent(
+      new PointerEvent("pointermove", {
+        clientX: 2000,
+        pointerId: 1,
+        bubbles: true,
+      }),
+    );
+    divider.dispatchEvent(
+      new PointerEvent("pointerup", { pointerId: 1, bubbles: true }),
+    );
+    await nextTick();
+
+    expect(ui.dividerPosition).toBe(0.85);
+  });
 });
