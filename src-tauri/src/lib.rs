@@ -1,4 +1,6 @@
 mod confirm;
+mod external;
+mod inspect;
 mod open;
 mod save;
 mod title;
@@ -34,6 +36,16 @@ fn open_document(path: String) -> Result<String, String> {
     open::read_document(&path)
 }
 
+/// Inspects the Document's file on disk for Externally-Modified detection.
+///
+/// The frontend calls this on window focus and compares the returned content
+/// against the state it saw at load/save time. A missing or unreadable file
+/// surfaces as an error, which the frontend treats as "no change".
+#[tauri::command]
+fn inspect_document(path: String) -> Result<inspect::FileState, String> {
+    inspect::inspect_document(&path)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -42,7 +54,9 @@ pub fn run() {
             set_document_title,
             save_document,
             open_document,
-            confirm::show_confirm_discard
+            inspect_document,
+            confirm::show_confirm_discard,
+            external::show_external_modified
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

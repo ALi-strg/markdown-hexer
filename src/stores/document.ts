@@ -2,6 +2,7 @@ import { defineStore } from "pinia";
 import { computed, ref } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { pickSavePath } from "../lib/saveDialog";
+import { pickExternalModificationChoice } from "../lib/externalDialog";
 import { useUiStore } from "./ui";
 
 const UNTITLED_FILENAME = "Untitled.md";
@@ -13,6 +14,7 @@ export const useDocumentStore = defineStore("document", () => {
   const content = ref("");
   const canonicalPath = ref<string | null>(null);
   const savedContent = ref("");
+  const diskContent = ref<string | null>(null);
 
   const dirty = computed(() => content.value !== savedContent.value);
 
@@ -32,9 +34,12 @@ export const useDocumentStore = defineStore("document", () => {
     content.value = text;
   }
 
-  async function writeToPath(path: string): Promise<boolean> {
+  /// Writes `text` to `path`, surfacing a failure as a toast. Does not update
+  /// the Document's path, Dirty state, or Externally-Modified baseline.
+  async function writeToDisk(path: string, text: string): Promise<boolean> {
     try {
-      await invoke("save_document", { path, content: content.value });
+      await invoke("save_document", { path, content: text });
+      return true;
     } catch (error) {
       const ui = useUiStore();
       ui.showToast(
@@ -44,8 +49,15 @@ export const useDocumentStore = defineStore("document", () => {
       );
       return false;
     }
+  }
+
+  async function writeToPath(path: string): Promise<boolean> {
+    if (!(await writeToDisk(path, content.value))) {
+      return false;
+    }
     canonicalPath.value = path;
     savedContent.value = content.value;
+    diskContent.value = content.value;
     useUiStore().setLastDirectory(path);
     return true;
   }
@@ -75,6 +87,7 @@ export const useDocumentStore = defineStore("document", () => {
     content.value = "";
     canonicalPath.value = null;
     savedContent.value = "";
+    diskContent.value = null;
   }
 
   /// Reads a file from disk and swaps it into the current Document.
@@ -98,8 +111,67 @@ export const useDocumentStore = defineStore("document", () => {
     content.value = text;
     canonicalPath.value = path;
     savedContent.value = text;
+    diskContent.value = text;
     useUiStore().setLastDirectory(path);
     return true;
+  }
+
+  /// Replaces the Document with the on-disk version, treating it as the new
+  /// saved baseline so Dirty clears and the change is not re-detected.
+  function reloadFrom(text: string) {
+    content.value = text;
+    savedContent.value = text;
+    diskContent.value = text;
+  }
+
+  /// Writes the current content over the Document's file without clearing
+  /// Dirty: an Overwrite resolves the conflict but is not a Save.
+  async function overwriteToDisk(): Promise<boolean> {
+    if (canonicalPath.value === null) {
+      return false;
+    }
+    if (!(await writeToDisk(canonicalPath.value, content.value))) {
+      return false;
+    }
+    diskContent.value = content.value;
+    return true;
+  }
+
+  /// Detects an Externally-Modified file on window focus.
+  ///
+  /// Compares the on-disk content against the state seen at load/save time. A
+  /// clean Document reloads silently; a Dirty Document asks the user for
+  /// Reload / Overwrite / Cancel. Returns whether the Document content was
+  /// replaced by a reload (silent or chosen), so the caller can push it into
+  /// the editor.
+  async function checkExternalModification(): Promise<boolean> {
+    if (canonicalPath.value === null) {
+      return false;
+    }
+    let state: { content: string };
+    try {
+      state = await invoke<{ content: string }>("inspect_document", {
+        path: canonicalPath.value,
+      });
+    } catch {
+      return false;
+    }
+    if (state.content === diskContent.value) {
+      return false;
+    }
+    if (!dirty.value) {
+      reloadFrom(state.content);
+      return true;
+    }
+    const choice = await pickExternalModificationChoice(filename.value);
+    if (choice === "reload") {
+      reloadFrom(state.content);
+      return true;
+    }
+    if (choice === "overwrite") {
+      await overwriteToDisk();
+    }
+    return false;
   }
 
   return {
@@ -113,5 +185,6 @@ export const useDocumentStore = defineStore("document", () => {
     saveAs,
     newDocument,
     openDocument,
+    checkExternalModification,
   };
 });

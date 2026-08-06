@@ -29,20 +29,27 @@ vi.mock("../lib/guardDialog", () => ({
   pickGuardChoice: vi.fn(),
 }));
 
+vi.mock("../lib/externalDialog", () => ({
+  pickExternalModificationChoice: vi.fn(),
+}));
+
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { pickSavePath } from "../lib/saveDialog";
 import { pickOpenPath } from "../lib/openDialog";
 import { pickGuardChoice } from "../lib/guardDialog";
+import { pickExternalModificationChoice } from "../lib/externalDialog";
 
 const invokeMock = vi.mocked(invoke);
 const pickSavePathMock = vi.mocked(pickSavePath);
 const pickOpenPathMock = vi.mocked(pickOpenPath);
 const pickGuardChoiceMock = vi.mocked(pickGuardChoice);
+const pickExternalChoiceMock = vi.mocked(pickExternalModificationChoice);
 const getCurrentWindowMock = vi.mocked(getCurrentWindow);
 
 interface MockWindow {
   getCloseHandler: () => (event: { preventDefault: () => void }) => Promise<void>;
+  getFocusHandler: () => (event: { payload: boolean }) => void;
   destroy: ReturnType<typeof vi.fn>;
   close: ReturnType<typeof vi.fn>;
   unlisten: ReturnType<typeof vi.fn>;
@@ -51,6 +58,7 @@ interface MockWindow {
 function mockWindow(): MockWindow {
   let closeHandler: ((event: { preventDefault: () => void }) => Promise<void>) | null =
     null;
+  let focusHandler: ((event: { payload: boolean }) => void) | null = null;
   const destroy = vi.fn();
   const close = vi.fn();
   const unlisten = vi.fn();
@@ -59,12 +67,21 @@ function mockWindow(): MockWindow {
       closeHandler = handler;
       return Promise.resolve(unlisten);
     }),
+    onFocusChanged: vi.fn((handler: never) => {
+      focusHandler = handler;
+      return Promise.resolve(unlisten);
+    }),
     destroy,
     close,
   } as never);
   return {
     getCloseHandler: () =>
       closeHandler ?? (() => Promise.resolve()),
+    getFocusHandler: () =>
+      focusHandler ??
+      (() => {
+        // no-op
+      }),
     destroy,
     close,
     unlisten,
@@ -77,6 +94,7 @@ describe("App shell", () => {
     pickSavePathMock.mockReset();
     pickOpenPathMock.mockReset();
     pickGuardChoiceMock.mockReset();
+    pickExternalChoiceMock.mockReset();
     invokeMock.mockReset();
     invokeMock.mockResolvedValue(undefined);
     mockWindow();
@@ -511,5 +529,119 @@ describe("App shell", () => {
     expect(document.content).toBe("");
     expect(document.dirty).toBe(false);
     expect(ui.toast).toContain("permission denied");
+  });
+
+  it("silently reloads a clean Document whose file changed on window focus", async () => {
+    const window = mockWindow();
+    const wrapper = mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "open_document") {
+        return Promise.resolve("# Original");
+      }
+      if (command === "inspect_document") {
+        return Promise.resolve({ content: "# Changed", mtime_ms: 3 });
+      }
+      return Promise.resolve(undefined);
+    });
+    await document.openDocument("C:\\notes\\a.md");
+    expect(document.dirty).toBe(false);
+
+    window.getFocusHandler()({ payload: true });
+    await flushPromises();
+    await nextTick();
+
+    expect(document.content).toBe("# Changed");
+    expect(document.dirty).toBe(false);
+    expect(pickExternalChoiceMock).not.toHaveBeenCalled();
+    const editorContent = wrapper.find(
+      '[data-testid="editor-pane"] .cm-content',
+    );
+    expect(editorContent.text()).toBe("# Changed");
+  });
+
+  it("keeps the Dirty Document when the Externally-Modified dialog is cancelled", async () => {
+    const window = mockWindow();
+    mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "open_document") {
+        return Promise.resolve("# Original");
+      }
+      if (command === "inspect_document") {
+        return Promise.resolve({ content: "# Changed", mtime_ms: 3 });
+      }
+      return Promise.resolve(undefined);
+    });
+    await document.openDocument("C:\\notes\\a.md");
+    document.mirrorContent("# My edits");
+    pickExternalChoiceMock.mockResolvedValue("cancel");
+
+    window.getFocusHandler()({ payload: true });
+    await flushPromises();
+
+    expect(document.content).toBe("# My edits");
+    expect(document.dirty).toBe(true);
+    expect(invokeMock).not.toHaveBeenCalledWith(
+      "save_document",
+      expect.anything(),
+    );
+  });
+
+  it("reloads a Dirty Document from disk when Reload is chosen on focus", async () => {
+    const window = mockWindow();
+    mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "open_document") {
+        return Promise.resolve("# Original");
+      }
+      if (command === "inspect_document") {
+        return Promise.resolve({ content: "# External", mtime_ms: 3 });
+      }
+      return Promise.resolve(undefined);
+    });
+    await document.openDocument("C:\\notes\\a.md");
+    document.mirrorContent("# My edits");
+    pickExternalChoiceMock.mockResolvedValue("reload");
+
+    window.getFocusHandler()({ payload: true });
+    await flushPromises();
+
+    expect(pickExternalChoiceMock).toHaveBeenCalledWith("a.md");
+    expect(document.content).toBe("# External");
+    expect(document.dirty).toBe(false);
+  });
+
+  it("overwrites the disk and stays Dirty when Overwrite is chosen on focus", async () => {
+    const window = mockWindow();
+    mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "open_document") {
+        return Promise.resolve("# Original");
+      }
+      if (command === "inspect_document") {
+        return Promise.resolve({ content: "# Changed", mtime_ms: 3 });
+      }
+      return Promise.resolve(undefined);
+    });
+    await document.openDocument("C:\\notes\\a.md");
+    document.mirrorContent("# My edits");
+    pickExternalChoiceMock.mockResolvedValue("overwrite");
+
+    window.getFocusHandler()({ payload: true });
+    await flushPromises();
+
+    expect(invokeMock).toHaveBeenCalledWith("save_document", {
+      path: "C:\\notes\\a.md",
+      content: "# My edits",
+    });
+    expect(document.content).toBe("# My edits");
+    expect(document.dirty).toBe(true);
   });
 });

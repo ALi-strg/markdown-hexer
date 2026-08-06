@@ -118,6 +118,7 @@ async function runOpenDocument() {
 
 const appWindow = getCurrentWindow();
 let unlistenCloseRequested: (() => void) | null = null;
+let unlistenFocusChanged: (() => void) | null = null;
 
 async function onCloseRequested(event: { preventDefault: () => void }) {
   if (!document.dirty) {
@@ -136,20 +137,39 @@ async function onCloseRequested(event: { preventDefault: () => void }) {
   await appWindow.destroy();
 }
 
+/// Detects an Externally-Modified file when the window regains focus.
+///
+/// A silent reload or a chosen Reload replaces the Document, so the editor (the
+/// authoritative source of edits) is pushed the new content explicitly.
+async function onWindowFocused() {
+  const replaced = await document.checkExternalModification();
+  if (replaced) {
+    editorPane.value?.replaceContent(document.content);
+  }
+}
+
 onMounted(async () => {
   syncWindowTitle();
   window.addEventListener("keydown", onKeydown);
   syncedScrolling.attach();
   unlistenCloseRequested = await appWindow.onCloseRequested(onCloseRequested);
+  unlistenFocusChanged = await appWindow.onFocusChanged(({ payload: focused }) => {
+    if (focused) {
+      onWindowFocused();
+    }
+  });
   if (import.meta.env.VITE_E2E === "1") {
     (globalThis as Record<string, unknown>).__triggerWindowClose = () =>
       appWindow.close();
+    (globalThis as Record<string, unknown>).__triggerExternalCheck = () =>
+      onWindowFocused();
   }
 });
 onBeforeUnmount(() => {
   window.removeEventListener("keydown", onKeydown);
   syncedScrolling.detach();
   unlistenCloseRequested?.();
+  unlistenFocusChanged?.();
 });
 watch(() => [document.filename, document.dirty], syncWindowTitle);
 </script>

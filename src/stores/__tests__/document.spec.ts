@@ -11,11 +11,17 @@ vi.mock("../../lib/saveDialog", () => ({
   pickSavePath: vi.fn(),
 }));
 
+vi.mock("../../lib/externalDialog", () => ({
+  pickExternalModificationChoice: vi.fn(),
+}));
+
 import { invoke } from "@tauri-apps/api/core";
 import { pickSavePath } from "../../lib/saveDialog";
+import { pickExternalModificationChoice } from "../../lib/externalDialog";
 
 const invokeMock = vi.mocked(invoke);
 const pickSavePathMock = vi.mocked(pickSavePath);
+const pickExternalChoiceMock = vi.mocked(pickExternalModificationChoice);
 
 describe("document store", () => {
   beforeEach(() => {
@@ -23,6 +29,7 @@ describe("document store", () => {
     invokeMock.mockReset();
     invokeMock.mockResolvedValue(undefined);
     pickSavePathMock.mockReset();
+    pickExternalChoiceMock.mockReset();
   });
 
   it("starts as an untitled, clean, empty Document", () => {
@@ -251,5 +258,196 @@ describe("document store", () => {
     expect(document.canonicalPath).toBeNull();
     expect(document.filename).toBe("Untitled.md");
     expect(document.dirty).toBe(false);
+  });
+
+  async function seedOpenedDocument(
+    document: ReturnType<typeof useDocumentStore>,
+  ) {
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "open_document") {
+        return Promise.resolve("# On disk");
+      }
+      if (command === "inspect_document") {
+        return Promise.resolve({ content: "# On disk", mtime_ms: 2 });
+      }
+      return Promise.resolve(undefined);
+    });
+    await document.openDocument("C:\\notes\\a.md");
+  }
+
+  it("does nothing for an Untitled Document on window focus", async () => {
+    const document = useDocumentStore();
+
+    const replaced = await document.checkExternalModification();
+
+    expect(replaced).toBe(false);
+    expect(invokeMock).not.toHaveBeenCalledWith(
+      "inspect_document",
+      expect.anything(),
+    );
+    expect(pickExternalChoiceMock).not.toHaveBeenCalled();
+  });
+
+  it("silently reloads a clean Document whose file changed on disk", async () => {
+    const document = useDocumentStore();
+    await seedOpenedDocument(document);
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "inspect_document") {
+        return Promise.resolve({ content: "# Changed", mtime_ms: 3 });
+      }
+      return Promise.resolve(undefined);
+    });
+
+    const replaced = await document.checkExternalModification();
+
+    expect(replaced).toBe(true);
+    expect(document.content).toBe("# Changed");
+    expect(document.dirty).toBe(false);
+    expect(pickExternalChoiceMock).not.toHaveBeenCalled();
+  });
+
+  it("does nothing when the file on disk matches the loaded version", async () => {
+    const document = useDocumentStore();
+    await seedOpenedDocument(document);
+
+    const replaced = await document.checkExternalModification();
+
+    expect(replaced).toBe(false);
+    expect(document.content).toBe("# On disk");
+    expect(document.dirty).toBe(false);
+    expect(pickExternalChoiceMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps the Dirty Document untouched when the dialog is cancelled", async () => {
+    const document = useDocumentStore();
+    await seedOpenedDocument(document);
+    document.mirrorContent("# My edits");
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "inspect_document") {
+        return Promise.resolve({ content: "# Changed", mtime_ms: 3 });
+      }
+      return Promise.resolve(undefined);
+    });
+    pickExternalChoiceMock.mockResolvedValue("cancel");
+
+    const replaced = await document.checkExternalModification();
+
+    expect(replaced).toBe(false);
+    expect(document.content).toBe("# My edits");
+    expect(document.dirty).toBe(true);
+    expect(invokeMock).not.toHaveBeenCalledWith(
+      "save_document",
+      expect.anything(),
+    );
+  });
+
+  it("replaces the Dirty Document with the on-disk content when Reload is chosen", async () => {
+    const document = useDocumentStore();
+    await seedOpenedDocument(document);
+    document.mirrorContent("# My edits");
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "inspect_document") {
+        return Promise.resolve({ content: "# External", mtime_ms: 3 });
+      }
+      return Promise.resolve(undefined);
+    });
+    pickExternalChoiceMock.mockResolvedValue("reload");
+
+    const replaced = await document.checkExternalModification();
+
+    expect(replaced).toBe(true);
+    expect(document.content).toBe("# External");
+    expect(document.dirty).toBe(false);
+    expect(invokeMock).not.toHaveBeenCalledWith(
+      "save_document",
+      expect.anything(),
+    );
+  });
+
+  it("writes the current content over the disk and stays Dirty when Overwrite is chosen", async () => {
+    const document = useDocumentStore();
+    await seedOpenedDocument(document);
+    document.mirrorContent("# My edits");
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "inspect_document") {
+        return Promise.resolve({ content: "# External", mtime_ms: 3 });
+      }
+      return Promise.resolve(undefined);
+    });
+    pickExternalChoiceMock.mockResolvedValue("overwrite");
+
+    const replaced = await document.checkExternalModification();
+
+    expect(replaced).toBe(false);
+    expect(invokeMock).toHaveBeenCalledWith("save_document", {
+      path: "C:\\notes\\a.md",
+      content: "# My edits",
+    });
+    expect(document.content).toBe("# My edits");
+    expect(document.dirty).toBe(true);
+  });
+
+  it("does not re-detect the file after an Overwrite", async () => {
+    const document = useDocumentStore();
+    await seedOpenedDocument(document);
+    document.mirrorContent("# My edits");
+    pickExternalChoiceMock.mockResolvedValue("overwrite");
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "inspect_document") {
+        return Promise.resolve({ content: "# External", mtime_ms: 3 });
+      }
+      return Promise.resolve(undefined);
+    });
+    await document.checkExternalModification();
+    pickExternalChoiceMock.mockClear();
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "inspect_document") {
+        return Promise.resolve({ content: "# My edits", mtime_ms: 4 });
+      }
+      return Promise.resolve(undefined);
+    });
+
+    const replaced = await document.checkExternalModification();
+
+    expect(replaced).toBe(false);
+    expect(pickExternalChoiceMock).not.toHaveBeenCalled();
+  });
+
+  it("does not re-detect the file after a Save updates the baseline", async () => {
+    const document = useDocumentStore();
+    await seedOpenedDocument(document);
+    document.mirrorContent("# v2");
+    await document.save();
+    pickExternalChoiceMock.mockClear();
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "inspect_document") {
+        return Promise.resolve({ content: "# v2", mtime_ms: 4 });
+      }
+      return Promise.resolve(undefined);
+    });
+
+    const replaced = await document.checkExternalModification();
+
+    expect(replaced).toBe(false);
+    expect(pickExternalChoiceMock).not.toHaveBeenCalled();
+  });
+
+  it("ignores an unreadable file on window focus", async () => {
+    const document = useDocumentStore();
+    await seedOpenedDocument(document);
+    document.mirrorContent("# My edits");
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "inspect_document") {
+        return Promise.reject("not found");
+      }
+      return Promise.resolve(undefined);
+    });
+
+    const replaced = await document.checkExternalModification();
+
+    expect(replaced).toBe(false);
+    expect(document.content).toBe("# My edits");
+    expect(document.dirty).toBe(true);
+    expect(pickExternalChoiceMock).not.toHaveBeenCalled();
   });
 });
