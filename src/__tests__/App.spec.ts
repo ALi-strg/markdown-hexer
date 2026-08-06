@@ -953,4 +953,175 @@ describe("App shell", () => {
 
     expect(document.content).toBe("hello");
   });
+
+  it("opens the find overlay on Cmd/Ctrl+F", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const ui = useUiStore();
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "f", ctrlKey: true }),
+    );
+    await nextTick();
+
+    expect(ui.findOverlayOpen).toBe(true);
+    expect(wrapper.find('[data-testid="find-panel"]').exists()).toBe(true);
+  });
+
+  it("keeps find available in Preview Only until a replace is attempted", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const ui = useUiStore();
+    ui.cycleLayoutMode();
+    await nextTick();
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "f", ctrlKey: true }),
+    );
+    await nextTick();
+
+    expect(ui.layoutMode).toBe("preview");
+    expect(wrapper.find('[data-testid="find-panel"]').exists()).toBe(true);
+  });
+
+  it("seeds the find query from the selection and navigates next/previous", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const pane = wrapper.findComponent({ ref: "editorPane" });
+    const view = (pane.vm as unknown as { getView: () => EditorView }).getView();
+    view.dispatch({ changes: { from: 0, insert: "alpha beta alpha" } });
+    view.dispatch({
+      selection: { anchor: 0, head: 5 },
+      annotations: Transaction.addToHistory.of(false),
+    });
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "f", ctrlKey: true }),
+    );
+    await nextTick();
+
+    const input = wrapper.find('[data-testid="find-input"]');
+    expect((input.element as HTMLInputElement).value).toBe("alpha");
+    expect(wrapper.find('[data-testid="match-count"]').text()).toBe("1 / 2");
+
+    await wrapper.find('[data-testid="find-next"]').trigger("click");
+    await nextTick();
+    expect(wrapper.find('[data-testid="match-count"]').text()).toBe("2 / 2");
+
+    await wrapper.find('[data-testid="find-prev"]').trigger("click");
+    await nextTick();
+    expect(wrapper.find('[data-testid="match-count"]').text()).toBe("1 / 2");
+  });
+
+  it("lands on the first match when a query is typed into the find input", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const pane = wrapper.findComponent({ ref: "editorPane" });
+    const view = (pane.vm as unknown as { getView: () => EditorView }).getView();
+    view.dispatch({ changes: { from: 0, insert: "alpha beta alpha" } });
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "f", ctrlKey: true }),
+    );
+    await nextTick();
+
+    await wrapper.find('[data-testid="find-input"]').setValue("alpha");
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="match-count"]').text()).toBe("1 / 2");
+    const selection = view.state.selection.main;
+    expect(view.state.sliceDoc(selection.from, selection.to)).toBe("alpha");
+  });
+
+  it("switches to Split View and replaces when replacing in Preview Only", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    const ui = useUiStore();
+    const pane = wrapper.findComponent({ ref: "editorPane" });
+    const view = (pane.vm as unknown as { getView: () => EditorView }).getView();
+    view.dispatch({ changes: { from: 0, insert: "alpha beta alpha" } });
+    view.dispatch({
+      selection: { anchor: 0, head: 5 },
+      annotations: Transaction.addToHistory.of(false),
+    });
+    ui.cycleLayoutMode();
+    await nextTick();
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "f", ctrlKey: true }),
+    );
+    await nextTick();
+
+    await wrapper.find('[data-testid="replace-input"]').setValue("ALPHA");
+    await wrapper.find('[data-testid="replace-next"]').trigger("click");
+    await nextTick();
+
+    expect(ui.layoutMode).toBe("split");
+    expect(document.content).toBe("ALPHA beta alpha");
+  });
+
+  it("replaces in place in Split View without switching modes", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    const ui = useUiStore();
+    const pane = wrapper.findComponent({ ref: "editorPane" });
+    const view = (pane.vm as unknown as { getView: () => EditorView }).getView();
+    view.dispatch({ changes: { from: 0, insert: "alpha beta alpha" } });
+    view.dispatch({
+      selection: { anchor: 0, head: 5 },
+      annotations: Transaction.addToHistory.of(false),
+    });
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "f", ctrlKey: true }),
+    );
+    await nextTick();
+
+    await wrapper.find('[data-testid="replace-input"]').setValue("ALPHA");
+    await wrapper.find('[data-testid="replace-all"]').trigger("click");
+    await nextTick();
+
+    expect(ui.layoutMode).toBe("split");
+    expect(document.content).toBe("ALPHA beta ALPHA");
+  });
+
+  it("closes the find overlay via the close button", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const ui = useUiStore();
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "f", ctrlKey: true }),
+    );
+    await nextTick();
+    expect(ui.findOverlayOpen).toBe(true);
+
+    await wrapper.find('[data-testid="find-close"]').trigger("click");
+    await nextTick();
+
+    expect(ui.findOverlayOpen).toBe(false);
+    expect(wrapper.find('[data-testid="find-panel"]').exists()).toBe(false);
+  });
+
+  it("closes the find overlay when a new Document is created", async () => {
+    mount(App);
+    await flushPromises();
+    const ui = useUiStore();
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "f", ctrlKey: true }),
+    );
+    await nextTick();
+    expect(ui.findOverlayOpen).toBe(true);
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "n", ctrlKey: true }),
+    );
+    await flushPromises();
+    await nextTick();
+
+    expect(ui.findOverlayOpen).toBe(false);
+  });
 });

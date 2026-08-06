@@ -4,6 +4,11 @@
       :disabled="ui.layoutMode === 'preview'"
       @format="onFormat"
     />
+    <FindReplacePanel
+      v-if="ui.findOverlayOpen"
+      ref="findPanelRef"
+      :get-view="getEditorView"
+    />
     <div class="workspace" :class="`layout-${ui.layoutMode}`">
       <EditorPane
         ref="editorPane"
@@ -26,12 +31,14 @@
 </template>
 
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { onBeforeUnmount, onMounted, nextTick, ref, watch } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { openSearchPanel } from "@codemirror/search";
 import type { EditorView } from "@codemirror/view";
 import EditorPane from "./components/EditorPane.vue";
+import FindReplacePanel from "./components/FindReplacePanel.vue";
 import PreviewPane from "./components/PreviewPane.vue";
 import Toolbar from "./components/Toolbar.vue";
 import { confirmDiscard } from "./lib/confirmDiscard";
@@ -54,6 +61,7 @@ const editorPane = ref<{
 const previewPane = ref<{
   getPreviewHost: () => HTMLElement | null;
 } | null>(null);
+const findPanelRef = ref<{ focusQuery: () => void } | null>(null);
 
 const syncedScrolling = useSyncedScrolling({
   getView: () => editorPane.value?.getView() ?? null,
@@ -61,6 +69,10 @@ const syncedScrolling = useSyncedScrolling({
   getLayoutMode: () => ui.layoutMode,
   getSource: () => document.content,
 });
+
+function getEditorView(): EditorView | null {
+  return editorPane.value?.getView() ?? null;
+}
 
 async function syncWindowTitle() {
   globalThis.document.title = document.title;
@@ -101,10 +113,32 @@ async function onKeydown(event: KeyboardEvent) {
     onFormat("italic");
     return;
   }
+  if (modifier && (event.key === "f" || event.key === "F")) {
+    event.preventDefault();
+    onFind();
+    return;
+  }
   if (modifier && event.shiftKey && (event.key === "P" || event.key === "p")) {
     event.preventDefault();
     ui.cycleLayoutMode();
   }
+}
+
+/// Opens the find & replace overlay in any Layout Mode. The first open also
+/// activates CodeMirror's search state (seeding the query from the current
+/// selection and enabling match highlighting); a later Cmd/Ctrl+F just returns
+/// focus to the query field. The Editor Pane stays hidden in Preview Only until
+/// a replace is attempted, which is the FindReplacePanel's job.
+function onFind() {
+  const view = editorPane.value?.getView();
+  if (!view) {
+    return;
+  }
+  if (!ui.findOverlayOpen) {
+    ui.findOverlayOpen = true;
+    openSearchPanel(view);
+  }
+  nextTick(() => findPanelRef.value?.focusQuery());
 }
 
 /// Applies a toolbar formatting operation to the Editor Pane. In Preview Only
@@ -126,6 +160,7 @@ async function runNewDocument() {
     return;
   }
   document.newDocument();
+  ui.findOverlayOpen = false;
   editorPane.value?.replaceContent(document.content);
   ui.applyDocumentLoadMode(true);
 }
@@ -136,6 +171,7 @@ async function runNewDocument() {
 async function openPath(path: string) {
   const opened = await document.openDocument(path);
   if (opened) {
+    ui.findOverlayOpen = false;
     editorPane.value?.replaceContent(document.content);
     ui.applyDocumentLoadMode(false);
   }
@@ -202,6 +238,7 @@ async function onCloseRequested(event: { preventDefault: () => void }) {
 async function onWindowFocused() {
   const replaced = await document.checkExternalModification();
   if (replaced) {
+    ui.findOverlayOpen = false;
     editorPane.value?.replaceContent(document.content);
   }
 }

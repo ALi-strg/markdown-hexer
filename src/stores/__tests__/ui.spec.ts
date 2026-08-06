@@ -53,6 +53,23 @@ describe("ui store", () => {
     expect(ui.layoutMode).toBe("split");
   });
 
+  it("switches Preview Only to Split View for a replace", () => {
+    const ui = useUiStore();
+    ui.cycleLayoutMode();
+    expect(ui.layoutMode).toBe("preview");
+    ui.showSourceForReplace();
+    expect(ui.layoutMode).toBe("split");
+  });
+
+  it("leaves a source-visible mode unchanged for a replace", () => {
+    const ui = useUiStore();
+    ui.cycleLayoutMode();
+    ui.cycleLayoutMode();
+    expect(ui.layoutMode).toBe("focus");
+    ui.showSourceForReplace();
+    expect(ui.layoutMode).toBe("focus");
+  });
+
   it("does not persist layout mode across launches", () => {
     const ui = useUiStore();
     ui.cycleLayoutMode();

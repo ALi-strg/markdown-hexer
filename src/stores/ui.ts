@@ -30,6 +30,15 @@ export const useUiStore = defineStore("ui", () => {
     layoutMode.value = isNew ? "split" : "preview";
   }
 
+  /// Makes the source visible so a replace never edits hidden text: Preview
+  /// Only gives way to Split View, while source-visible modes are unchanged.
+  /// The switch is a one-off accommodation, not a manual override.
+  function showSourceForReplace() {
+    if (layoutMode.value === "preview") {
+      layoutMode.value = "split";
+    }
+  }
+
   function showToast(message: string) {
     toast.value = message;
     if (toastTimer !== null) {
@@ -56,6 +65,7 @@ export const useUiStore = defineStore("ui", () => {
     toast,
     cycleLayoutMode,
     applyDocumentLoadMode,
+    showSourceForReplace,
     showToast,
     setLastDirectory,
   };
