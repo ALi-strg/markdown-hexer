@@ -1,14 +1,22 @@
 <template>
   <div class="app" :data-theme="settings.theme" data-testid="app">
     <div class="workspace" :class="`layout-${ui.layoutMode}`">
-      <EditorPane class="pane editor-pane" data-testid="editor-pane" />
-      <PreviewPane class="pane preview-pane" data-testid="preview-pane" />
+      <EditorPane
+        v-show="ui.layoutMode !== 'preview'"
+        class="pane editor-pane"
+        data-testid="editor-pane"
+      />
+      <PreviewPane
+        v-show="ui.layoutMode !== 'focus'"
+        class="pane preview-pane"
+        data-testid="preview-pane"
+      />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, watch } from "vue";
+import { onBeforeUnmount, onMounted, watch } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import EditorPane from "./components/EditorPane.vue";
 import PreviewPane from "./components/PreviewPane.vue";
@@ -28,7 +36,21 @@ async function syncWindowTitle() {
   });
 }
 
-onMounted(syncWindowTitle);
+function onKeydown(event: KeyboardEvent) {
+  const modifier = event.ctrlKey || event.metaKey;
+  if (modifier && event.shiftKey && (event.key === "P" || event.key === "p")) {
+    event.preventDefault();
+    ui.cycleLayoutMode();
+  }
+}
+
+onMounted(() => {
+  syncWindowTitle();
+  window.addEventListener("keydown", onKeydown);
+});
+onBeforeUnmount(() => {
+  window.removeEventListener("keydown", onKeydown);
+});
 watch(() => [document.filename, document.dirty], syncWindowTitle);
 </script>
 
@@ -53,5 +75,13 @@ watch(() => [document.filename, document.dirty], syncWindowTitle);
 .layout-split .editor-pane,
 .layout-split .preview-pane {
   flex: 1 1 50%;
+}
+
+.layout-preview .preview-pane {
+  flex: 1 1 100%;
+}
+
+.layout-focus .editor-pane {
+  flex: 1 1 100%;
 }
 </style>
