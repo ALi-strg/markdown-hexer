@@ -1,0 +1,3 @@
+# Sanitized rendering with GFM and render-time syntax highlighting
+
+The Preview Pane renders GFM (via `marked` + GFM extensions), and the output is sanitized with DOMPurify before insertion; the Tauri window runs under a strict CSP that blocks inline scripts and remote content. Prism highlighting is wired through `marked`'s code-block renderer (`marked-highlight`) so highlighting happens once at render time, not as a separate DOM pass. This is a deliberate security posture: the app opens arbitrary local `.md` files, and raw HTML in a Markdown document could otherwise execute script inside a webview that has access to Tauri's IPC commands. Users who want raw HTML in their documents lose that capability.
