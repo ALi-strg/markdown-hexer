@@ -30,7 +30,8 @@ jobs:
             libwebkit2gtk-4.1-dev \
             libappindicator3-dev \
             librsvg2-dev \
-            patchelf
+            patchelf \
+            webkit2gtk-driver
 
       - uses: actions/setup-node@v4
         with:
@@ -52,6 +53,10 @@ jobs:
       - name: run rust unit tests
         working-directory: ./src-tauri
         run: cargo test
+
+      - name: install tauri-driver
+        if: matrix.platform == 'ubuntu-22.04'
+        run: cargo install tauri-driver --locked
 
       - name: run end-to-end tests
         if: matrix.platform == 'ubuntu-22.04'

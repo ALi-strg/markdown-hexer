@@ -4,6 +4,16 @@ import { spawnSync, execSync } from "node:child_process";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+/// The debug app binary is platform-specific: `markdown-editor.exe` on
+/// Windows, `markdown-editor` on macOS and Linux.
+const appBinaryPath = path.resolve(
+  __dirname,
+  "src-tauri",
+  "target",
+  "debug",
+  process.platform === "win32" ? "markdown-editor.exe" : "markdown-editor",
+);
+
 function killOrphanedDrivers() {
   if (process.platform !== "win32") {
     return;
@@ -27,8 +37,7 @@ export const config = {
     {
       browserName: "tauri",
       "tauri:options": {
-        application:
-          "./src-tauri/target/debug/markdown-editor.exe",
+        application: appBinaryPath,
       },
     },
   ],
@@ -36,7 +45,7 @@ export const config = {
     [
       "@wdio/tauri-service",
       {
-        appBinaryPath: "./src-tauri/target/debug/markdown-editor.exe",
+        appBinaryPath,
         autoInstallTauriDriver: false,
         autoDownloadEdgeDriver: true,
         tauriDriverPort: 4444,

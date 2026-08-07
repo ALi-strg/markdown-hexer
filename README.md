@@ -44,6 +44,8 @@ cargo test              # Rust backend unit tests (run from src-tauri/)
 npm run test:e2e        # WebdriverIO + tauri-driver, full app (rebuilds a debug binary)
 ```
 
+The E2E suite needs the WebDriver driver installed once (`cargo install tauri-driver`); CI installs it automatically.
+
 The E2E suite stubs the native dialogs via a `VITE_E2E` build-time seam (`src/lib/guardDialog.ts`, `src/lib/openDialog.ts`, ...) so the real flows still run through the real Tauri commands.
 
 ## CI
