@@ -1,20 +1,71 @@
 # ALi-md-editor
 
-A distraction-free native Markdown editor built with Tauri 2, Vue 3, and CodeMirror 6.
+A cross-platform, distraction-free Markdown editor built with Tauri 2, Vue 3, and CodeMirror 6. One Document at a time, a live-rendered Preview Pane, and native file-system integration.
 
-See `docs/PRD.md` for the product specification and `docs/slices/` for the incremental build plan.
+## Features
+
+- **Live preview** — the Editor Pane renders Markdown (GFM: tables, strikethrough, task lists, autolinks) into the Preview Pane as you type, sanitized with DOMPurify and syntax-highlighted with Prism (~12 curated languages).
+- **Three Layout Modes** — Split View (default for New Documents, Synced Scrolling active), Preview Only (auto-chosen on Open), and Focus Mode. Cycle with `Cmd/Ctrl+Shift+P`; your manual choice sticks until the next Document loads.
+- **Synced Scrolling** — block-anchored, one-way (Editor → Preview) scrolling in Split View, so you always see the rendering of what you're editing.
+- **File lifecycle** — `Cmd/Ctrl+S` Save (Save As for an Untitled Document), `Cmd/Ctrl+Shift+S` Save As, `Cmd/Ctrl+O` Open, `Cmd/Ctrl+N` New. A Dirty asterisk (`*`) in the window title tracks unsaved changes.
+- **Confirm-Discard Guard** — native Save / Don't Save / Cancel dialog before New, Open, or app close discards unsaved work.
+- **Externally-Modified detection** — on window focus, the app detects when the file changed on disk: silent reload when clean, Reload / Overwrite / Cancel when Dirty.
+- **Editing** — full undo/redo, toolbar + `Cmd/Ctrl+B`/`Cmd/Ctrl+I` formatting (bold, italic, heading, list, link, code), and `Cmd/Ctrl+F` find & replace (replace in Preview Only switches to a source-visible mode first).
+- **Images & links** — relative image paths resolve against the Document's directory via a scoped `asset://` protocol; links open in the system browser.
+- **Appearance** — Theme follows the OS (System / Light / Dark override) and a curated font picker for both panes; preferences persist across launches.
+- **OS integration** — open `.md`/`.markdown`/`.mdown`/`.txt` via double-click (file associations) or drag-and-drop; a second launch opens the file in the running window (single instance). BOM-prefixed files open cleanly and save as clean UTF-8.
+
+## Tech Stack
+
+| Concern | Choice |
+|---|---|
+| Shell | Tauri 2 (Rust) with `dialog`, `opener`, `single-instance` plugins |
+| Frontend | Vue 3 (Composition API), Pinia, Vite, TypeScript |
+| Editor | CodeMirror 6 (`@codemirror/lang-markdown`) |
+| Rendering | `marked` → `DOMPurify` → `prismjs` (`marked-highlight`) |
+| Tests | Vitest (unit), Rust `cargo test`, WebdriverIO + tauri-driver (E2E) |
+
+The frontend owns document state (`src/stores/document.ts`); the CodeMirror editor is authoritative for edits and the store mirrors it. The Rust side is a thin command layer: file I/O, native dialogs, window title, single-instance forwarding, and the scoped `asset://` protocol.
 
 ## Development
 
 ```sh
 npm install
-npm run tauri dev
+npm run tauri dev        # full desktop app (Vite dev server on port 1420)
 ```
+
+`npm run dev` runs the Vite dev server alone; `npm run tauri build` produces a release bundle.
 
 ## Tests
 
 ```sh
-npm test        # Vitest (Pinia stores, components)
-npm run test:e2e # WebdriverIO + tauri-driver smoke/E2E suite
-cargo test      # Rust backend unit tests
+npm test                # Vitest — Pinia stores, components, pure functions (jsdom)
+cargo test              # Rust backend unit tests (run from src-tauri/)
+npm run test:e2e        # WebdriverIO + tauri-driver, full app (rebuilds a debug binary)
 ```
+
+The E2E suite stubs the native dialogs via a `VITE_E2E` build-time seam (`src/lib/guardDialog.ts`, `src/lib/openDialog.ts`, ...) so the real flows still run through the real Tauri commands.
+
+## CI
+
+`.github/workflows/build.yml` builds all three platforms (macOS, Linux, Windows) on push to `main` and on `v*` tags, runs the unit test suites on every platform, the E2E suite on Linux, and emits Windows x64 + arm64 bundles. Tag pushes produce a draft GitHub release with the installers attached.
+
+## Documentation
+
+- `CONTEXT.md` — domain vocabulary (Editor Pane, Preview Pane, Synced Scrolling, Dirty, Confirm-Discard Guard, ...). Use it in all code and docs.
+- `docs/PRD.md` — the product specification and implementation decisions.
+- `docs/adr/` — architectural decision records (editor engine, sanitized rendering pipeline, single-document model).
+- `docs/slices/` — the incremental build plan the codebase was developed against.
+- `docs/codebase-map.md` — a context brief for navigating the code.
+
+## Keyboard Shortcuts
+
+| Shortcut | Action |
+|---|---|
+| `Cmd/Ctrl+S` / `Cmd/Ctrl+Shift+S` | Save / Save As |
+| `Cmd/Ctrl+N` | New Document |
+| `Cmd/Ctrl+O` | Open Document |
+| `Cmd/Ctrl+B` / `Cmd/Ctrl+I` | Bold / Italic |
+| `Cmd/Ctrl+F` | Find & Replace |
+| `Cmd/Ctrl+Shift+P` | Cycle Layout Modes |
+| `Cmd/Ctrl+Z` / `Cmd/Ctrl+Shift+Z` | Undo / Redo |
