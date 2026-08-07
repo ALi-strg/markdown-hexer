@@ -6,12 +6,13 @@
     data-testid="app"
   >
     <Toolbar
-      :disabled="ui.layoutMode === 'preview'"
+      :layout-mode="ui.layoutMode"
       :theme="settings.theme"
       :font="settings.font"
       @format="onFormat"
       @theme-change="onThemeChange"
       @font-change="onFontChange"
+      @layout-change="onLayoutChange"
     />
     <FindReplacePanel
       v-if="ui.findOverlayOpen"
@@ -83,7 +84,7 @@ import {
   type Font,
   type Theme,
 } from "./stores/settings";
-import { useUiStore } from "./stores/ui";
+import { useUiStore, type LayoutMode } from "./stores/ui";
 
 const document = useDocumentStore();
 const settings = useSettingsStore();
@@ -249,8 +250,8 @@ function onFind() {
 }
 
 /// Applies a toolbar formatting operation to the Editor Pane. In Preview Only
-/// there is no visible Editor Pane to format, so the toolbar disables its
-/// buttons and the shortcuts no-op.
+/// there is no visible Editor Pane to format, so the toolbar hides its buttons
+/// and the shortcuts no-op.
 function onFormat(operation: FormatOperation) {
   if (ui.layoutMode === "preview") {
     return;
@@ -272,6 +273,12 @@ function onThemeChange(theme: Theme) {
 /// that both panes consume.
 function onFontChange(font: Font) {
   settings.setFont(font);
+}
+
+/// Sets a Layout Mode from the Layout Switcher. Direct selection overrides any
+/// auto-choice until the next Document load, same as the cycle shortcut.
+function onLayoutChange(mode: LayoutMode) {
+  ui.setLayoutMode(mode);
 }
 
 async function runNewDocument() {

@@ -43,7 +43,7 @@ ALi-md-editor is a cross-platform Tauri 2 desktop app. A single window opens one
 31. As a Markdown author, I want a toolbar with Bold, Italic, Heading, List, Link, and Code buttons, so that I can format without remembering syntax.
 32. As a Markdown author, I want toolbar formatting to wrap my selection in the right Markdown syntax, so that my source stays valid.
 33. As a Markdown author, I want `Cmd/Ctrl+B` and `Cmd/Ctrl+I` shortcuts, so that formatting is keyboard-driven.
-34. As a Markdown author, I want formatting buttons disabled in Preview Only mode, so that I don't click buttons that can't apply to a hidden Editor Pane.
+34. As a Markdown author, I want formatting buttons hidden in Preview Only mode, so that I don't see buttons that can't apply to a hidden Editor Pane.
 35. As a Markdown author, I want `Cmd/Ctrl+F` find and replace in the Document, so that I can navigate and edit long files.
 36. As a Markdown author, I want find to work while staying in Preview Only until I actually replace, so that I can search a rendered read.
 37. As a Markdown author, I want the app to switch to a source-visible mode when I perform a replace while in Preview Only, so that I never edit hidden text.
@@ -60,6 +60,7 @@ ALi-md-editor is a cross-platform Tauri 2 desktop app. A single window opens one
 48. As a Markdown author, I want a resizable split with a remembered divider position in Split View, so that I can balance the two panes.
 49. As a Markdown author, I want my theme and font preferences remembered between launches, so that I don't reconfigure the app.
 50. As a Markdown author, I want to open files with or without a BOM and have them saved back cleanly as UTF-8, so that Notepad-era files render correctly.
+51. As a Markdown author, I want a Layout Switcher in the toolbar with Split / Preview / Focus segments, so that I can switch Layout Modes with one click and always see which mode is active.
 
 ## Implementation Decisions
 
@@ -70,10 +71,10 @@ ALi-md-editor is a cross-platform Tauri 2 desktop app. A single window opens one
 - **Prism scope**: ~12 curated languages (markup, css, clike, javascript, typescript, python, json, yaml, bash, sql, java, go, markdown); two hand-tuned Prism themes (dark/light) driven by the `data-theme` attribute.
 - **Document model**: Single-Document in memory at any time. New/Open swap the Document; the Confirm-Discard Guard protects unsaved work. No autosave. (ADR-0003)
 - **Save semantics**: Save on an Untitled Document behaves as Save As. Save As sets the canonical path and updates the title. Dirty clears only on successful write. Save failures keep the Document Dirty and surface a toast.
-- **Layout Modes**: Split View (both panes, Synced Scrolling active), Preview Only (Editor hidden), Focus Mode (Preview hidden). Auto-chosen on Document load: Open → Preview Only, New → Split View. Manual toggle authoritative until next Document load; Save As does not change the mode; modes not persisted.
+- **Layout Modes**: Split View (both panes, Synced Scrolling active), Preview Only (Editor hidden), Focus Mode (Preview hidden). Auto-chosen on Document load: Open → Preview Only, New → Split View. A Layout Switcher segmented control (Split / Preview / Focus) in the toolbar and the `Cmd/Ctrl+Shift+P` shortcut set the mode directly; the user's manual selection is authoritative until the next Document load; Save As does not change the mode; modes not persisted.
 - **Synced Scrolling**: one-way (Editor → Preview), block-anchored via the CodeMirror visible line range mapped through `marked` tokens to rendered blocks; recomputed on render. Never proportional. Only in Split View.
 - **Window chrome**: native OS title bar. `window.setTitle` drives `<filename> * — ALi-md-editor`. The "premium" look comes from the in-app toolbar, panes, and typography, not custom window frames.
-- **Theme**: three-state preference — System (default, follows `prefers-color-scheme` live), Light, Dark. Manual override wins until restart. `data-theme` attribute drives all styling. Persisted in localStorage.
+- **Theme**: three-state preference — System (default, follows `prefers-color-scheme` live), Light, Dark. Manual override wins until restart. `data-theme` attribute drives all styling. Persisted in localStorage. Light is a cool grey and Dark a deep navy; a shared token set drives the app chrome, the CodeMirror Editor Pane, and the Preview Pane typography. Native controls (select popups, scrollbars) get their palette via `color-scheme`.
 - **Typography**: curated picker of ~4 system font stacks (monospace + prose serif/sans/mono), one shared choice for both panes. Persisted in localStorage alongside Theme.
 - **File access**: Open dialog filtered to `.md`/`.markdown`/`.mdown`/`.txt` as a convenience, not a lock. Drag-and-drop opens files through the same Open flow (with Confirm-Discard Guard). Relative paths in the Document resolve against its directory via a scoped `asset://` custom protocol (directory-scoped, never whole-filesystem). Links open in the system browser via Tauri core `openUrl`. The `@tauri-apps/plugin-shell` plugin is dropped from the stack.
 - **File association + single-instance**: the app registers as a Markdown handler per-OS; a second launch forwards the requested path to the running instance, which runs the normal Open flow in the existing window.
@@ -81,7 +82,7 @@ ALi-md-editor is a cross-platform Tauri 2 desktop app. A single window opens one
 - **Externally-Modified detection**: on window focus, compare on-disk mtime/content against load/save time. Dirty → Reload / Overwrite / Cancel dialog; clean → silent reload.
 - **Find/replace**: `@codemirror/search` with replace. Find works in all Layout Modes; a replace in Preview Only switches to a source-visible mode first.
 - **Live Rendering**: debounced full re-render, cancel-and-delay at ~200ms. Synced Scrolling mapping recomputed on each render.
-- **Toolbar**: Bold (`**`), Italic (`*`), Heading (`# ` prefix), List (`- ` prefix), Link (`[text](url)`), Code (inline `` ` `` or fenced). Formatting buttons disabled in Preview Only; Bold/Italic work on a collapsed cursor.
+- **Toolbar**: Bold (`**`), Italic (`*`), Heading (`# ` prefix), List (`- ` prefix), Link (`[text](url)`), Code (inline `` ` `` or fenced). Formatting buttons hidden in Preview Only; Bold/Italic work on a collapsed cursor.
 - **Feedback surfaces**: native dialogs for decisions (Confirm-Discard Guard, Externally-Modified); auto-dismissing toasts for transient errors (save/open failure). No status bar; the Dirty asterisk is the persistent indicator.
 - **Keyboard map**: `Cmd/Ctrl+S` Save, `Cmd/Ctrl+Shift+S` Save As, `Cmd/Ctrl+O` Open, `Cmd/Ctrl+N` New, `Cmd/Ctrl+Shift+P` cycle layout mode, `Cmd/Ctrl+B` Bold, `Cmd/Ctrl+I` Italic, `Cmd/Ctrl+F` Find, `Cmd/Ctrl+Z` / `Cmd/Ctrl+Shift+Z` undo/redo.
 - **Window**: initial 1200×800 centered; minimum 800×600. Open/Save As dialogs start at the last-used directory, or the current Document's directory when it has one.

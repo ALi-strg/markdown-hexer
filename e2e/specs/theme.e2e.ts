@@ -33,13 +33,13 @@ describe("ALi-md-editor theme", () => {
   it("switches to Light and restyles the panes", async () => {
     await setTheme("Light");
     expect(await appTheme()).toBe("light");
-    expect(await appBackground()).toBe("rgb(255, 255, 255)");
+    expect(await appBackground()).toBe("rgb(245, 246, 248)");
   });
 
   it("switches to Dark and restyles the panes", async () => {
     await setTheme("Dark");
     expect(await appTheme()).toBe("dark");
-    expect(await appBackground()).toBe("rgb(13, 17, 23)");
+    expect(await appBackground()).toBe("rgb(15, 24, 38)");
   });
 
   it("persists the manual override for the next launch", async () => {

@@ -3,7 +3,10 @@ import { ref } from "vue";
 
 export type LayoutMode = "split" | "preview" | "focus";
 
-const CYCLE_ORDER: LayoutMode[] = ["split", "preview", "focus"];
+/// The canonical Layout Mode order, shared by the cycle shortcut and the
+/// Layout Switcher segments so the two can never disagree.
+export const LAYOUT_MODES: LayoutMode[] = ["split", "preview", "focus"];
+
 const TOAST_DURATION_MS = 4000;
 
 export const useUiStore = defineStore("ui", () => {
@@ -16,10 +19,26 @@ export const useUiStore = defineStore("ui", () => {
 
   let toastTimer: ReturnType<typeof setTimeout> | null = null;
 
-  function cycleLayoutMode() {
-    const index = CYCLE_ORDER.indexOf(layoutMode.value);
-    layoutMode.value = CYCLE_ORDER[(index + 1) % CYCLE_ORDER.length];
+  /// Applies a manually chosen Layout Mode and marks it as an override,
+  /// authoritative until the next Document load.
+  function applyManualMode(next: LayoutMode) {
+    layoutMode.value = next;
     manualOverrideActive.value = true;
+  }
+
+  function cycleLayoutMode() {
+    const index = LAYOUT_MODES.indexOf(layoutMode.value);
+    applyManualMode(LAYOUT_MODES[(index + 1) % LAYOUT_MODES.length]);
+  }
+
+  /// Sets the Layout Mode directly from the Layout Switcher. Selecting the
+  /// current mode changes nothing; any real selection is a manual override,
+  /// authoritative until the next Document load.
+  function setLayoutMode(next: LayoutMode) {
+    if (next === layoutMode.value) {
+      return;
+    }
+    applyManualMode(next);
   }
 
   function applyDocumentLoadMode(isNew: boolean) {
@@ -64,6 +83,7 @@ export const useUiStore = defineStore("ui", () => {
     lastDirectory,
     toast,
     cycleLayoutMode,
+    setLayoutMode,
     applyDocumentLoadMode,
     showSourceForReplace,
     showToast,

@@ -50,6 +50,14 @@ _Avoid_: Reading mode, view mode
 The layout with the Preview Pane hidden and the Editor Pane filling the window.
 _Avoid_: Writing mode, Zen mode
 
+**Layout Switcher**:
+The toolbar segmented control (Split / Preview / Focus) that sets the Layout Mode directly. Always visible and enabled in every Layout Mode — it is the way out of Preview Only. A selection behaves as a manual toggle: authoritative until the next Document load. The keyboard shortcut Cmd/Ctrl+Shift+P cycles the same modes.
+_Avoid_: View toggle, mode selector, segmented buttons
+
+**Formatting Buttons**:
+The toolbar's Bold, Italic, Heading, List, Link, and Code controls. Visible in Split View and Focus Mode; hidden in Preview Only, where there is no Editor Pane to format. The Bold/Italic keyboard shortcuts no-op in Preview Only.
+_Avoid_: Edit buttons, markup buttons
+
 The auto-chosen layout mode applies only when a Document is loaded (Open → Preview Only, New → Split View); the user's manual toggle is authoritative until the next Document load, and Save As does not change the layout mode. Modes are not persisted across launches.
 
 ## Appearance

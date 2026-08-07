@@ -1,18 +1,71 @@
 :root {
+  /* Typography tokens: curated font stacks and sizes shared by both panes.
+     The data-font attribute overrides the two font-family tokens below. */
   --editor-font-family: "Cascadia Mono", "JetBrains Mono", Consolas, monospace;
   --preview-font-family: "Segoe UI", system-ui, sans-serif;
   --editor-font-size: 14px;
   --preview-font-size: 15px;
   --pane-padding: 1.25rem;
-  --background-color: #ffffff;
-  --text-color: #1f2328;
-  --panel-border-color: #d0d7de;
+
+  /* Light theme (cool grey) — the default. The color-scheme property is what
+     keeps native controls (select popups, scrollbars) readable in each theme:
+     without it Chromium draws them with the light palette regardless of the
+     dark CSS variables. */
+  color-scheme: light;
+  --background-color: #f5f6f8;
+  --surface-color: #ffffff;
+  --text-color: #262b33;
+  --text-muted: #59636e;
+  --border-color: #d8dde3;
+  --input-background: #ffffff;
+  --accent-color: #2563eb;
+  --accent-contrast-color: #ffffff;
+  --hover-background: rgba(0, 0, 0, 0.05);
+  --selection-background: #b6d4fe;
+  --selection-color: #1f2937;
+  --caret-color: #2563eb;
+  --gutter-background: transparent;
+  --gutter-text: #6e7781;
+  --active-line-background: rgba(0, 0, 0, 0.03);
+  --code-background: #eef1f4;
+  --code-border: #e2e6ec;
+  --link-color: #2563eb;
+  --blockquote-border: #d0d7de;
+  --blockquote-text: #57606a;
+  --table-stripe-background: rgba(0, 0, 0, 0.02);
+  --toast-background: #262b33;
+  --toast-color: #ffffff;
+  --scrollbar-thumb: rgba(0, 0, 0, 0.25);
+  --scrollbar-thumb-hover: rgba(0, 0, 0, 0.4);
 }
 
 [data-theme="dark"] {
-  --background-color: #0d1117;
-  --text-color: #e6edf3;
-  --panel-border-color: #30363d;
+  color-scheme: dark;
+  --background-color: #0f1826;
+  --surface-color: #131e2f;
+  --text-color: #e6ecf5;
+  --text-muted: #8b9cb5;
+  --border-color: #24324a;
+  --input-background: #1a2739;
+  --accent-color: #4d7cfe;
+  --accent-contrast-color: #ffffff;
+  --hover-background: rgba(255, 255, 255, 0.06);
+  --selection-background: #2f4a75;
+  --selection-color: #e6ecf5;
+  --caret-color: #6ea8fe;
+  --gutter-background: transparent;
+  --gutter-text: #55637a;
+  --active-line-background: rgba(255, 255, 255, 0.04);
+  --code-background: #0b1320;
+  --code-border: #1f2c42;
+  --link-color: #6ea8fe;
+  --blockquote-border: #33415e;
+  --blockquote-text: #a9b6cc;
+  --table-stripe-background: rgba(255, 255, 255, 0.03);
+  --toast-background: #1a2739;
+  --toast-color: #e6ecf5;
+  --scrollbar-thumb: rgba(255, 255, 255, 0.2);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.35);
 }
 
 /* Font stacks: each curated choice overrides both pane variables, so one shared
@@ -33,28 +86,111 @@
   --preview-font-family: "Cascadia Mono", "JetBrains Mono", Consolas, monospace;
 }
 
+/* The System Theme follows the OS live; dark is the deep-navy palette again. */
 @media (prefers-color-scheme: dark) {
   [data-theme="system"] {
-    --background-color: #0d1117;
-    --text-color: #e6edf3;
-    --panel-border-color: #30363d;
+    color-scheme: dark;
+    --background-color: #0f1826;
+    --surface-color: #131e2f;
+    --text-color: #e6ecf5;
+    --text-muted: #8b9cb5;
+    --border-color: #24324a;
+    --input-background: #1a2739;
+    --accent-color: #4d7cfe;
+    --accent-contrast-color: #ffffff;
+    --hover-background: rgba(255, 255, 255, 0.06);
+    --selection-background: #2f4a75;
+    --selection-color: #e6ecf5;
+    --caret-color: #6ea8fe;
+    --gutter-background: transparent;
+    --gutter-text: #55637a;
+    --active-line-background: rgba(255, 255, 255, 0.04);
+    --code-background: #0b1320;
+    --code-border: #1f2c42;
+    --link-color: #6ea8fe;
+    --blockquote-border: #33415e;
+    --blockquote-text: #a9b6cc;
+    --table-stripe-background: rgba(255, 255, 255, 0.03);
+    --toast-background: #1a2739;
+    --toast-color: #e6ecf5;
+    --scrollbar-thumb: rgba(255, 255, 255, 0.2);
+    --scrollbar-thumb-hover: rgba(255, 255, 255, 0.35);
   }
 }
 
-/* The CodeMirror Editor Pane follows the data-theme too, so dark stays dark
-   instead of defaulting to CodeMirror's white chrome. */
-[data-theme="dark"] .cm-editor,
-[data-theme="dark"] .cm-scroller {
+/* The CodeMirror Editor Pane follows the theme tokens in every theme, so the
+   editor never falls back to CodeMirror's hardcoded light chrome. */
+.cm-editor,
+.cm-scroller {
   background: var(--background-color);
   color: var(--text-color);
 }
 
-@media (prefers-color-scheme: dark) {
-  [data-theme="system"] .cm-editor,
-  [data-theme="system"] .cm-scroller {
-    background: var(--background-color);
-    color: var(--text-color);
-  }
+/* CodeMirror chrome: caret, selection, gutters, active line, and the find
+   match highlights all take the theme tokens. */
+.cm-editor .cm-cursor {
+  border-left-color: var(--caret-color);
+}
+
+.cm-editor .cm-selectionBackground,
+.cm-editor.cm-focused .cm-selectionBackground {
+  background: var(--selection-background);
+}
+
+.cm-editor .cm-gutters {
+  background: var(--gutter-background);
+  color: var(--gutter-text);
+  border-right: 1px solid var(--border-color);
+}
+
+.cm-editor .cm-activeLine,
+.cm-editor .cm-activeLineGutter {
+  background: var(--active-line-background);
+}
+
+.cm-editor .cm-selectionMatch {
+  background: var(--selection-background);
+}
+
+.cm-editor .cm-searchMatch {
+  background: var(--selection-background);
+  outline: 1px solid var(--border-color);
+}
+
+/* Text selection across both panes. */
+::selection {
+  background: var(--selection-background);
+  color: var(--selection-color);
+}
+
+/* Themed scrollbars so the chrome feels consistent in both themes. */
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: var(--scrollbar-thumb);
+  border: 3px solid transparent;
+  border-radius: 8px;
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--scrollbar-thumb-hover);
+}
+
+/* Accent-colored focus ring on interactive controls. */
+button:focus-visible,
+select:focus-visible,
+input:focus-visible,
+[role="group"]:focus-visible {
+  outline: 2px solid var(--accent-color);
+  outline-offset: 1px;
 }
 
 html,

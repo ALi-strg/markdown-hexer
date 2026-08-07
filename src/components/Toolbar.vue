@@ -1,66 +1,65 @@
 <template>
   <div class="toolbar" data-testid="toolbar" role="toolbar">
-    <button
-      type="button"
-      class="toolbar-button toolbar-bold"
-      data-testid="toolbar-bold"
-      title="Bold (Ctrl/Cmd+B)"
-      :disabled="disabled"
-      @click="emit('format', 'bold')"
+    <div
+      class="toolbar-format-group"
+      v-show="layoutMode !== 'preview'"
     >
-      B
-    </button>
-    <button
-      type="button"
-      class="toolbar-button toolbar-italic"
-      data-testid="toolbar-italic"
-      title="Italic (Ctrl/Cmd+I)"
-      :disabled="disabled"
-      @click="emit('format', 'italic')"
-    >
-      I
-    </button>
-    <span class="toolbar-separator" aria-hidden="true"></span>
-    <button
-      type="button"
-      class="toolbar-button"
-      data-testid="toolbar-heading"
-      title="Heading"
-      :disabled="disabled"
-      @click="emit('format', 'heading')"
-    >
-      #
-    </button>
-    <button
-      type="button"
-      class="toolbar-button"
-      data-testid="toolbar-list"
-      title="List"
-      :disabled="disabled"
-      @click="emit('format', 'list')"
-    >
-      -
-    </button>
-    <button
-      type="button"
-      class="toolbar-button"
-      data-testid="toolbar-link"
-      title="Link"
-      :disabled="disabled"
-      @click="emit('format', 'link')"
-    >
-      Link
-    </button>
-    <button
-      type="button"
-      class="toolbar-button"
-      data-testid="toolbar-code"
-      title="Code"
-      :disabled="disabled"
-      @click="emit('format', 'code')"
-    >
-      Code
-    </button>
+      <button
+        type="button"
+        class="toolbar-button toolbar-bold"
+        data-testid="toolbar-bold"
+        title="Bold (Ctrl/Cmd+B)"
+        @click="emit('format', 'bold')"
+      >
+        B
+      </button>
+      <button
+        type="button"
+        class="toolbar-button toolbar-italic"
+        data-testid="toolbar-italic"
+        title="Italic (Ctrl/Cmd+I)"
+        @click="emit('format', 'italic')"
+      >
+        I
+      </button>
+      <span class="toolbar-separator" aria-hidden="true"></span>
+      <button
+        type="button"
+        class="toolbar-button"
+        data-testid="toolbar-heading"
+        title="Heading"
+        @click="emit('format', 'heading')"
+      >
+        #
+      </button>
+      <button
+        type="button"
+        class="toolbar-button"
+        data-testid="toolbar-list"
+        title="List"
+        @click="emit('format', 'list')"
+      >
+        -
+      </button>
+      <button
+        type="button"
+        class="toolbar-button"
+        data-testid="toolbar-link"
+        title="Link"
+        @click="emit('format', 'link')"
+      >
+        Link
+      </button>
+      <button
+        type="button"
+        class="toolbar-button"
+        data-testid="toolbar-code"
+        title="Code"
+        @click="emit('format', 'code')"
+      >
+        Code
+      </button>
+    </div>
     <span class="toolbar-spacer" aria-hidden="true"></span>
     <span class="toolbar-separator" aria-hidden="true"></span>
     <label class="toolbar-theme-label" for="toolbar-theme">Theme</label>
@@ -89,18 +88,51 @@
         {{ FONT_LABELS[option] }}
       </option>
     </select>
+    <span class="toolbar-separator" aria-hidden="true"></span>
+    <div
+      class="layout-switcher"
+      role="group"
+      aria-label="Layout"
+      data-testid="layout-switcher"
+    >
+      <button
+        v-for="mode in LAYOUT_MODES"
+        :key="mode"
+        type="button"
+        class="layout-switch"
+        :class="{ active: layoutMode === mode }"
+        :data-testid="`layout-${mode}`"
+        :aria-pressed="layoutMode === mode"
+        :title="LAYOUT_LABELS[mode]"
+        @click="emit('layoutChange', mode)"
+      >
+        {{ LAYOUT_LABELS[mode] }}
+      </button>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import type { FormatOperation } from "../lib/formatting";
 import { FONTS, FONT_LABELS, type Font, type Theme } from "../stores/settings";
+import { LAYOUT_MODES, type LayoutMode } from "../stores/ui";
 
-defineProps<{ disabled: boolean; theme: Theme; font: Font }>();
+const LAYOUT_LABELS: Record<LayoutMode, string> = {
+  split: "Split",
+  preview: "Preview",
+  focus: "Focus",
+};
+
+defineProps<{
+  layoutMode: LayoutMode;
+  theme: Theme;
+  font: Font;
+}>();
 const emit = defineEmits<{
   format: [operation: FormatOperation];
   themeChange: [theme: Theme];
   fontChange: [font: Font];
+  layoutChange: [mode: LayoutMode];
 }>();
 
 function onThemeChange(event: Event) {
@@ -125,8 +157,14 @@ function onFontChange(event: Event) {
   gap: 4px;
   padding: 6px 10px;
   border-bottom: 1px solid var(--border-color, #e0e0e0);
-  background: var(--toolbar-background, transparent);
+  background: var(--surface-color, #ffffff);
   user-select: none;
+}
+
+.toolbar-format-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .toolbar-button {
@@ -140,15 +178,11 @@ function onFontChange(event: Event) {
   font-size: 0.9rem;
   line-height: 1;
   cursor: pointer;
+  transition: background-color 0.12s ease;
 }
 
-.toolbar-button:hover:not(:disabled) {
-  background: rgba(128, 128, 128, 0.15);
-}
-
-.toolbar-button:disabled {
-  opacity: 0.4;
-  cursor: default;
+.toolbar-button:hover {
+  background: var(--hover-background, rgba(128, 128, 128, 0.15));
 }
 
 .toolbar-bold {
@@ -182,9 +216,18 @@ function onFontChange(event: Event) {
   padding: 0 4px;
   border: 1px solid var(--border-color, #e0e0e0);
   border-radius: 4px;
-  background: var(--input-background, transparent);
+  background: var(--input-background, #ffffff);
   color: var(--text-color, inherit);
   font-size: 0.85rem;
+}
+
+/* The opened popup is drawn by the OS, so the option rows get explicit
+   background/text colors too (the color-scheme on the app root already tells
+   Chromium which native palette to use in dark mode). */
+.toolbar-theme option,
+.toolbar-font option {
+  background: var(--input-background, #ffffff);
+  color: var(--text-color, inherit);
 }
 
 .toolbar-font-label {
@@ -192,5 +235,37 @@ function onFontChange(event: Event) {
   color: var(--text-color, inherit);
   margin-left: 8px;
   margin-right: 4px;
+}
+
+.layout-switcher {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 6px;
+  background: var(--input-background, transparent);
+}
+
+.layout-switch {
+  height: 22px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted, var(--text-color, inherit));
+  font-size: 0.8rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+
+.layout-switch:hover {
+  background: var(--hover-background, rgba(128, 128, 128, 0.15));
+  color: var(--text-color, inherit);
+}
+
+.layout-switch.active {
+  background: var(--accent-color, #888);
+  color: var(--accent-contrast-color, #fff);
 }
 </style>

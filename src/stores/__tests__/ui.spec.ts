@@ -52,6 +52,22 @@ describe("ui store", () => {
     expect(ui.layoutMode).toBe("split");
   });
 
+  it("sets a Layout Mode directly and treats it as a manual override", () => {
+    const ui = useUiStore();
+    ui.setLayoutMode("preview");
+    expect(ui.layoutMode).toBe("preview");
+
+    ui.applyDocumentLoadMode(false);
+    expect(ui.layoutMode).toBe("preview");
+  });
+
+  it("is a no-op when selecting the current Layout Mode", () => {
+    const ui = useUiStore();
+    ui.setLayoutMode("split");
+    expect(ui.layoutMode).toBe("split");
+    expect(ui.manualOverrideActive).toBe(false);
+  });
+
   it("auto-chooses Split View for New and Preview Only for Open when no override", () => {
     const ui = useUiStore();
     ui.applyDocumentLoadMode(true);

@@ -142,4 +142,134 @@ defineExpose({ getPreviewHost: () => previewHost.value });
   -webkit-user-select: text;
   user-select: text;
 }
+
+/* Clean minimal typography for the rendered Markdown. The preview HTML is
+   injected into .preview-host, so every element needs :deep() to be styled.
+   Spacing uses rem (root-relative) so block offsets stay integer device
+   pixels across DPI scales — em margins on resized heading fonts produce
+   fractional offsets that drift under subpixel scroll. */
+.preview-host :deep(h1),
+.preview-host :deep(h2),
+.preview-host :deep(h3),
+.preview-host :deep(h4),
+.preview-host :deep(h5),
+.preview-host :deep(h6) {
+  color: var(--text-color);
+  font-weight: 600;
+  line-height: 1.3;
+  margin-top: 1.25rem;
+  margin-bottom: 0.5rem;
+}
+
+.preview-host :deep(h1) {
+  font-size: 1.7em;
+}
+
+.preview-host :deep(h2) {
+  font-size: 1.4em;
+}
+
+.preview-host :deep(h3) {
+  font-size: 1.2em;
+}
+
+.preview-host :deep(h4),
+.preview-host :deep(h5),
+.preview-host :deep(h6) {
+  font-size: 1.05em;
+}
+
+.preview-host :deep(p) {
+  margin: 0.5rem 0;
+}
+
+.preview-host :deep(a) {
+  color: var(--link-color);
+  text-decoration: none;
+}
+
+.preview-host :deep(a:hover) {
+  text-decoration: underline;
+}
+
+.preview-host :deep(code) {
+  background: var(--code-background);
+  border: 1px solid var(--code-border);
+  border-radius: 4px;
+  padding: 0.1em 0.3em;
+  font-size: 0.9em;
+}
+
+.preview-host :deep(pre) {
+  background: var(--code-background);
+  border: 1px solid var(--code-border);
+  border-radius: 6px;
+  padding: 0.8rem 1rem;
+  overflow-x: auto;
+  line-height: 1.5;
+}
+
+.preview-host :deep(pre code) {
+  background: transparent;
+  border: none;
+  padding: 0;
+  font-size: 0.9em;
+}
+
+.preview-host :deep(blockquote) {
+  margin: 0.75rem 0;
+  padding: 0.15rem 0.9rem;
+  border-left: 3px solid var(--blockquote-border);
+  color: var(--blockquote-text);
+}
+
+.preview-host :deep(blockquote p) {
+  margin: 0.25rem 0;
+}
+
+.preview-host :deep(ul),
+.preview-host :deep(ol) {
+  margin: 0.5rem 0;
+  padding-left: 1.6rem;
+}
+
+.preview-host :deep(li) {
+  margin: 0.15rem 0;
+}
+
+.preview-host :deep(table) {
+  border-collapse: collapse;
+  margin: 0.75rem 0;
+  width: 100%;
+}
+
+.preview-host :deep(th),
+.preview-host :deep(td) {
+  border: 1px solid var(--border-color);
+  padding: 0.4rem 0.7rem;
+  text-align: left;
+}
+
+.preview-host :deep(th) {
+  background: var(--surface-color);
+  font-weight: 600;
+}
+
+.preview-host :deep(tbody tr:nth-child(even)) {
+  background: var(--table-stripe-background);
+}
+
+.preview-host :deep(hr) {
+  border: none;
+  border-top: 1px solid var(--border-color);
+  margin: 1rem 0;
+}
+
+.preview-host :deep(img) {
+  max-width: 100%;
+}
+
+.preview-host :deep(input[type="checkbox"]) {
+  margin-right: 0.4rem;
+}
 </style>

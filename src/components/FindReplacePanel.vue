@@ -306,7 +306,7 @@ defineExpose({ focusQuery });
   gap: 6px;
   padding: 6px 10px;
   border-bottom: 1px solid var(--border-color, #e0e0e0);
-  background: var(--toolbar-background, transparent);
+  background: var(--surface-color, #ffffff);
 }
 
 .find-input {
@@ -330,10 +330,11 @@ defineExpose({ focusQuery });
   font-size: 0.85rem;
   line-height: 1;
   cursor: pointer;
+  transition: background-color 0.12s ease;
 }
 
 .find-button:hover {
-  background: rgba(128, 128, 128, 0.15);
+  background: var(--hover-background, rgba(128, 128, 128, 0.15));
 }
 
 .match-count {

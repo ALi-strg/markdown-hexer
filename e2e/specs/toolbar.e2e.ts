@@ -55,7 +55,7 @@ describe("ALi-md-editor toolbar formatting & shortcuts", () => {
     );
   }
 
-  it("disables the formatting toolbar in Preview Only", async () => {
+  it("hides the formatting toolbar in Preview Only", async () => {
     await browser.pause(1000);
     await stubOpenDialog();
     await browser.keys(["Control", "o"]);
@@ -66,7 +66,7 @@ describe("ALi-md-editor toolbar formatting & shortcuts", () => {
     );
 
     const bold = await $('[data-testid="toolbar-bold"]');
-    expect(await bold.isEnabled()).toBe(false);
+    expect(await bold.isDisplayed()).toBe(false);
   });
 
   it("enables the toolbar in a source-visible mode and applies bold via the Cmd/Ctrl+B shortcut", async () => {

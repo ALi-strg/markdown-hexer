@@ -225,6 +225,56 @@ describe("App shell", () => {
     expect(ui.layoutMode).toBe("preview");
   });
 
+  it("renders the Layout Switcher with Split, Preview, and Focus segments", () => {
+    const wrapper = mount(App);
+    for (const id of ["layout-split", "layout-preview", "layout-focus"]) {
+      expect(wrapper.find(`[data-testid="${id}"]`).exists()).toBe(true);
+    }
+    expect(
+      wrapper.find('[data-testid="layout-split"]').attributes("aria-pressed"),
+    ).toBe("true");
+  });
+
+  it("switches Layout Mode when a Layout Switcher segment is clicked", async () => {
+    const wrapper = mount(App);
+    const ui = useUiStore();
+
+    await wrapper.find('[data-testid="layout-preview"]').trigger("click");
+    await nextTick();
+    expect(ui.layoutMode).toBe("preview");
+
+    await wrapper.find('[data-testid="layout-focus"]').trigger("click");
+    await nextTick();
+    expect(ui.layoutMode).toBe("focus");
+
+    await wrapper.find('[data-testid="layout-split"]').trigger("click");
+    await nextTick();
+    expect(ui.layoutMode).toBe("split");
+  });
+
+  it("reflects the current Layout Mode as the active segment", async () => {
+    const wrapper = mount(App);
+    const ui = useUiStore();
+    ui.cycleLayoutMode();
+    await nextTick();
+    expect(
+      wrapper.find('[data-testid="layout-preview"]').attributes("aria-pressed"),
+    ).toBe("true");
+  });
+
+  it("keeps the Layout Switcher usable in Preview Only", async () => {
+    const wrapper = mount(App);
+    const ui = useUiStore();
+    ui.cycleLayoutMode();
+    await nextTick();
+
+    const split = wrapper.find('[data-testid="layout-split"]');
+    expect((split.element as HTMLButtonElement).disabled).toBe(false);
+    await split.trigger("click");
+    await nextTick();
+    expect(ui.layoutMode).toBe("split");
+  });
+
   it("writes an Untitled Document to a picked path on Cmd/Ctrl+S", async () => {
     mount(App);
     const document = useDocumentStore();
@@ -899,14 +949,14 @@ describe("App shell", () => {
     }
   });
 
-  it("disables the formatting toolbar buttons in Preview Only", async () => {
+  it("hides the formatting toolbar in Preview Only", async () => {
     const wrapper = mount(App);
     const ui = useUiStore();
     ui.cycleLayoutMode();
     await nextTick();
 
     const bold = wrapper.find('[data-testid="toolbar-bold"]');
-    expect((bold.element as HTMLButtonElement).disabled).toBe(true);
+    expect(bold.isVisible()).toBe(false);
   });
 
   it("applies bold to the selection via the toolbar button", async () => {
