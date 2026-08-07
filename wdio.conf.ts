@@ -14,6 +14,12 @@ const appBinaryPath = path.resolve(
   process.platform === "win32" ? "markdown-editor.exe" : "markdown-editor",
 );
 
+/// Custom tauri-service entry that disables the worker's per-command window-focus
+/// recovery. That hook calls `browser.tauri.execute()`, which requires the app-side
+/// `tauri-plugin-wdio` (window.wdioTauri); without it the service polls ~5s on every
+/// element command. The launcher (driver lifecycle) is the stock service unchanged.
+const tauriServiceEntry = path.resolve(__dirname, "e2e", "tauri-service.js");
+
 function killOrphanedDrivers() {
   if (process.platform !== "win32") {
     return;
@@ -43,7 +49,7 @@ export const config = {
   ],
   services: [
     [
-      "@wdio/tauri-service",
+      tauriServiceEntry,
       {
         appBinaryPath,
         autoInstallTauriDriver: false,
