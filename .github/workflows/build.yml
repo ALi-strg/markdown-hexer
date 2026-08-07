@@ -66,3 +66,20 @@ jobs:
           releaseBody: "ALi-md-editor ${{ github.ref_name }} — see the assets to download and install."
           releaseDraft: true
           prerelease: false
+
+      - name: add windows arm64 rust target
+        if: matrix.platform == 'windows-latest'
+        run: rustup target add aarch64-pc-windows-msvc
+
+      - name: build windows arm64 bundle
+        if: matrix.platform == 'windows-latest'
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+          releaseName: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+          releaseBody: "ALi-md-editor ${{ github.ref_name }} — see the assets to download and install."
+          releaseDraft: true
+          prerelease: false
+          args: --target aarch64-pc-windows-msvc
