@@ -115,7 +115,7 @@ describe("ALi-md-editor file association & single-instance open", () => {
       "src-tauri",
       "target",
       "debug",
-      "markdown-editor.exe",
+      process.platform === "win32" ? "markdown-editor.exe" : "markdown-editor",
     );
     expect(fs.existsSync(binary)).toBe(true);
 

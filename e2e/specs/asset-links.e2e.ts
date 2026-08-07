@@ -70,9 +70,11 @@ describe("ALi-md-editor preview asset handling", () => {
     const img = await preview.$("img");
     await img.waitForExist({ timeout: 10000 });
 
-    expect(await img.getAttribute("src")).toBe(
-      `http://asset.localhost/${encodedImagePath}`,
-    );
+    // The asset scheme is normalized differently per webview: WebView2 reports
+    // `http://asset.localhost/<path>`, WebKitGTK reports `asset://localhost/<path>`.
+    // Both resolve to the same resource, so assert on the encoded path only.
+    const src = (await img.getAttribute("src")) ?? "";
+    expect(new URL(src).pathname).toBe(`/${encodedImagePath}`);
 
     await browser.waitUntil(
       async () =>

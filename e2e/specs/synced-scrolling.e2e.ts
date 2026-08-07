@@ -1,15 +1,12 @@
+import { typeInEditor } from "../helpers/editor";
+
 describe("ALi-md-editor synced scrolling", () => {
   async function typeTallDocument() {
-    const editorContent = await $(
-      '[data-testid="editor-pane"] .cm-content',
-    );
-    await editorContent.waitForDisplayed({ timeout: 15000 });
     const lines: string[] = [];
     for (let i = 1; i <= 40; i++) {
       lines.push(`## Section ${i}`, "Some body text for this section.");
     }
-    await editorContent.click();
-    await editorContent.addValue(lines.join("\n"));
+    await typeInEditor(lines.join("\n"));
   }
 
   async function waitForBlocks() {

@@ -1,11 +1,8 @@
+import { typeInEditor } from "../helpers/editor";
+
 describe("ALi-md-editor code syntax highlighting", () => {
   async function typeFencedBlock() {
-    const editorContent = await $(
-      '[data-testid="editor-pane"] .cm-content',
-    );
-    await editorContent.waitForDisplayed({ timeout: 15000 });
-    await editorContent.click();
-    await editorContent.addValue("```js\nconst x = 1;\n```");
+    await typeInEditor("```js\nconst x = 1;\n```");
   }
 
   async function waitForToken() {

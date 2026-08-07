@@ -1,6 +1,7 @@
 import path from "node:path";
 import os from "node:os";
 import fs from "node:fs";
+import { typeInEditor } from "../helpers/editor";
 
 // The native Externally-Modified dialog cannot be driven by WebdriverIO, so the
 // E2E seeds the app's test seam (enabled by VITE_E2E in the E2E build) with a
@@ -50,13 +51,7 @@ describe("ALi-md-editor Externally-Modified detection", () => {
   }
 
   async function typeText(text: string) {
-    const editorContent = await $(
-      '[data-testid="editor-pane"] .cm-content',
-    );
-    await editorContent.waitForDisplayed({ timeout: 15000 });
-    await editorContent.click();
-    await browser.keys(["Control", "End"]);
-    await editorContent.addValue(text);
+    await typeInEditor(text);
   }
 
   async function waitForPreviewToContain(text: string) {

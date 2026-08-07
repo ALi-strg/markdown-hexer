@@ -1,6 +1,7 @@
 import path from "node:path";
 import os from "node:os";
 import fs from "node:fs";
+import { typeInEditor } from "../helpers/editor";
 
 describe("ALi-md-editor save / save as", () => {
   const savePath = path.join(os.tmpdir(), `alimd-e2e-${Date.now()}.md`);
@@ -25,12 +26,7 @@ describe("ALi-md-editor save / save as", () => {
   }
 
   async function typeText(text: string) {
-    const editorContent = await $(
-      '[data-testid="editor-pane"] .cm-content',
-    );
-    await editorContent.waitForDisplayed({ timeout: 15000 });
-    await editorContent.click();
-    await editorContent.addValue(text);
+    await typeInEditor(text);
   }
 
   it("saves an Untitled Document to a picked path and clears the asterisk", async () => {

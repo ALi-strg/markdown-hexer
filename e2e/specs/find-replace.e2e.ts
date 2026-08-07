@@ -68,11 +68,13 @@ describe("ALi-md-editor find & replace", () => {
   async function editorText() {
     // Read through execute + innerText: WebDriver's getText on a freshly
     // revealed Editor Pane can hang, and textContent would drop line breaks.
+    // WebKitGTK's innerText also appends a trailing newline for the final line
+    // (WebView2 does not), so strip it before comparing against expectations.
     return browser.execute(
       () =>
         (document.querySelector(
           '[data-testid="editor-pane"] .cm-content',
-        ) as HTMLElement | null)?.innerText ?? "",
+        ) as HTMLElement | null)?.innerText.replace(/\n+$/, "") ?? "",
     );
   }
 
