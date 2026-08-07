@@ -46,6 +46,17 @@ jobs:
       - name: install frontend dependencies
         run: npm ci
 
+      - name: run frontend unit tests
+        run: npm test
+
+      - name: run rust unit tests
+        working-directory: ./src-tauri
+        run: cargo test
+
+      - name: run end-to-end tests
+        if: matrix.platform == 'ubuntu-22.04'
+        run: npm run test:e2e
+
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
