@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- Placeholder app icon: a dark rounded square with a Markdown-style "M" monogram. -->
+  <rect width="1024" height="1024" rx="220" fill="#1f2328"/>
+  <path
+    d="M256 700 V360 L512 560 L768 360 V700"
+    fill="none"
+    stroke="#ffffff"
+    stroke-width="110"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+</svg>
