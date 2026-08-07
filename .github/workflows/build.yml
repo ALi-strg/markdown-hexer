@@ -9,21 +9,19 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  # Ubuntu is the CI gate: it is the only platform that runs the WebDriver
+  # end-to-end suite (WebKitGTK under xvfb), and it also builds the Linux
+  # release bundle. Windows and macOS only build and release after this job
+  # is green, so a regressed Document lifecycle never ships an installer.
+  e2e:
+    runs-on: ubuntu-22.04
     permissions:
       contents: write
-    strategy:
-      fail-fast: false
-      matrix:
-        platform: [macos-latest, ubuntu-22.04, windows-latest]
-
-    runs-on: ${{ matrix.platform }}
 
     steps:
       - uses: actions/checkout@v4
 
       - name: install Linux build dependencies
-        if: matrix.platform == 'ubuntu-22.04'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -55,17 +53,60 @@ jobs:
         run: cargo test
 
       - name: install tauri-driver
-        if: matrix.platform == 'ubuntu-22.04'
         run: cargo install tauri-driver --locked
 
       - name: run end-to-end tests
-        if: matrix.platform == 'ubuntu-22.04'
         env:
           # WebKitGTK software-rendering flags: no GPU on the runner, DMABUF
           # renderer can crash the webview in VMs.
           WEBKIT_DISABLE_COMPOSITING_MODE: "1"
           WEBKIT_DISABLE_DMABUF_RENDERER: "1"
         run: xvfb-run -a -s "-screen 0 1280x800x24" npm run test:e2e
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+          releaseName: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+          releaseBody: "ALi-md-editor ${{ github.ref_name }} — see the assets to download and install."
+          releaseDraft: true
+          prerelease: false
+
+  release:
+    needs: e2e
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [macos-latest, windows-latest]
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+
+      - name: install frontend dependencies
+        run: npm ci
+
+      - name: run frontend unit tests
+        run: npm test
+
+      - name: run rust unit tests
+        working-directory: ./src-tauri
+        run: cargo test
 
       - uses: tauri-apps/tauri-action@v0
         env:
