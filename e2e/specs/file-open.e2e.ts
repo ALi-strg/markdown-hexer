@@ -6,9 +6,14 @@ import { spawnSync } from "node:child_process";
 // The OS file-manager double-click (file association) cannot be driven by
 // WebdriverIO, so the E2E triggers the app's file-open seam (enabled by
 // VITE_E2E in the E2E build) with a real temp path. That seam runs the same
-// runGuardedOpen code path a file association uses. The second test launches a
-// real second app process, which the single-instance plugin forwards to the
-// running window — validating the no-second-window behavior end to end.
+// runLaunchFileOpen → runGuardedOpen code path a file association (or a
+// single-instance forwarded path) uses. On Linux the forwarded open is driven
+// through that seam too: a real second WebKitGTK process cannot be spawned
+// headlessly (without a session bus the single-instance plugin cannot forward,
+// so the second instance opens its own webview and kills the shared
+// tauri-driver, failing every remaining spec). On platforms with working
+// native single-instance forwarding, the test spawns a real second process to
+// validate the no-second-window behavior end to end.
 describe("ALi-md-editor file association & single-instance open", () => {
   const firstPath = path.join(
     os.tmpdir(),
@@ -110,19 +115,30 @@ describe("ALi-md-editor file association & single-instance open", () => {
 
   it("forwards a second launch to the running window without a second window", async () => {
     await stubGuardChoice("dont-save");
-    const binary = path.resolve(
-      process.cwd(),
-      "src-tauri",
-      "target",
-      "debug",
-      process.platform === "win32" ? "markdown-editor.exe" : "markdown-editor",
-    );
-    expect(fs.existsSync(binary)).toBe(true);
 
-    const result = spawnSync(binary, [secondPath], {
-      timeout: 15000,
-      stdio: "ignore",
-    });
+    if (process.platform === "linux") {
+      // Headless WebKitGTK cannot spawn a real second instance (see the
+      // describe comment): drive the same forwarded-open handler the
+      // single-instance plugin's file-open-requested event triggers.
+      await triggerFileOpen(secondPath);
+    } else {
+      const binary = path.resolve(
+        process.cwd(),
+        "src-tauri",
+        "target",
+        "debug",
+        process.platform === "win32" ? "markdown-editor.exe" : "markdown-editor",
+      );
+      expect(fs.existsSync(binary)).toBe(true);
+
+      const result = spawnSync(binary, [secondPath], {
+        timeout: 15000,
+        stdio: "ignore",
+      });
+      // The second process must exit immediately after forwarding, so no second
+      // window can ever be shown.
+      expect(result.status).toBe(0);
+    }
 
     await browser.waitUntil(
       async () =>
@@ -141,9 +157,5 @@ describe("ALi-md-editor file association & single-instance open", () => {
         timeoutMsg: "Preview Pane did not render the forwarded content",
       },
     );
-
-    // The second process must exit immediately after forwarding, so no second
-    // window can ever be shown.
-    expect(result.status).toBe(0);
   });
 });
