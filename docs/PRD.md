@@ -1,4 +1,4 @@
-# ALi-md-editor — v1 PRD
+# Markdown-Magic — v1 PRD
 
 ## Problem Statement
 
@@ -6,7 +6,7 @@ Writing Markdown on a desktop often means a cluttered, browser-based tool or a h
 
 ## Solution
 
-ALi-md-editor is a cross-platform Tauri 2 desktop app. A single window opens one Document at a time, with a CodeMirror 6 Editor Pane and a live-rendered Preview Pane. It reads and writes real files through native dialogs, shows a dirty asterisk in the OS title bar, and protects unsaved work with a Confirm-Discard Guard. Layout modes (Split View, Preview Only, Focus Mode) let the user read, write, or do both; the Theme follows the OS with an optional manual override.
+Markdown-Magic is a cross-platform Tauri 2 desktop app. A single window opens one Document at a time, with a CodeMirror 6 Editor Pane and a live-rendered Preview Pane. It reads and writes real files through native dialogs, shows a dirty asterisk in the OS title bar, and protects unsaved work with a Confirm-Discard Guard. Layout modes (Split View, Preview Only, Focus Mode) let the user read, write, or do both; the Theme follows the OS with an optional manual override.
 
 ## User Stories
 
@@ -56,7 +56,7 @@ ALi-md-editor is a cross-platform Tauri 2 desktop app. A single window opens one
 44. As a Markdown author, I want a small set of curated fonts to choose from for both panes, so that the text looks the way I like.
 45. As a Markdown author, I want the preview to keep up with my typing without stuttering on long Documents, so that live rendering feels smooth.
 46. As a Markdown author, I want save failures to show me an error and keep my Document Dirty, so that I know my work is not safe.
-47. As a Markdown author, I want the window title to read `<filename> — ALi-md-editor`, so that the app is identifiable and the Document is clear.
+47. As a Markdown author, I want the window title to read `<filename> — Markdown-Magic`, so that the app is identifiable and the Document is clear.
 48. As a Markdown author, I want a resizable split with a remembered divider position in Split View, so that I can balance the two panes.
 49. As a Markdown author, I want my theme and font preferences remembered between launches, so that I don't reconfigure the app.
 50. As a Markdown author, I want to open files with or without a BOM and have them saved back cleanly as UTF-8, so that Notepad-era files render correctly.
@@ -73,8 +73,8 @@ ALi-md-editor is a cross-platform Tauri 2 desktop app. A single window opens one
 - **Save semantics**: Save on an Untitled Document behaves as Save As. Save As sets the canonical path and updates the title. Dirty clears only on successful write. Save failures keep the Document Dirty and surface a toast.
 - **Layout Modes**: Split View (both panes, Synced Scrolling active), Preview Only (Editor hidden), Focus Mode (Preview hidden). Auto-chosen on Document load: Open → Preview Only, New → Split View. A Layout Switcher segmented control (Split / Preview / Focus) in the toolbar and the `Cmd/Ctrl+Shift+P` shortcut set the mode directly; the user's manual selection is authoritative until the next Document load; Save As does not change the mode; modes not persisted.
 - **Synced Scrolling**: one-way (Editor → Preview), block-anchored via the CodeMirror visible line range mapped through `marked` tokens to rendered blocks; recomputed on render. Never proportional. Only in Split View.
-- **Window chrome**: native OS title bar. `window.setTitle` drives `<filename> * — ALi-md-editor`. The "premium" look comes from the in-app toolbar, panes, and typography, not custom window frames.
-- **Theme**: three-state preference — System (default, follows `prefers-color-scheme` live), Light, Dark. Manual override wins until restart. `data-theme` attribute drives all styling. Persisted in localStorage. Light is a cool grey and Dark a deep navy; a shared token set drives the app chrome, the CodeMirror Editor Pane, and the Preview Pane typography. Native controls (select popups, scrollbars) get their palette via `color-scheme`.
+- **Window chrome**: native OS title bar. `window.setTitle` drives `<filename> * — Markdown-Magic`. The "premium" look comes from the in-app toolbar, panes, and typography, not custom window frames.
+- **Theme**: three-state preference — System (default, follows `prefers-color-scheme` live), Light, Dark. Manual override wins until restart. `data-theme` attribute drives all styling. Persisted in localStorage. Light is a warm beige and Dark a deep navy; a shared token set drives the app chrome, the CodeMirror Editor Pane, and the Preview Pane typography. Native controls (select popups, scrollbars) get their palette via `color-scheme`.
 - **Typography**: curated picker of ~4 system font stacks (monospace + prose serif/sans/mono), one shared choice for both panes. Persisted in localStorage alongside Theme.
 - **File access**: Open dialog filtered to `.md`/`.markdown`/`.mdown`/`.txt` as a convenience, not a lock. Drag-and-drop opens files through the same Open flow (with Confirm-Discard Guard). Relative paths in the Document resolve against its directory via a scoped `asset://` custom protocol (directory-scoped, never whole-filesystem). Links open in the system browser via Tauri core `openUrl`. The `@tauri-apps/plugin-shell` plugin is dropped from the stack.
 - **File association + single-instance**: the app registers as a Markdown handler per-OS; a second launch forwards the requested path to the running instance, which runs the normal Open flow in the existing window.
@@ -117,7 +117,7 @@ Proposed seams (highest-first):
 
 ## Further Notes
 
-- Product name is **ALi-md-editor**; the repo slug is `markdown-editor`. The window title reads `<filename> * — ALi-md-editor`.
+- Product name is **Markdown-Magic**; the repo slug is `markdown-editor`. The window title reads `<filename> * — Markdown-Magic`.
 - Domain vocabulary lives in `CONTEXT.md` at the repo root; use it in all code, docs, and issues. Key terms: Editor Pane, Preview Pane, Synced Scrolling, Document, Confirm-Discard Guard, Dirty, Save, Save As, Split View, Preview Only, Focus Mode, Theme, Untitled Document, Externally-Modified.
 - Architectural decisions are recorded in `docs/adr/` (0001 CodeMirror engine, 0002 sanitized pipeline, 0003 single-document model). New decisions meeting the ADR bar should be recorded there.
 - The idea document (`docs/idea.md`) remains the seed; this PRD supersedes it for v1 scope.

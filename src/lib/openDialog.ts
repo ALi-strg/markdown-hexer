@@ -4,7 +4,7 @@ export interface OpenDialogOptions {
   defaultPath?: string;
 }
 
-const E2E_OPEN_PATH_KEY = "alimd:e2e:open-path";
+const E2E_OPEN_PATH_KEY = "markdownmagic:e2e:open-path";
 
 /// Opens the native Open dialog.
 ///

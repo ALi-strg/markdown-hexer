@@ -2,7 +2,7 @@
 // the position is remembered across Layout Mode switches within a session (it
 // resets on launch). The E2E drags the divider, measures the Editor Pane,
 // cycles away and back to Split View, and asserts the balance held.
-describe("ALi-md-editor resizable split", () => {
+describe("Markdown-Magic resizable split", () => {
   async function editorWidth(): Promise<number> {
     return (await $('[data-testid="editor-pane"]').getSize()).width;
   }

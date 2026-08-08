@@ -3,8 +3,8 @@ import os from "node:os";
 import fs from "node:fs";
 import { typeInEditor } from "../helpers/editor";
 
-describe("ALi-md-editor save / save as", () => {
-  const savePath = path.join(os.tmpdir(), `alimd-e2e-${Date.now()}.md`);
+describe("Markdown-Magic save / save as", () => {
+  const savePath = path.join(os.tmpdir(), `markdownmagic-e2e-${Date.now()}.md`);
   const saveFilename = path.basename(savePath);
 
   after(() => {
@@ -21,7 +21,7 @@ describe("ALi-md-editor save / save as", () => {
   // real save_document command.
   async function stubSaveDialog() {
     await browser.execute((stubPath) => {
-      localStorage.setItem("alimd:e2e:save-path", stubPath);
+      localStorage.setItem("markdownmagic:e2e:save-path", stubPath);
     }, savePath);
   }
 
@@ -38,7 +38,7 @@ describe("ALi-md-editor save / save as", () => {
 
     await browser.waitUntil(
       async () =>
-        (await browser.getTitle()) === `${saveFilename} — ALi-md-editor`,
+        (await browser.getTitle()) === `${saveFilename} — Markdown-Magic`,
       {
         timeout: 10000,
         timeoutMsg: "title did not update to the saved filename",
@@ -52,7 +52,7 @@ describe("ALi-md-editor save / save as", () => {
     await typeText("\n\nMore content");
     await browser.waitUntil(
       async () =>
-        (await browser.getTitle()) === `${saveFilename} * — ALi-md-editor`,
+        (await browser.getTitle()) === `${saveFilename} * — Markdown-Magic`,
       { timeout: 10000, timeoutMsg: "asterisk did not appear after editing" },
     );
 
@@ -60,7 +60,7 @@ describe("ALi-md-editor save / save as", () => {
 
     await browser.waitUntil(
       async () =>
-        (await browser.getTitle()) === `${saveFilename} — ALi-md-editor`,
+        (await browser.getTitle()) === `${saveFilename} — Markdown-Magic`,
       {
         timeout: 10000,
         timeoutMsg: "asterisk did not clear after save",

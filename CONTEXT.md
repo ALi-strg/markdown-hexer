@@ -78,5 +78,5 @@ _Avoid_: File changed, stale file
 
 ## Window Title
 
-The window title reads `<filename> — ALi-md-editor`, with `*` inserted after the filename when the Document is Dirty (e.g., `notes.md * — ALi-md-editor`). Untitled Documents read `Untitled.md — ALi-md-editor`. The product name is **ALi-md-editor**.
+The window title reads `<filename> — Markdown-Magic`, with `*` inserted after the filename when the Document is Dirty (e.g., `notes.md * — Markdown-Magic`). Untitled Documents read `Untitled.md — Markdown-Magic`. The product name is **Markdown-Magic**.
 _Avoid_: markdown-editor (the repo slug), Markdown Editor

@@ -3,13 +3,15 @@
 // paths: the Help button opens it in source-visible modes, Cmd/Ctrl+/ toggles
 // it from anywhere (including Preview Only, where the button is hidden), and
 // Esc / clicking outside / pressing the button again dismiss it.
-describe("ALi-md-editor Shortcuts Reference", () => {
+describe("Markdown-Magic Shortcuts Reference", () => {
   async function openFromSourceMode() {
     const editor = await $('[data-testid="editor-pane"]');
-    await editor.waitForDisplayed({ timeout: 15000 });
     if (!(await editor.isDisplayed())) {
+      // A previous test may leave the app in Preview Only; one layout cycle
+      // reaches Focus, where the editor (and toolbar) are visible again.
       await browser.keys(["Control", "Shift", "p"]);
     }
+    await editor.waitForDisplayed({ timeout: 15000 });
     const help = await $('[data-testid="toolbar-help"]');
     await help.waitForDisplayed({ timeout: 10000 });
     return help;
@@ -70,15 +72,22 @@ describe("ALi-md-editor Shortcuts Reference", () => {
     );
   });
 
-  it("closes the reference on an outside click and on a second button press", async () => {
+  it("closes the reference on an outside click and on toggling again", async () => {
     await browser.pause(1000);
     const help = await openFromSourceMode();
     await help.click();
     const modal = await $('[data-testid="shortcuts-modal"]');
     await modal.waitForDisplayed({ timeout: 10000 });
 
-    const overlay = await $('[data-testid="shortcuts-overlay"]');
-    await overlay.click({ x: 5, y: 5 });
+    // Click the overlay outside the centered modal. Element click offsets are
+    // relative to the element's center (which is where the modal sits), so use
+    // an explicit viewport point near the top-left corner instead.
+    await browser
+      .action("pointer")
+      .move({ x: 10, y: 10 })
+      .down()
+      .up()
+      .perform();
     await browser.waitUntil(
       async () => !(await modal.isDisplayed()),
       {
@@ -89,12 +98,15 @@ describe("ALi-md-editor Shortcuts Reference", () => {
 
     await help.click();
     await modal.waitForDisplayed({ timeout: 10000 });
-    await help.click();
+    // The overlay covers the toolbar while the reference is open, so the Help
+    // button cannot receive a pointer click; the toggle shortcut is the app's
+    // "press again" path here.
+    await browser.keys(["Control", "/"]);
     await browser.waitUntil(
       async () => !(await modal.isDisplayed()),
       {
         timeout: 10000,
-        timeoutMsg: "a second button press did not close the Shortcuts Reference",
+        timeoutMsg: "toggling again did not close the Shortcuts Reference",
       },
     );
   });

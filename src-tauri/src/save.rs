@@ -14,7 +14,7 @@ mod tests {
 
     fn temp_dir(name: &str) -> std::path::PathBuf {
         let dir = std::env::temp_dir().join(format!(
-            "alimd-save-test-{}-{}",
+            "markdownmagic-save-test-{}-{}",
             std::process::id(),
             name
         ));

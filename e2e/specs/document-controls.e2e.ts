@@ -7,18 +7,18 @@ import { typeInEditor } from "../helpers/editor";
 // Undo/Redo are driven through the same guarded flows as the shortcuts. Native
 // dialogs are stubbed via the VITE_E2E localStorage seam; the writes/reads still
 // run through the real save_document/open_document commands.
-describe("ALi-md-editor Document Controls & Undo/Redo", () => {
+describe("Markdown-Magic Document Controls & Undo/Redo", () => {
   const savePath = path.join(
     os.tmpdir(),
-    `alimd-e2e-doc-controls-${Date.now()}.md`,
+    `markdownmagic-e2e-doc-controls-${Date.now()}.md`,
   );
   const saveAsPath = path.join(
     os.tmpdir(),
-    `alimd-e2e-doc-controls-as-${Date.now()}.md`,
+    `markdownmagic-e2e-doc-controls-as-${Date.now()}.md`,
   );
   const openPath = path.join(
     os.tmpdir(),
-    `alimd-e2e-doc-controls-open-${Date.now()}.md`,
+    `markdownmagic-e2e-doc-controls-open-${Date.now()}.md`,
   );
   const saveFilename = path.basename(savePath);
 
@@ -38,19 +38,19 @@ describe("ALi-md-editor Document Controls & Undo/Redo", () => {
 
   async function stubSaveDialog(p: string) {
     await browser.execute((stubPath) => {
-      localStorage.setItem("alimd:e2e:save-path", stubPath);
+      localStorage.setItem("markdownmagic:e2e:save-path", stubPath);
     }, p);
   }
 
   async function stubOpenDialog() {
     await browser.execute((p) => {
-      localStorage.setItem("alimd:e2e:open-path", p);
+      localStorage.setItem("markdownmagic:e2e:open-path", p);
     }, openPath);
   }
 
   async function stubGuardChoice(choice: string) {
     await browser.execute((c) => {
-      localStorage.setItem("alimd:e2e:guard-choice", c);
+      localStorage.setItem("markdownmagic:e2e:guard-choice", c);
     }, choice);
   }
 
@@ -81,7 +81,7 @@ describe("ALi-md-editor Document Controls & Undo/Redo", () => {
     await (await $('[data-testid="toolbar-new"]')).click();
     await browser.waitUntil(
       async () =>
-        (await browser.getTitle()) === "Untitled.md — ALi-md-editor",
+        (await browser.getTitle()) === "Untitled.md — Markdown-Magic",
       {
         timeout: 10000,
         timeoutMsg: "New button did not create an Untitled Document",
@@ -96,7 +96,7 @@ describe("ALi-md-editor Document Controls & Undo/Redo", () => {
     await typeInEditor("# Saved via button");
     await browser.waitUntil(
       async () =>
-        (await browser.getTitle()) === "Untitled.md * — ALi-md-editor",
+        (await browser.getTitle()) === "Untitled.md * — Markdown-Magic",
       { timeout: 10000, timeoutMsg: "asterisk did not appear after typing" },
     );
 
@@ -105,7 +105,7 @@ describe("ALi-md-editor Document Controls & Undo/Redo", () => {
 
     await browser.waitUntil(
       async () =>
-        (await browser.getTitle()) === `${saveFilename} — ALi-md-editor`,
+        (await browser.getTitle()) === `${saveFilename} — Markdown-Magic`,
       {
         timeout: 10000,
         timeoutMsg: "Save button did not write the Document",
@@ -121,7 +121,7 @@ describe("ALi-md-editor Document Controls & Undo/Redo", () => {
 
     await browser.waitUntil(
       async () =>
-        (await browser.getTitle()) === `${saveAsFilename} — ALi-md-editor`,
+        (await browser.getTitle()) === `${saveAsFilename} — Markdown-Magic`,
       {
         timeout: 10000,
         timeoutMsg: "Save As button did not write to the new path",
@@ -234,7 +234,7 @@ describe("ALi-md-editor Document Controls & Undo/Redo", () => {
 
     await browser.waitUntil(
       async () =>
-        (await browser.getTitle()) === `${openFilename} — ALi-md-editor`,
+        (await browser.getTitle()) === `${openFilename} — Markdown-Magic`,
       {
         timeout: 10000,
         timeoutMsg: "Open button did not load the picked file",

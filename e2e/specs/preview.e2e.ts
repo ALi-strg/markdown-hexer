@@ -1,4 +1,4 @@
-describe("ALi-md-editor live preview", () => {
+describe("Markdown-Magic live preview", () => {
   it("renders markdown in the Preview Pane as the user types", async () => {
     await browser.pause(1000);
 

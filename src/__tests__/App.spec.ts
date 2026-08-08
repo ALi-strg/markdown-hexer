@@ -1443,7 +1443,7 @@ describe("App shell", () => {
     const wrapper = mount(App);
     await flushPromises();
     await wrapper.find('[data-testid="toolbar-theme"]').setValue("light");
-    expect(localStorage.getItem("alimd:settings")).toBe(
+    expect(localStorage.getItem("markdownmagic:settings")).toBe(
       JSON.stringify({ theme: "light" }),
     );
   });
@@ -1497,7 +1497,7 @@ describe("App shell", () => {
 
     await wrapper.find('[data-testid="toolbar-font"]').setValue("mono");
 
-    expect(localStorage.getItem("alimd:settings")).toBe(
+    expect(localStorage.getItem("markdownmagic:settings")).toBe(
       JSON.stringify({ font: "mono" }),
     );
   });

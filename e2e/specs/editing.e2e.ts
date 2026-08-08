@@ -1,8 +1,8 @@
-describe("ALi-md-editor editing core", () => {
+describe("Markdown-Magic editing core", () => {
   it("marks the Document Dirty while typing and reverts on undo", async () => {
     await browser.pause(1000);
 
-    expect(await browser.getTitle()).toBe("Untitled.md — ALi-md-editor");
+    expect(await browser.getTitle()).toBe("Untitled.md — Markdown-Magic");
 
     const editorContent = await $(
       '[data-testid="editor-pane"] .cm-content',
@@ -13,7 +13,7 @@ describe("ALi-md-editor editing core", () => {
 
     await browser.waitUntil(
       async () =>
-        (await browser.getTitle()) === "Untitled.md * — ALi-md-editor",
+        (await browser.getTitle()) === "Untitled.md * — Markdown-Magic",
       { timeout: 10000, timeoutMsg: "asterisk did not appear in title" },
     );
 
@@ -26,7 +26,7 @@ describe("ALi-md-editor editing core", () => {
 
     await browser.waitUntil(
       async () =>
-        (await browser.getTitle()) === "Untitled.md — ALi-md-editor",
+        (await browser.getTitle()) === "Untitled.md — Markdown-Magic",
       { timeout: 10000, timeoutMsg: "asterisk did not clear after undo" },
     );
   });

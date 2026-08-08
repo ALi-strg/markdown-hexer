@@ -5,8 +5,8 @@ import fs from "node:fs";
 // The native Open dialog cannot be driven by WebdriverIO, so the E2E seeds the
 // app's test seam (enabled by VITE_E2E in the E2E build) with a real temp path
 // via localStorage. The read still runs through the real open_document command.
-describe("ALi-md-editor New & Open flows", () => {
-  const openPath = path.join(os.tmpdir(), `alimd-e2e-open-${Date.now()}.md`);
+describe("Markdown-Magic New & Open flows", () => {
+  const openPath = path.join(os.tmpdir(), `markdownmagic-e2e-open-${Date.now()}.md`);
   const openFilename = path.basename(openPath);
 
   before(() => {
@@ -23,13 +23,13 @@ describe("ALi-md-editor New & Open flows", () => {
 
   async function stubOpenDialog() {
     await browser.execute((p) => {
-      localStorage.setItem("alimd:e2e:open-path", p);
+      localStorage.setItem("markdownmagic:e2e:open-path", p);
     }, openPath);
   }
 
   async function stubGuardChoice(choice: string) {
     await browser.execute((c) => {
-      localStorage.setItem("alimd:e2e:guard-choice", c);
+      localStorage.setItem("markdownmagic:e2e:guard-choice", c);
     }, choice);
   }
 
@@ -47,7 +47,7 @@ describe("ALi-md-editor New & Open flows", () => {
     await typeText("# Draft");
     await browser.waitUntil(
       async () =>
-        (await browser.getTitle()) === "Untitled.md * — ALi-md-editor",
+        (await browser.getTitle()) === "Untitled.md * — Markdown-Magic",
       { timeout: 10000, timeoutMsg: "asterisk did not appear after typing" },
     );
 
@@ -56,7 +56,7 @@ describe("ALi-md-editor New & Open flows", () => {
 
     await browser.waitUntil(
       async () =>
-        (await browser.getTitle()) === "Untitled.md — ALi-md-editor",
+        (await browser.getTitle()) === "Untitled.md — Markdown-Magic",
       { timeout: 10000, timeoutMsg: "New did not return to Untitled" },
     );
 
@@ -77,7 +77,7 @@ describe("ALi-md-editor New & Open flows", () => {
 
     await browser.waitUntil(
       async () =>
-        (await browser.getTitle()) === `${openFilename} — ALi-md-editor`,
+        (await browser.getTitle()) === `${openFilename} — Markdown-Magic`,
       {
         timeout: 10000,
         timeoutMsg: "title did not update to the opened filename",

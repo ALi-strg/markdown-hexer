@@ -5,9 +5,9 @@ import fs from "node:fs";
 // A Dirty Document triggers the Confirm-Discard Guard before an Open swap. The
 // guard's Save path runs the real save_document write (seeded via localStorage),
 // and the Open path runs the real open_document read.
-describe("ALi-md-editor guarded Open swap", () => {
-  const openPath = path.join(os.tmpdir(), `alimd-e2e-open-${Date.now()}.md`);
-  const savePath = path.join(os.tmpdir(), `alimd-e2e-guard-save-${Date.now()}.md`);
+describe("Markdown-Magic guarded Open swap", () => {
+  const openPath = path.join(os.tmpdir(), `markdownmagic-e2e-open-${Date.now()}.md`);
+  const savePath = path.join(os.tmpdir(), `markdownmagic-e2e-guard-save-${Date.now()}.md`);
   const openFilename = path.basename(openPath);
 
   before(() => {
@@ -29,19 +29,19 @@ describe("ALi-md-editor guarded Open swap", () => {
 
   async function stubOpenDialog() {
     await browser.execute((p) => {
-      localStorage.setItem("alimd:e2e:open-path", p);
+      localStorage.setItem("markdownmagic:e2e:open-path", p);
     }, openPath);
   }
 
   async function stubSaveDialog() {
     await browser.execute((p) => {
-      localStorage.setItem("alimd:e2e:save-path", p);
+      localStorage.setItem("markdownmagic:e2e:save-path", p);
     }, savePath);
   }
 
   async function stubGuardChoice(choice: string) {
     await browser.execute((c) => {
-      localStorage.setItem("alimd:e2e:guard-choice", c);
+      localStorage.setItem("markdownmagic:e2e:guard-choice", c);
     }, choice);
   }
 
@@ -59,7 +59,7 @@ describe("ALi-md-editor guarded Open swap", () => {
     await typeText("# Guarded");
     await browser.waitUntil(
       async () =>
-        (await browser.getTitle()) === "Untitled.md * — ALi-md-editor",
+        (await browser.getTitle()) === "Untitled.md * — Markdown-Magic",
       { timeout: 10000, timeoutMsg: "asterisk did not appear after typing" },
     );
 
@@ -68,7 +68,7 @@ describe("ALi-md-editor guarded Open swap", () => {
     await browser.keys(["Control", "o"]);
     await browser.pause(500);
 
-    expect(await browser.getTitle()).toBe("Untitled.md * — ALi-md-editor");
+    expect(await browser.getTitle()).toBe("Untitled.md * — Markdown-Magic");
   });
 
   it("saves the Dirty Document before opening when Save is chosen", async () => {
@@ -89,7 +89,7 @@ describe("ALi-md-editor guarded Open swap", () => {
 
     await browser.waitUntil(
       async () =>
-        (await browser.getTitle()) === `${openFilename} — ALi-md-editor`,
+        (await browser.getTitle()) === `${openFilename} — Markdown-Magic`,
       { timeout: 10000, timeoutMsg: "Open did not complete after guard save" },
     );
 

@@ -1,6 +1,6 @@
 import { typeInEditor } from "../helpers/editor";
 
-describe("ALi-md-editor synced scrolling", () => {
+describe("Markdown-Magic synced scrolling", () => {
   async function typeTallDocument() {
     const lines: string[] = [];
     for (let i = 1; i <= 40; i++) {

@@ -1,6 +1,6 @@
 import { typeInEditor } from "../helpers/editor";
 
-describe("ALi-md-editor code syntax highlighting", () => {
+describe("Markdown-Magic code syntax highlighting", () => {
   async function typeFencedBlock() {
     await typeInEditor("```js\nconst x = 1;\n```");
   }
