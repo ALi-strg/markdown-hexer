@@ -2,7 +2,7 @@
 // Editor Pane and the Preview Pane and persists in localStorage. The E2E
 // switches fonts and asserts `data-font` plus the computed font-family of both
 // panes actually change.
-describe("ALi-md-editor font", () => {
+describe("Markdown-Magic font", () => {
   const FONT_VALUES: Record<string, string> = {
     Default: "default",
     Serif: "serif",
@@ -60,7 +60,7 @@ describe("ALi-md-editor font", () => {
 
   it("persists the chosen font for the next launch", async () => {
     const stored = await browser.execute(() =>
-      localStorage.getItem("alimd:settings"),
+      localStorage.getItem("markdownmagic:settings"),
     );
     expect(stored).toContain("mono");
   });

@@ -1,4 +1,4 @@
-describe("ALi-md-editor layout modes", () => {
+describe("Markdown-Magic layout modes", () => {
   it("cycles through Layout Modes with Cmd/Ctrl+Shift+P, showing and hiding panes", async () => {
     await browser.pause(1000);
 

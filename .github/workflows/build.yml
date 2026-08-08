@@ -69,7 +69,7 @@ jobs:
         with:
           tagName: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
           releaseName: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
-          releaseBody: "ALi-md-editor ${{ github.ref_name }} — see the assets to download and install."
+          releaseBody: "Markdown-Magic ${{ github.ref_name }} — see the assets to download and install."
           releaseDraft: true
           prerelease: false
 
@@ -114,7 +114,7 @@ jobs:
         with:
           tagName: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
           releaseName: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
-          releaseBody: "ALi-md-editor ${{ github.ref_name }} — see the assets to download and install."
+          releaseBody: "Markdown-Magic ${{ github.ref_name }} — see the assets to download and install."
           releaseDraft: true
           prerelease: false
 
@@ -130,7 +130,7 @@ jobs:
         with:
           tagName: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
           releaseName: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
-          releaseBody: "ALi-md-editor ${{ github.ref_name }} — see the assets to download and install."
+          releaseBody: "Markdown-Magic ${{ github.ref_name }} — see the assets to download and install."
           releaseDraft: true
           prerelease: false
           args: --target aarch64-pc-windows-msvc

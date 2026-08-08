@@ -1,6 +1,61 @@
 <template>
   <div class="toolbar" data-testid="toolbar" role="toolbar">
     <div
+      class="toolbar-document-group"
+      v-show="layoutMode !== 'preview'"
+    >
+      <button
+        type="button"
+        class="toolbar-button"
+        data-testid="toolbar-new"
+        :title="tooltipText(DOCUMENT_SHORTCUTS.new)"
+        @click="emit('new')"
+      >
+        New
+      </button>
+      <button
+        type="button"
+        class="toolbar-button"
+        data-testid="toolbar-open"
+        :title="tooltipText(DOCUMENT_SHORTCUTS.open)"
+        @click="emit('open')"
+      >
+        Open
+      </button>
+      <button
+        type="button"
+        class="toolbar-button"
+        data-testid="toolbar-save"
+        :title="tooltipText(DOCUMENT_SHORTCUTS.save)"
+        @click="emit('save')"
+      >
+        Save
+      </button>
+      <button
+        type="button"
+        class="toolbar-button"
+        data-testid="toolbar-save-as"
+        :title="tooltipText(DOCUMENT_SHORTCUTS.saveAs)"
+        @click="emit('saveAs')"
+      >
+        Save As
+      </button>
+      <button
+        type="button"
+        class="toolbar-button"
+        data-testid="toolbar-find"
+        :title="tooltipText(DOCUMENT_SHORTCUTS.findReplace)"
+        @click="emit('find')"
+      >
+        Find &amp; Replace
+      </button>
+    </div>
+    <span
+      class="toolbar-separator"
+      aria-hidden="true"
+      v-show="layoutMode !== 'preview'"
+    ></span>
+    <div
       class="toolbar-format-group"
       v-show="layoutMode !== 'preview'"
     >
@@ -8,7 +63,7 @@
         type="button"
         class="toolbar-button toolbar-bold"
         data-testid="toolbar-bold"
-        title="Bold (Ctrl/Cmd+B)"
+        :title="tooltipText(FORMAT_SHORTCUTS.bold)"
         @click="emit('format', 'bold')"
       >
         B
@@ -17,7 +72,7 @@
         type="button"
         class="toolbar-button toolbar-italic"
         data-testid="toolbar-italic"
-        title="Italic (Ctrl/Cmd+I)"
+        :title="tooltipText(FORMAT_SHORTCUTS.italic)"
         @click="emit('format', 'italic')"
       >
         I
@@ -27,7 +82,7 @@
         type="button"
         class="toolbar-button"
         data-testid="toolbar-heading"
-        title="Heading"
+        :title="tooltipText(FORMAT_SHORTCUTS.heading)"
         @click="emit('format', 'heading')"
       >
         #
@@ -36,7 +91,7 @@
         type="button"
         class="toolbar-button"
         data-testid="toolbar-list"
-        title="List"
+        :title="tooltipText(FORMAT_SHORTCUTS.list)"
         @click="emit('format', 'list')"
       >
         -
@@ -45,7 +100,7 @@
         type="button"
         class="toolbar-button"
         data-testid="toolbar-link"
-        title="Link"
+        :title="tooltipText(FORMAT_SHORTCUTS.link)"
         @click="emit('format', 'link')"
       >
         Link
@@ -54,10 +109,36 @@
         type="button"
         class="toolbar-button"
         data-testid="toolbar-code"
-        title="Code"
+        :title="tooltipText(FORMAT_SHORTCUTS.code)"
         @click="emit('format', 'code')"
       >
         Code
+      </button>
+    </div>
+    <div
+      class="toolbar-history-group"
+      v-show="layoutMode !== 'preview'"
+    >
+      <span class="toolbar-separator" aria-hidden="true"></span>
+      <button
+        type="button"
+        class="toolbar-button"
+        data-testid="toolbar-undo"
+        :disabled="!canUndo"
+        :title="tooltipText(UNDO_SHORTCUT)"
+        @click="emit('undo')"
+      >
+        Undo
+      </button>
+      <button
+        type="button"
+        class="toolbar-button"
+        data-testid="toolbar-redo"
+        :disabled="!canRedo"
+        :title="tooltipText(REDO_SHORTCUT)"
+        @click="emit('redo')"
+      >
+        Redo
       </button>
     </div>
     <span class="toolbar-spacer" aria-hidden="true"></span>
@@ -68,7 +149,7 @@
       class="toolbar-theme"
       data-testid="toolbar-theme"
       :value="theme"
-      title="Theme"
+      :title="tooltipText(THEME_CONTROL)"
       @change="onThemeChange"
     >
       <option value="system">System</option>
@@ -81,7 +162,7 @@
       class="toolbar-font"
       data-testid="toolbar-font"
       :value="font"
-      title="Font"
+      :title="tooltipText(FONT_CONTROL)"
       @change="onFontChange"
     >
       <option v-for="option in FONTS" :key="option" :value="option">
@@ -103,17 +184,39 @@
         :class="{ active: layoutMode === mode }"
         :data-testid="`layout-${mode}`"
         :aria-pressed="layoutMode === mode"
-        :title="LAYOUT_LABELS[mode]"
+        :title="layoutTooltip(mode)"
         @click="emit('layoutChange', mode)"
       >
         {{ LAYOUT_LABELS[mode] }}
       </button>
     </div>
+    <button
+      type="button"
+      class="toolbar-button toolbar-help"
+      data-testid="toolbar-help"
+      v-show="layoutMode !== 'preview'"
+      :title="tooltipText(HELP_SHORTCUT)"
+      @click="emit('help')"
+    >
+      Help
+    </button>
   </div>
 </template>
 
 <script setup lang="ts">
 import type { FormatOperation } from "../lib/formatting";
+import {
+  CYCLE_LAYOUT_COMBO,
+  DOCUMENT_SHORTCUTS,
+  FONT_CONTROL,
+  FORMAT_SHORTCUTS,
+  HELP_SHORTCUT,
+  REDO_SHORTCUT,
+  THEME_CONTROL,
+  UNDO_SHORTCUT,
+  tooltipText,
+  tooltipWithCombo,
+} from "../lib/shortcuts";
 import { FONTS, FONT_LABELS, type Font, type Theme } from "../stores/settings";
 import { LAYOUT_MODES, type LayoutMode } from "../stores/ui";
 
@@ -123,16 +226,30 @@ const LAYOUT_LABELS: Record<LayoutMode, string> = {
   focus: "Focus",
 };
 
+function layoutTooltip(mode: LayoutMode): string {
+  return tooltipWithCombo(`Switch to ${LAYOUT_LABELS[mode]}`, CYCLE_LAYOUT_COMBO);
+}
+
 defineProps<{
   layoutMode: LayoutMode;
   theme: Theme;
   font: Font;
+  canUndo: boolean;
+  canRedo: boolean;
 }>();
 const emit = defineEmits<{
   format: [operation: FormatOperation];
+  new: [];
+  open: [];
+  save: [];
+  saveAs: [];
+  find: [];
+  undo: [];
+  redo: [];
   themeChange: [theme: Theme];
   fontChange: [font: Font];
   layoutChange: [mode: LayoutMode];
+  help: [];
 }>();
 
 function onThemeChange(event: Event) {
@@ -153,6 +270,7 @@ function onFontChange(event: Event) {
 <style scoped>
 .toolbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 4px;
   padding: 6px 10px;
@@ -161,7 +279,9 @@ function onFontChange(event: Event) {
   user-select: none;
 }
 
-.toolbar-format-group {
+.toolbar-document-group,
+.toolbar-format-group,
+.toolbar-history-group {
   display: flex;
   align-items: center;
   gap: 4px;
@@ -183,6 +303,11 @@ function onFontChange(event: Event) {
 
 .toolbar-button:hover {
   background: var(--hover-background, rgba(128, 128, 128, 0.15));
+}
+
+.toolbar-button:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 .toolbar-bold {

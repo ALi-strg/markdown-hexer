@@ -5,17 +5,34 @@
 </template>
 
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from "vue";
+import { onBeforeUnmount, onMounted, ref, shallowRef } from "vue";
 import { EditorView, basicSetup } from "codemirror";
 import { panels } from "@codemirror/view";
 import { EditorState, type Extension } from "@codemirror/state";
+import { undoDepth, redoDepth } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
 import { search } from "@codemirror/search";
 import { useDocumentStore } from "../stores/document";
 
 const document = useDocumentStore();
 const editorHost = ref<HTMLElement | null>(null);
-const view = ref<EditorView | null>(null);
+
+/// The CodeMirror instance. `shallowRef` (not `ref`) keeps it raw: a reactive
+/// `ref` wraps it in a proxy, so `view.state` would be a reactive proxy of the
+/// EditorState and transactions built from it would fail the view's strict
+/// `startState` identity check on dispatch.
+const view = shallowRef<EditorView | null>(null);
+
+/// Whether the editor's native history currently has anything to undo or redo.
+/// Surfaced reactively to the toolbar so the Undo/Redo buttons disable when the
+/// history is empty, mirroring CodeMirror's own command availability.
+const canUndo = ref(false);
+const canRedo = ref(false);
+
+function syncHistoryState(state: EditorState) {
+  canUndo.value = undoDepth(state) > 0;
+  canRedo.value = redoDepth(state) > 0;
+}
 
 /// The find/replace panel is hosted by the app, not the Editor Pane, so it
 /// stays visible in Preview Only where this pane is hidden. CodeMirror's own
@@ -36,6 +53,7 @@ function editorExtensions(): Extension[] {
       if (update.docChanged) {
         document.mirrorContent(update.state.doc.toString());
       }
+      syncHistoryState(update.state);
     }),
   ];
 }
@@ -48,8 +66,10 @@ onMounted(() => {
   hiddenPanelHost = globalThis.document.createElement("div");
   hiddenPanelHost.style.display = "none";
   globalThis.document.body.appendChild(hiddenPanelHost);
+  const state = createEditorState(document.content);
+  syncHistoryState(state);
   view.value = new EditorView({
-    state: createEditorState(document.content),
+    state,
     parent: editorHost.value!,
   });
 });
@@ -70,10 +90,17 @@ function replaceContent(text: string) {
   if (view.value === null) {
     return;
   }
-  view.value.setState(createEditorState(text));
+  const state = createEditorState(text);
+  syncHistoryState(state);
+  view.value.setState(state);
 }
 
-defineExpose({ getView: () => view.value, replaceContent });
+defineExpose({
+  getView: () => view.value,
+  replaceContent,
+  canUndo,
+  canRedo,
+});
 
 </script>
 

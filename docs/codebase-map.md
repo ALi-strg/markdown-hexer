@@ -1,4 +1,4 @@
-# Codebase Map — markdown-editor (ALi-md-editor)
+# Codebase Map — markdown-editor (Markdown-Magic)
 
 > Scope: whole repo
 > Last updated: 2026-08-07
@@ -17,7 +17,7 @@ A cross-platform Tauri 2 desktop app: a distraction-free Markdown editor with a 
 | Package manager | npm |
 | Build | `vue-tsc --noEmit && vite build`; Rust via `tauri build` |
 | Test | Vitest (jsdom) + `cargo test` + WebdriverIO/tauri-driver |
-| Product name | ALi-md-editor (identifier `com.alimd.editor`); repo slug `markdown-editor` |
+| Product name | Markdown-Magic (identifier `com.markdownmagic.editor`); repo slug `markdown-editor` |
 
 ## Commands
 ```
@@ -63,7 +63,7 @@ npm run tauri build -- --debug --no-bundle   # what test:e2e uses to build the a
 **IPC surface** (frontend `invoke` ↔ Rust commands, all in `src-tauri/src/lib.rs`):
 | Command | Rust fn | Purpose |
 |---|---|---|
-| `set_document_title` | `set_document_title` | OS title `<filename> [*] — ALi-md-editor` (`title.rs`) |
+| `set_document_title` | `set_document_title` | OS title `<filename> [*] — Markdown-Magic` (`title.rs`) |
 | `save_document` | `save_document` | Write content as clean UTF-8 (`save.rs`) |
 | `open_document` | `open_document` | Read UTF-8, strip leading BOM (`open.rs` → `encoding.rs`) |
 | `inspect_document` | `inspect_document` | Content+mtime for Externally-Modified detection (`inspect.rs`) |
@@ -94,7 +94,7 @@ npm run tauri build -- --debug --no-bundle   # what test:e2e uses to build the a
 
 **Layout/UI** (`src/stores/ui.ts`): `layoutMode` (split/preview/focus, cycled via `Ctrl/Cmd+Shift+P`), `dividerPosition` (0..1, clamped 0.15–0.85, persisted only in-session), `findOverlayOpen`, `toast`, `lastDirectory`. Auto-choose of mode happens only on Document load; manual override (`manualOverrideActive`) wins until the next load; modes never persist across launches.
 
-**Settings** (`src/stores/settings.ts`): Theme (`system`/`light`/`dark`, default system, System follows OS via `prefers-color-scheme` in `styles.css`) and font (`default`/`serif`/`sans`/`mono`); persisted in localStorage under `alimd:settings`; applied via `data-theme`/`data-font` attributes on the app root.
+**Settings** (`src/stores/settings.ts`): Theme (`system`/`light`/`dark`, default system, System follows OS via `prefers-color-scheme` in `styles.css`) and font (`default`/`serif`/`sans`/`mono`); persisted in localStorage under `markdownmagic:settings`; applied via `data-theme`/`data-font` attributes on the app root.
 
 **Asset scope protocol** (`asset.rs`): `DocumentScope` state holds the current path; `asset://` requests must be absolute, canonicalized, and inside the Document's directory (403 otherwise, 404 if missing). MIME sniffed.
 
@@ -133,7 +133,7 @@ npm run tauri build -- --debug --no-bundle   # what test:e2e uses to build the a
 
 ## Gotchas & Non-obvious Facts
 - **Editor is authoritative**: after New/Open/external reload, `App.vue` must call `editorPane.replaceContent(...)`; `replaceContent` rebuilds CM state and **clears undo history**.
-- **E2E seam**: `VITE_E2E=1` (set by `wdio.conf.ts`) replaces native dialogs with localStorage stubs (`alimd:e2e:guard-choice`, `:external-choice`, `:open-path`, `:save-path`) and installs global triggers (`__triggerWindowClose`, `__triggerExternalCheck`, `__triggerDrop`, `__triggerFileOpen`) in `App.vue` onMounted. The close-guard spec relies on `__triggerWindowClose`; the app does **not** actually destroy on close when `VITE_E2E=1`.
+- **E2E seam**: `VITE_E2E=1` (set by `wdio.conf.ts`) replaces native dialogs with localStorage stubs (`markdownmagic:e2e:guard-choice`, `:external-choice`, `:open-path`, `:save-path`) and installs global triggers (`__triggerWindowClose`, `__triggerExternalCheck`, `__triggerDrop`, `__triggerFileOpen`) in `App.vue` onMounted. The close-guard spec relies on `__triggerWindowClose`; the app does **not** actually destroy on close when `VITE_E2E=1`.
 - **Windows E2E**: `tauri-driver` is spawned via a `cmd.exe` shell wrapper that orphidifies the real process; `wdio.conf.ts` force-kills the tree with `taskkill /IM tauri-driver.exe /T /F`.
 - **Find/replace never edits hidden text**: replacing in Preview Only first switches to Split View (`ui.showSourceForReplace()`); `dispatchSelectionToEditor`/`syncSelectionToEditor` mirror the tracked match into the editor.
 - CM's own search panel is routed into an **off-screen hidden host** (`EditorPane.vue` `hiddenPanelHost`) purely to activate match highlighting; the visible panel is `FindReplacePanel`.

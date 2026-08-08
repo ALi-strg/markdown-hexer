@@ -9,15 +9,29 @@
       :layout-mode="ui.layoutMode"
       :theme="settings.theme"
       :font="settings.font"
+      :can-undo="canUndo"
+      :can-redo="canRedo"
       @format="onFormat"
+      @new="runNewDocument"
+      @open="runOpenDocument"
+      @save="onSave"
+      @save-as="onSaveAs"
+      @find="onFind"
+      @undo="onUndo"
+      @redo="onRedo"
       @theme-change="onThemeChange"
       @font-change="onFontChange"
       @layout-change="onLayoutChange"
+      @help="onHelp"
     />
     <FindReplacePanel
       v-if="ui.findOverlayOpen"
       ref="findPanelRef"
       :get-view="getEditorView"
+    />
+    <ShortcutsReference
+      v-if="shortcutsOpen"
+      @close="closeShortcuts"
     />
     <div
       ref="workspaceRef"
@@ -68,15 +82,25 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { openSearchPanel } from "@codemirror/search";
+import { redo as redoCommand, undo as undoCommand } from "@codemirror/commands";
 import type { EditorView } from "@codemirror/view";
 import EditorPane from "./components/EditorPane.vue";
 import FindReplacePanel from "./components/FindReplacePanel.vue";
 import PreviewPane from "./components/PreviewPane.vue";
+import ShortcutsReference from "./components/ShortcutsReference.vue";
 import Toolbar from "./components/Toolbar.vue";
 import { confirmDiscard } from "./lib/confirmDiscard";
 import { applyFormatting } from "./lib/editorFormatting";
 import type { FormatOperation } from "./lib/formatting";
 import { pickOpenPath } from "./lib/openDialog";
+import {
+  CYCLE_LAYOUT_COMBO,
+  DOCUMENT_SHORTCUTS,
+  FORMAT_SHORTCUTS,
+  HELP_SHORTCUT,
+  matchesCombo,
+  type DocumentControlOperation,
+} from "./lib/shortcuts";
 import { useSyncedScrolling } from "./lib/useSyncedScrolling";
 import { useDocumentStore } from "./stores/document";
 import {
@@ -93,13 +117,23 @@ const ui = useUiStore();
 const editorPane = ref<{
   getView: () => EditorView | null;
   replaceContent: (text: string) => void;
+  canUndo: boolean;
+  canRedo: boolean;
 } | null>(null);
 const previewPane = ref<{
   getPreviewHost: () => HTMLElement | null;
 } | null>(null);
 const findPanelRef = ref<{ focusQuery: () => void } | null>(null);
+const shortcutsOpen = ref(false);
 const workspaceRef = ref<HTMLElement | null>(null);
 const dividerRef = ref<HTMLElement | null>(null);
+
+/// The editor's native history availability, surfaced to the toolbar as the
+/// Undo/Redo disabled state. The editor-owning component tracks it through its
+/// update listener, so these reflect exactly what CodeMirror's own commands
+/// would do.
+const canUndo = computed(() => editorPane.value?.canUndo ?? false);
+const canRedo = computed(() => editorPane.value?.canRedo ?? false);
 
 /// Balances the panes in Split View: the Editor Pane takes `dividerPosition`
 /// of the workspace width and the Preview Pane the remainder. Outside Split
@@ -190,43 +224,66 @@ async function syncWindowTitle() {
   });
 }
 
-async function onKeydown(event: KeyboardEvent) {
-  const modifier = event.ctrlKey || event.metaKey;
-  if (modifier && (event.key === "s" || event.key === "S")) {
-    event.preventDefault();
-    if (event.shiftKey) {
-      await document.saveAs();
-    } else {
+/// Document Controls dispatch order. `saveAs` must be matched before `save`:
+/// Save's combo (Ctrl/Cmd+S) also fires when Shift is held, so the more specific
+/// Save As combo wins when both would match.
+const DOCUMENT_SHORTCUT_ORDER: DocumentControlOperation[] = [
+  "saveAs",
+  "new",
+  "open",
+  "save",
+  "findReplace",
+];
+
+async function runDocumentControl(operation: DocumentControlOperation) {
+  switch (operation) {
+    case "new":
+      await runNewDocument();
+      break;
+    case "open":
+      await runOpenDocument();
+      break;
+    case "save":
       await document.save();
+      break;
+    case "saveAs":
+      await document.saveAs();
+      break;
+    case "findReplace":
+      onFind();
+      break;
+  }
+}
+
+async function onKeydown(event: KeyboardEvent) {
+  if (shortcutsOpen.value && event.key === "Escape") {
+    event.preventDefault();
+    shortcutsOpen.value = false;
+    return;
+  }
+  const helpCombo = HELP_SHORTCUT.combo;
+  if (helpCombo !== null && matchesCombo(event, helpCombo)) {
+    event.preventDefault();
+    shortcutsOpen.value = !shortcutsOpen.value;
+    return;
+  }
+  for (const operation of DOCUMENT_SHORTCUT_ORDER) {
+    const combo = DOCUMENT_SHORTCUTS[operation].combo;
+    if (combo !== null && matchesCombo(event, combo)) {
+      event.preventDefault();
+      await runDocumentControl(operation);
+      return;
     }
-    return;
   }
-  if (modifier && (event.key === "n" || event.key === "N")) {
-    event.preventDefault();
-    await runNewDocument();
-    return;
+  for (const operation of Object.keys(FORMAT_SHORTCUTS) as FormatOperation[]) {
+    const combo = FORMAT_SHORTCUTS[operation].combo;
+    if (combo !== null && matchesCombo(event, combo)) {
+      event.preventDefault();
+      onFormat(operation);
+      return;
+    }
   }
-  if (modifier && (event.key === "o" || event.key === "O")) {
-    event.preventDefault();
-    await runOpenDocument();
-    return;
-  }
-  if (modifier && (event.key === "b" || event.key === "B")) {
-    event.preventDefault();
-    onFormat("bold");
-    return;
-  }
-  if (modifier && (event.key === "i" || event.key === "I")) {
-    event.preventDefault();
-    onFormat("italic");
-    return;
-  }
-  if (modifier && (event.key === "f" || event.key === "F")) {
-    event.preventDefault();
-    onFind();
-    return;
-  }
-  if (modifier && event.shiftKey && (event.key === "P" || event.key === "p")) {
+  if (matchesCombo(event, CYCLE_LAYOUT_COMBO)) {
     event.preventDefault();
     ui.cycleLayoutMode();
   }
@@ -252,6 +309,10 @@ function onFind() {
 /// Applies a toolbar formatting operation to the Editor Pane. In Preview Only
 /// there is no visible Editor Pane to format, so the toolbar hides its buttons
 /// and the shortcuts no-op.
+///
+/// The toolbar button has focus when clicked, so the editor is refocused after
+/// the dispatch: continued keyboard input (including Cmd/Ctrl+Z undo, which
+/// CodeMirror's keymap only serves while the editor is focused) keeps working.
 function onFormat(operation: FormatOperation) {
   if (ui.layoutMode === "preview") {
     return;
@@ -259,6 +320,7 @@ function onFormat(operation: FormatOperation) {
   const view = editorPane.value?.getView();
   if (view) {
     applyFormatting(view, operation);
+    view.focus();
   }
 }
 
@@ -275,10 +337,53 @@ function onFontChange(font: Font) {
   settings.setFont(font);
 }
 
+/// Writes the Document through the same Save flow as the shortcut: an Untitled
+/// Document is routed to Save As so it gains a real path.
+function onSave() {
+  void document.save();
+}
+
+function onSaveAs() {
+  void document.saveAs();
+}
+
+/// Dispatches CodeMirror's native undo/redo commands, the exact commands the
+/// `Mod-z` / `Mod-Shift-z` keymap bind, so the buttons and the shortcuts can
+/// never disagree. In Preview Only the buttons are hidden, but the shortcuts
+/// still reach the mounted editor. The editor is refocused after the dispatch
+/// for the same reason as formatting: the clicked button holds focus, and the
+/// next keyboard input should land in the editor.
+function onUndo() {
+  const view = getEditorView();
+  if (view) {
+    undoCommand(view);
+    view.focus();
+  }
+}
+
+function onRedo() {
+  const view = getEditorView();
+  if (view) {
+    redoCommand(view);
+    view.focus();
+  }
+}
+
 /// Sets a Layout Mode from the Layout Switcher. Direct selection overrides any
 /// auto-choice until the next Document load, same as the cycle shortcut.
 function onLayoutChange(mode: LayoutMode) {
   ui.setLayoutMode(mode);
+}
+
+/// Toggles the Shortcuts Reference. The Help button in source-visible modes and
+/// the `Ctrl/Cmd+/` shortcut both call this, so pressing the button again (or
+/// the shortcut again) closes the modal from any Layout Mode.
+function onHelp() {
+  shortcutsOpen.value = !shortcutsOpen.value;
+}
+
+function closeShortcuts() {
+  shortcutsOpen.value = false;
 }
 
 async function runNewDocument() {

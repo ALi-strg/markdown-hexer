@@ -64,6 +64,16 @@ const pickGuardChoiceMock = vi.mocked(pickGuardChoice);
 const pickExternalChoiceMock = vi.mocked(pickExternalModificationChoice);
 const getCurrentWindowMock = vi.mocked(getCurrentWindow);
 
+/// The Document Controls' data-testid ids, reused across the render, visibility,
+/// and Preview-cleanliness assertions.
+const DOCUMENT_CONTROL_IDS = [
+  "toolbar-new",
+  "toolbar-open",
+  "toolbar-save",
+  "toolbar-save-as",
+  "toolbar-find",
+] as const;
+
 interface MockWindow {
   getCloseHandler: () => (event: { preventDefault: () => void }) => Promise<void>;
   getFocusHandler: () => (event: { payload: boolean }) => void;
@@ -1016,6 +1026,179 @@ describe("App shell", () => {
     expect(document.content).toBe("hello");
   });
 
+  it("shows every formatting shortcut in its toolbar tooltip", () => {
+    const wrapper = mount(App);
+    const expectations: Array<[string, string]> = [
+      ["toolbar-bold", "Bold (Ctrl/Cmd+B)"],
+      ["toolbar-italic", "Italic (Ctrl/Cmd+I)"],
+      ["toolbar-heading", "Heading (Ctrl/Cmd+Shift+H)"],
+      ["toolbar-list", "List (Ctrl/Cmd+Shift+L)"],
+      ["toolbar-link", "Link (Ctrl/Cmd+K)"],
+      ["toolbar-code", "Code (Ctrl/Cmd+Shift+C)"],
+    ];
+    for (const [id, title] of expectations) {
+      expect(wrapper.find(`[data-testid="${id}"]`).attributes("title")).toBe(
+        title,
+      );
+    }
+  });
+
+  it("shows Theme and Font tooltips with their names only", () => {
+    const wrapper = mount(App);
+    expect(
+      wrapper.find('[data-testid="toolbar-theme"]').attributes("title"),
+    ).toBe("Theme");
+    expect(
+      wrapper.find('[data-testid="toolbar-font"]').attributes("title"),
+    ).toBe("Font");
+  });
+
+  it("shows the cycle-layout shortcut in every Layout Switcher tooltip", () => {
+    const wrapper = mount(App);
+    const expectations: Array<[string, string]> = [
+      ["layout-split", "Switch to Split (Ctrl/Cmd+Shift+P)"],
+      ["layout-preview", "Switch to Preview (Ctrl/Cmd+Shift+P)"],
+      ["layout-focus", "Switch to Focus (Ctrl/Cmd+Shift+P)"],
+    ];
+    for (const [id, title] of expectations) {
+      expect(wrapper.find(`[data-testid="${id}"]`).attributes("title")).toBe(
+        title,
+      );
+    }
+  });
+
+  it("applies heading to the selection via the Cmd/Ctrl+Shift+H shortcut", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    const pane = wrapper.findComponent({ ref: "editorPane" });
+    const view = (pane.vm as unknown as { getView: () => EditorView }).getView();
+    view.dispatch({ changes: { from: 0, insert: "hello" } });
+    view.dispatch({
+      selection: { anchor: 0, head: 5 },
+      annotations: Transaction.addToHistory.of(false),
+    });
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "H",
+        ctrlKey: true,
+        shiftKey: true,
+      }),
+    );
+    await nextTick();
+
+    expect(document.content).toBe("# hello");
+  });
+
+  it("applies list to the selection via the Cmd/Ctrl+Shift+L shortcut", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    const pane = wrapper.findComponent({ ref: "editorPane" });
+    const view = (pane.vm as unknown as { getView: () => EditorView }).getView();
+    view.dispatch({ changes: { from: 0, insert: "hello" } });
+    view.dispatch({
+      selection: { anchor: 0, head: 5 },
+      annotations: Transaction.addToHistory.of(false),
+    });
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "L",
+        ctrlKey: true,
+        shiftKey: true,
+      }),
+    );
+    await nextTick();
+
+    expect(document.content).toBe("- hello");
+  });
+
+  it("applies link to the selection via the Cmd/Ctrl+K shortcut", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    const pane = wrapper.findComponent({ ref: "editorPane" });
+    const view = (pane.vm as unknown as { getView: () => EditorView }).getView();
+    view.dispatch({ changes: { from: 0, insert: "hello" } });
+    view.dispatch({
+      selection: { anchor: 0, head: 5 },
+      annotations: Transaction.addToHistory.of(false),
+    });
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "k", ctrlKey: true }),
+    );
+    await nextTick();
+
+    expect(document.content).toBe("[hello](url)");
+  });
+
+  it("applies code to the selection via the Cmd/Ctrl+Shift+C shortcut", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    const pane = wrapper.findComponent({ ref: "editorPane" });
+    const view = (pane.vm as unknown as { getView: () => EditorView }).getView();
+    view.dispatch({ changes: { from: 0, insert: "hello" } });
+    view.dispatch({
+      selection: { anchor: 0, head: 5 },
+      annotations: Transaction.addToHistory.of(false),
+    });
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "C",
+        ctrlKey: true,
+        shiftKey: true,
+      }),
+    );
+    await nextTick();
+
+    expect(document.content).toBe("`hello`");
+  });
+
+  it("does not format via the new shortcuts in Preview Only", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const ui = useUiStore();
+    ui.cycleLayoutMode();
+    await nextTick();
+    const document = useDocumentStore();
+    const pane = wrapper.findComponent({ ref: "editorPane" });
+    const view = (pane.vm as unknown as { getView: () => EditorView }).getView();
+    view.dispatch({ changes: { from: 0, insert: "hello" } });
+    view.dispatch({
+      selection: { anchor: 0, head: 5 },
+      annotations: Transaction.addToHistory.of(false),
+    });
+
+    for (const event of [
+      new KeyboardEvent("keydown", {
+        key: "H",
+        ctrlKey: true,
+        shiftKey: true,
+      }),
+      new KeyboardEvent("keydown", {
+        key: "L",
+        ctrlKey: true,
+        shiftKey: true,
+      }),
+      new KeyboardEvent("keydown", { key: "k", ctrlKey: true }),
+      new KeyboardEvent("keydown", {
+        key: "C",
+        ctrlKey: true,
+        shiftKey: true,
+      }),
+    ]) {
+      window.dispatchEvent(event);
+    }
+    await nextTick();
+
+    expect(document.content).toBe("hello");
+  });
+
   it("opens the find overlay on Cmd/Ctrl+F", async () => {
     const wrapper = mount(App);
     await flushPromises();
@@ -1260,7 +1443,7 @@ describe("App shell", () => {
     const wrapper = mount(App);
     await flushPromises();
     await wrapper.find('[data-testid="toolbar-theme"]').setValue("light");
-    expect(localStorage.getItem("alimd:settings")).toBe(
+    expect(localStorage.getItem("markdownmagic:settings")).toBe(
       JSON.stringify({ theme: "light" }),
     );
   });
@@ -1314,7 +1497,7 @@ describe("App shell", () => {
 
     await wrapper.find('[data-testid="toolbar-font"]').setValue("mono");
 
-    expect(localStorage.getItem("alimd:settings")).toBe(
+    expect(localStorage.getItem("markdownmagic:settings")).toBe(
       JSON.stringify({ font: "mono" }),
     );
   });
@@ -1479,5 +1662,435 @@ describe("App shell", () => {
     await nextTick();
 
     expect(ui.dividerPosition).toBe(0.85);
+  });
+
+  it("renders the Document Controls at the left end with shortcut tooltips", () => {
+    const wrapper = mount(App);
+    const expectations: Array<[string, string]> = [
+      ["toolbar-new", "New (Ctrl/Cmd+N)"],
+      ["toolbar-open", "Open (Ctrl/Cmd+O)"],
+      ["toolbar-save", "Save (Ctrl/Cmd+S)"],
+      ["toolbar-save-as", "Save As (Ctrl/Cmd+Shift+S)"],
+      ["toolbar-find", "Find & Replace (Ctrl/Cmd+F)"],
+    ];
+    for (const [id, title] of expectations) {
+      expect(wrapper.find(`[data-testid="${id}"]`).exists()).toBe(true);
+      expect(wrapper.find(`[data-testid="${id}"]`).attributes("title")).toBe(
+        title,
+      );
+    }
+  });
+
+  it("hides the Document Controls in Preview Only", async () => {
+    const wrapper = mount(App);
+    const ui = useUiStore();
+    ui.cycleLayoutMode();
+    await nextTick();
+
+    for (const id of DOCUMENT_CONTROL_IDS) {
+      expect(wrapper.find(`[data-testid="${id}"]`).isVisible()).toBe(false);
+    }
+  });
+
+  it("keeps the Document Controls visible in Focus Mode", async () => {
+    const wrapper = mount(App);
+    const ui = useUiStore();
+    ui.cycleLayoutMode();
+    ui.cycleLayoutMode();
+    await nextTick();
+
+    for (const id of DOCUMENT_CONTROL_IDS) {
+      expect(wrapper.find(`[data-testid="${id}"]`).isVisible()).toBe(true);
+    }
+  });
+
+  it("keeps the Preview Only toolbar to Theme, Font, and the Layout Switcher", async () => {
+    const wrapper = mount(App);
+    const ui = useUiStore();
+    ui.cycleLayoutMode();
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="toolbar-theme"]').isVisible()).toBe(true);
+    expect(wrapper.find('[data-testid="toolbar-font"]').isVisible()).toBe(true);
+    expect(wrapper.find('[data-testid="layout-switcher"]').isVisible()).toBe(
+      true,
+    );
+    for (const id of [
+      ...DOCUMENT_CONTROL_IDS,
+      "toolbar-undo",
+      "toolbar-redo",
+      "toolbar-bold",
+      "toolbar-help",
+    ]) {
+      expect(wrapper.find(`[data-testid="${id}"]`).isVisible()).toBe(false);
+    }
+  });
+
+  it("saves an Untitled Document through the Save button as Save As", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    document.mirrorContent("# Hello");
+    pickSavePathMock.mockResolvedValue("C:\\notes\\a.md");
+    invokeMock.mockClear();
+
+    await wrapper.find('[data-testid="toolbar-save"]').trigger("click");
+    await flushPromises();
+
+    expect(pickSavePathMock).toHaveBeenCalled();
+    expect(invokeMock).toHaveBeenCalledWith("save_document", {
+      path: "C:\\notes\\a.md",
+      content: "# Hello",
+    });
+    expect(document.canonicalPath).toBe("C:\\notes\\a.md");
+    expect(document.dirty).toBe(false);
+  });
+
+  it("writes the Document to a new path through the Save As button", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    document.canonicalPath = "C:\\notes\\old.md";
+    document.mirrorContent("# v1");
+    pickSavePathMock.mockResolvedValue("C:\\notes\\new.md");
+    invokeMock.mockClear();
+
+    await wrapper.find('[data-testid="toolbar-save-as"]').trigger("click");
+    await flushPromises();
+
+    expect(invokeMock).toHaveBeenCalledWith("save_document", {
+      path: "C:\\notes\\new.md",
+      content: "# v1",
+    });
+    expect(document.canonicalPath).toBe("C:\\notes\\new.md");
+    expect(document.filename).toBe("new.md");
+  });
+
+  it("runs the Confirm-Discard Guard and creates a new Document via the New button", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    const ui = useUiStore();
+    document.mirrorContent("# Hello");
+    pickGuardChoiceMock.mockResolvedValue("dont-save");
+
+    await wrapper.find('[data-testid="toolbar-new"]').trigger("click");
+    await flushPromises();
+
+    expect(pickGuardChoiceMock).toHaveBeenCalled();
+    expect(document.content).toBe("");
+    expect(document.dirty).toBe(false);
+    expect(document.filename).toBe("Untitled.md");
+    expect(ui.layoutMode).toBe("split");
+  });
+
+  it("opens a picked file through the Open button, landing in Preview Only", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    const ui = useUiStore();
+    pickOpenPathMock.mockResolvedValue("C:\\notes\\b.md");
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "open_document") {
+        return Promise.resolve("# Loaded");
+      }
+      return Promise.resolve(undefined);
+    });
+
+    await wrapper.find('[data-testid="toolbar-open"]').trigger("click");
+    await flushPromises();
+
+    expect(pickOpenPathMock).toHaveBeenCalled();
+    expect(document.content).toBe("# Loaded");
+    expect(document.canonicalPath).toBe("C:\\notes\\b.md");
+    expect(document.filename).toBe("b.md");
+    expect(ui.layoutMode).toBe("preview");
+  });
+
+  it("opens the Find & Replace panel via its toolbar button", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const ui = useUiStore();
+
+    await wrapper.find('[data-testid="toolbar-find"]').trigger("click");
+    await nextTick();
+
+    expect(ui.findOverlayOpen).toBe(true);
+    expect(wrapper.find('[data-testid="find-panel"]').exists()).toBe(true);
+  });
+
+  it("renders Undo and Redo beside the Formatting Buttons with shortcut tooltips", () => {
+    const wrapper = mount(App);
+    expect(wrapper.find('[data-testid="toolbar-undo"]').attributes("title")).toBe(
+      "Undo (Ctrl/Cmd+Z)",
+    );
+    expect(wrapper.find('[data-testid="toolbar-redo"]').attributes("title")).toBe(
+      "Redo (Ctrl/Cmd+Shift+Z)",
+    );
+  });
+
+  it("hides Undo and Redo in Preview Only", async () => {
+    const wrapper = mount(App);
+    const ui = useUiStore();
+    ui.cycleLayoutMode();
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="toolbar-undo"]').isVisible()).toBe(false);
+    expect(wrapper.find('[data-testid="toolbar-redo"]').isVisible()).toBe(false);
+  });
+
+  it("starts with Undo and Redo disabled and enables Undo after an edit", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const undo = wrapper.find('[data-testid="toolbar-undo"]');
+    const redo = wrapper.find('[data-testid="toolbar-redo"]');
+    expect((undo.element as HTMLButtonElement).disabled).toBe(true);
+    expect((redo.element as HTMLButtonElement).disabled).toBe(true);
+
+    const pane = wrapper.findComponent({ ref: "editorPane" });
+    const view = (pane.vm as unknown as { getView: () => EditorView }).getView();
+    view.dispatch({ changes: { from: 0, insert: "hello" } });
+    await nextTick();
+
+    expect((undo.element as HTMLButtonElement).disabled).toBe(false);
+    expect((redo.element as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("undoes and redoes through the toolbar buttons", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    const pane = wrapper.findComponent({ ref: "editorPane" });
+    const view = (pane.vm as unknown as { getView: () => EditorView }).getView();
+    view.dispatch({ changes: { from: 0, insert: "hello" } });
+    await nextTick();
+
+    await wrapper.find('[data-testid="toolbar-undo"]').trigger("click");
+    await nextTick();
+    expect(document.content).toBe("");
+    expect(
+      (wrapper.find('[data-testid="toolbar-undo"]').element as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    expect(
+      (wrapper.find('[data-testid="toolbar-redo"]').element as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
+
+    await wrapper.find('[data-testid="toolbar-redo"]').trigger("click");
+    await nextTick();
+    expect(document.content).toBe("hello");
+  });
+
+  it("renders the Help button past the Layout Switcher with its tooltip", () => {
+    const wrapper = mount(App);
+    const help = wrapper.find('[data-testid="toolbar-help"]');
+    expect(help.exists()).toBe(true);
+    expect(help.attributes("title")).toBe("Help (Ctrl/Cmd+/)");
+    const layoutSwitcher = wrapper.find('[data-testid="layout-switcher"]')
+      .element;
+    expect(
+      layoutSwitcher.compareDocumentPosition(help.element) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("keeps the Help button visible in Split View and Focus Mode", async () => {
+    const wrapper = mount(App);
+    const ui = useUiStore();
+    expect(wrapper.find('[data-testid="toolbar-help"]').isVisible()).toBe(true);
+
+    ui.cycleLayoutMode();
+    ui.cycleLayoutMode();
+    await nextTick();
+    expect(wrapper.find('[data-testid="toolbar-help"]').isVisible()).toBe(true);
+  });
+
+  it("hides the Help button in Preview Only", async () => {
+    const wrapper = mount(App);
+    const ui = useUiStore();
+    ui.cycleLayoutMode();
+    await nextTick();
+    expect(wrapper.find('[data-testid="toolbar-help"]').isVisible()).toBe(false);
+  });
+
+  it("opens the Shortcuts Reference on the Help button and lists every shortcut grouped", async () => {
+    const wrapper = mount(App);
+    await wrapper.find('[data-testid="toolbar-help"]').trigger("click");
+    await nextTick();
+
+    const modal = wrapper.find('[data-testid="shortcuts-modal"]');
+    expect(modal.exists()).toBe(true);
+    expect(modal.attributes("role")).toBe("dialog");
+    expect(modal.text()).toContain("Shortcuts Reference");
+
+    const groupIds = [
+      "shortcut-group-file",
+      "shortcut-group-edit",
+      "shortcut-group-format",
+      "shortcut-group-view",
+      "shortcut-group-help",
+    ];
+    for (const id of groupIds) {
+      expect(wrapper.find(`[data-testid="${id}"]`).exists()).toBe(true);
+    }
+
+    const expectations: Array<[string, string]> = [
+      ["New", "Ctrl/Cmd+N"],
+      ["Open", "Ctrl/Cmd+O"],
+      ["Save", "Ctrl/Cmd+S"],
+      ["Save As", "Ctrl/Cmd+Shift+S"],
+      ["Undo", "Ctrl/Cmd+Z"],
+      ["Redo", "Ctrl/Cmd+Shift+Z"],
+      ["Find & Replace", "Ctrl/Cmd+F"],
+      ["Bold", "Ctrl/Cmd+B"],
+      ["Italic", "Ctrl/Cmd+I"],
+      ["Heading", "Ctrl/Cmd+Shift+H"],
+      ["List", "Ctrl/Cmd+Shift+L"],
+      ["Link", "Ctrl/Cmd+K"],
+      ["Code", "Ctrl/Cmd+Shift+C"],
+      ["Cycle layout", "Ctrl/Cmd+Shift+P"],
+      ["Help", "Ctrl/Cmd+/"],
+    ];
+    const text = modal.text();
+    for (const [label, combo] of expectations) {
+      expect(text).toContain(label);
+      expect(text).toContain(combo);
+    }
+  });
+
+  it("lists the reference entries within their category groups", async () => {
+    const wrapper = mount(App);
+    await wrapper.find('[data-testid="toolbar-help"]').trigger("click");
+    await nextTick();
+
+    expect(
+      wrapper.find('[data-testid="shortcut-group-file"]').text(),
+    ).toContain("Save As");
+    expect(wrapper.find('[data-testid="shortcut-group-edit"]').text()).toContain(
+      "Find & Replace",
+    );
+    expect(
+      wrapper.find('[data-testid="shortcut-group-format"]').text(),
+    ).toContain("Heading");
+    expect(
+      wrapper.find('[data-testid="shortcut-group-view"]').text(),
+    ).toContain("Cycle layout");
+    expect(
+      wrapper.find('[data-testid="shortcut-group-help"]').text(),
+    ).toContain("Ctrl/Cmd+/");
+  });
+
+  it("toggles the Shortcuts Reference with Cmd/Ctrl+/", async () => {
+    const wrapper = mount(App);
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "/", ctrlKey: true }),
+    );
+    await nextTick();
+    expect(wrapper.find('[data-testid="shortcuts-modal"]').exists()).toBe(true);
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "/", ctrlKey: true }),
+    );
+    await nextTick();
+    expect(wrapper.find('[data-testid="shortcuts-modal"]').exists()).toBe(false);
+  });
+
+  it("opens the Shortcuts Reference with Cmd/Ctrl+/ from Preview Only", async () => {
+    const wrapper = mount(App);
+    const ui = useUiStore();
+    ui.cycleLayoutMode();
+    await nextTick();
+    expect(wrapper.find('[data-testid="toolbar-help"]').isVisible()).toBe(false);
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "/", ctrlKey: true }),
+    );
+    await nextTick();
+    expect(wrapper.find('[data-testid="shortcuts-modal"]').exists()).toBe(true);
+  });
+
+  it("closes the Shortcuts Reference with Escape", async () => {
+    const wrapper = mount(App);
+    await wrapper.find('[data-testid="toolbar-help"]').trigger("click");
+    await nextTick();
+    expect(wrapper.find('[data-testid="shortcuts-modal"]').exists()).toBe(true);
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    await nextTick();
+    expect(wrapper.find('[data-testid="shortcuts-modal"]').exists()).toBe(false);
+  });
+
+  it("closes the Shortcuts Reference when clicking outside the modal", async () => {
+    const wrapper = mount(App);
+    await wrapper.find('[data-testid="toolbar-help"]').trigger("click");
+    await nextTick();
+    expect(wrapper.find('[data-testid="shortcuts-modal"]').exists()).toBe(true);
+
+    await wrapper.find('[data-testid="shortcuts-overlay"]').trigger("click");
+    await nextTick();
+    expect(wrapper.find('[data-testid="shortcuts-modal"]').exists()).toBe(false);
+  });
+
+  it("closes the Shortcuts Reference when the Help button is pressed again", async () => {
+    const wrapper = mount(App);
+    await wrapper.find('[data-testid="toolbar-help"]').trigger("click");
+    await nextTick();
+    expect(wrapper.find('[data-testid="shortcuts-modal"]').exists()).toBe(true);
+
+    await wrapper.find('[data-testid="toolbar-help"]').trigger("click");
+    await nextTick();
+    expect(wrapper.find('[data-testid="shortcuts-modal"]').exists()).toBe(false);
+  });
+
+  it("never changes the Document or editor state when the Shortcuts Reference opens or closes", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    const pane = wrapper.findComponent({ ref: "editorPane" });
+    const view = (pane.vm as unknown as { getView: () => EditorView }).getView();
+    view.dispatch({ changes: { from: 0, insert: "# Draft" } });
+    await nextTick();
+    const contentBefore = document.content;
+    const undoDisabledBefore = (
+      wrapper.find('[data-testid="toolbar-undo"]').element as HTMLButtonElement
+    ).disabled;
+
+    await wrapper.find('[data-testid="toolbar-help"]').trigger("click");
+    await nextTick();
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    await nextTick();
+
+    expect(document.content).toBe(contentBefore);
+    expect(document.dirty).toBe(true);
+    expect(
+      (wrapper.find('[data-testid="toolbar-undo"]').element as HTMLButtonElement)
+        .disabled,
+    ).toBe(undoDisabledBefore);
+  });
+
+  it("clears undo history when a new Document replaces the editor content", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    const pane = wrapper.findComponent({ ref: "editorPane" });
+    const view = (pane.vm as unknown as { getView: () => EditorView }).getView();
+    view.dispatch({ changes: { from: 0, insert: "# Draft" } });
+    await nextTick();
+
+    const undo = wrapper.find('[data-testid="toolbar-undo"]');
+    expect((undo.element as HTMLButtonElement).disabled).toBe(false);
+
+    document.mirrorContent("");
+    (pane.vm as unknown as { replaceContent: (text: string) => void }).replaceContent(
+      "",
+    );
+    await nextTick();
+
+    expect((undo.element as HTMLButtonElement).disabled).toBe(true);
+    expect(
+      (wrapper.find('[data-testid="toolbar-redo"]').element as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
   });
 });

@@ -7,14 +7,14 @@ import fs from "node:fs";
 // build) with a real temp path. The seam runs the same runDropOpen code path a
 // real drop uses: Confirm-Discard Guard, then the real open_document read, then
 // the auto-chosen Preview Only layout.
-describe("ALi-md-editor drag-and-drop open", () => {
+describe("Markdown-Magic drag-and-drop open", () => {
   const dropAPath = path.join(
     os.tmpdir(),
-    `alimd-e2e-drop-a-${Date.now()}.md`,
+    `markdownmagic-e2e-drop-a-${Date.now()}.md`,
   );
   const dropBPath = path.join(
     os.tmpdir(),
-    `alimd-e2e-drop-b-${Date.now()}.md`,
+    `markdownmagic-e2e-drop-b-${Date.now()}.md`,
   );
   const dropAFilename = path.basename(dropAPath);
   const dropBFilename = path.basename(dropBPath);
@@ -45,7 +45,7 @@ describe("ALi-md-editor drag-and-drop open", () => {
 
   async function stubGuardChoice(choice: string) {
     await browser.execute((c) => {
-      localStorage.setItem("alimd:e2e:guard-choice", c);
+      localStorage.setItem("markdownmagic:e2e:guard-choice", c);
     }, choice);
   }
 
@@ -64,7 +64,7 @@ describe("ALi-md-editor drag-and-drop open", () => {
 
     await browser.waitUntil(
       async () =>
-        (await browser.getTitle()) === `${dropAFilename} — ALi-md-editor`,
+        (await browser.getTitle()) === `${dropAFilename} — Markdown-Magic`,
       { timeout: 10000, timeoutMsg: "drop did not update the title" },
     );
 
@@ -93,7 +93,7 @@ describe("ALi-md-editor drag-and-drop open", () => {
     await typeText("# Local edits");
     await browser.waitUntil(
       async () =>
-        (await browser.getTitle()) === `${dropAFilename} * — ALi-md-editor`,
+        (await browser.getTitle()) === `${dropAFilename} * — Markdown-Magic`,
       { timeout: 10000, timeoutMsg: "asterisk did not appear after editing" },
     );
 
@@ -101,7 +101,7 @@ describe("ALi-md-editor drag-and-drop open", () => {
     await triggerDrop(dropBPath);
     await browser.pause(500);
 
-    expect(await browser.getTitle()).toBe(`${dropAFilename} * — ALi-md-editor`);
+    expect(await browser.getTitle()).toBe(`${dropAFilename} * — Markdown-Magic`);
   });
 
   it("swaps the Dirty Document on a drop when the guard is dismissed", async () => {
@@ -110,7 +110,7 @@ describe("ALi-md-editor drag-and-drop open", () => {
 
     await browser.waitUntil(
       async () =>
-        (await browser.getTitle()) === `${dropBFilename} — ALi-md-editor`,
+        (await browser.getTitle()) === `${dropBFilename} — Markdown-Magic`,
       { timeout: 10000, timeoutMsg: "drop did not swap after the guard" },
     );
 

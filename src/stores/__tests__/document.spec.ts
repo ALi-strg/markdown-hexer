@@ -46,7 +46,7 @@ describe("document store", () => {
 
   it("derives the window title from the filename", () => {
     const document = useDocumentStore();
-    expect(document.title).toBe("Untitled.md — ALi-md-editor");
+    expect(document.title).toBe("Untitled.md — Markdown-Magic");
   });
 
   it("mirrors editor text and marks the Document Dirty on the first keystroke", () => {
@@ -73,9 +73,9 @@ describe("document store", () => {
   it("shows the asterisk in the title while Dirty and removes it when clean", () => {
     const document = useDocumentStore();
     document.mirrorContent("hello");
-    expect(document.title).toBe("Untitled.md * — ALi-md-editor");
+    expect(document.title).toBe("Untitled.md * — Markdown-Magic");
     document.mirrorContent("");
-    expect(document.title).toBe("Untitled.md — ALi-md-editor");
+    expect(document.title).toBe("Untitled.md — Markdown-Magic");
   });
 
   it("writes a titled Dirty Document to its canonical path and clears Dirty", async () => {
@@ -135,7 +135,7 @@ describe("document store", () => {
 
     expect(savedAs).toBe(true);
     expect(document.canonicalPath).toBe("C:\\notes\\new.md");
-    expect(document.title).toBe("new.md — ALi-md-editor");
+    expect(document.title).toBe("new.md — Markdown-Magic");
 
     document.mirrorContent("# v2");
     await document.save();
@@ -208,7 +208,7 @@ describe("document store", () => {
     expect(document.content).toBe("# New file");
     expect(document.canonicalPath).toBe("C:\\notes\\new.md");
     expect(document.filename).toBe("new.md");
-    expect(document.title).toBe("new.md — ALi-md-editor");
+    expect(document.title).toBe("new.md — Markdown-Magic");
     expect(document.dirty).toBe(false);
   });
 

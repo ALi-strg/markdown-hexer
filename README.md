@@ -1,4 +1,4 @@
-# ALi-md-editor
+# Markdown-Magic
 
 A cross-platform, distraction-free Markdown editor built with Tauri 2, Vue 3, and CodeMirror 6. One Document at a time, a live-rendered Preview Pane, and native file-system integration.
 

@@ -22,7 +22,7 @@ describe("settings store", () => {
     const settings = useSettingsStore();
     settings.setFont("mono");
     expect(settings.font).toBe("mono");
-    expect(localStorage.getItem("alimd:settings")).toBe(
+    expect(localStorage.getItem("markdownmagic:settings")).toBe(
       JSON.stringify({ font: "mono" }),
     );
   });
@@ -31,13 +31,13 @@ describe("settings store", () => {
     const settings = useSettingsStore();
     settings.setTheme("dark");
     expect(settings.theme).toBe("dark");
-    expect(localStorage.getItem("alimd:settings")).toBe(
+    expect(localStorage.getItem("markdownmagic:settings")).toBe(
       JSON.stringify({ theme: "dark" }),
     );
   });
 
   it("restores a persisted font on the next launch", () => {
-    localStorage.setItem("alimd:settings", JSON.stringify({ font: "serif" }));
+    localStorage.setItem("markdownmagic:settings", JSON.stringify({ font: "serif" }));
     setActivePinia(createPinia());
 
     const settings = useSettingsStore();
@@ -45,7 +45,7 @@ describe("settings store", () => {
   });
 
   it("restores a persisted theme on the next launch", () => {
-    localStorage.setItem("alimd:settings", JSON.stringify({ theme: "light" }));
+    localStorage.setItem("markdownmagic:settings", JSON.stringify({ theme: "light" }));
     setActivePinia(createPinia());
 
     const settings = useSettingsStore();
@@ -53,7 +53,7 @@ describe("settings store", () => {
   });
 
   it("falls back to Default for an unknown persisted font", () => {
-    localStorage.setItem("alimd:settings", JSON.stringify({ font: "comic" }));
+    localStorage.setItem("markdownmagic:settings", JSON.stringify({ font: "comic" }));
     setActivePinia(createPinia());
 
     const settings = useSettingsStore();
@@ -66,7 +66,7 @@ describe("settings store", () => {
     settings.setTheme("dark");
     expect(settings.font).toBe("mono");
     expect(settings.theme).toBe("dark");
-    expect(localStorage.getItem("alimd:settings")).toBe(
+    expect(localStorage.getItem("markdownmagic:settings")).toBe(
       JSON.stringify({ font: "mono", theme: "dark" }),
     );
   });
@@ -77,13 +77,13 @@ describe("settings store", () => {
     settings.setFont("serif");
     expect(settings.theme).toBe("light");
     expect(settings.font).toBe("serif");
-    expect(localStorage.getItem("alimd:settings")).toBe(
+    expect(localStorage.getItem("markdownmagic:settings")).toBe(
       JSON.stringify({ theme: "light", font: "serif" }),
     );
   });
 
   it("falls back to System for an unknown persisted theme", () => {
-    localStorage.setItem("alimd:settings", JSON.stringify({ theme: "neon" }));
+    localStorage.setItem("markdownmagic:settings", JSON.stringify({ theme: "neon" }));
     setActivePinia(createPinia());
 
     const settings = useSettingsStore();
@@ -91,7 +91,7 @@ describe("settings store", () => {
   });
 
   it("falls back to System when the persisted blob is corrupt", () => {
-    localStorage.setItem("alimd:settings", "not json{{{");
+    localStorage.setItem("markdownmagic:settings", "not json{{{");
     setActivePinia(createPinia());
 
     const settings = useSettingsStore();

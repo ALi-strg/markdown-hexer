@@ -6,10 +6,10 @@ import fs from "node:fs";
 // overlay, so the E2E exercises the real path: Cmd/Ctrl+F opens the overlay in
 // Preview Only, matches are navigable there, and a replace first switches to
 // Split View before editing hidden text.
-describe("ALi-md-editor find & replace", () => {
+describe("Markdown-Magic find & replace", () => {
   const openPath = path.join(
     os.tmpdir(),
-    `alimd-e2e-find-${Date.now()}.md`,
+    `markdownmagic-e2e-find-${Date.now()}.md`,
   );
   const openFilename = path.basename(openPath);
   const original = "alpha beta alpha\ngamma alpha";
@@ -30,7 +30,7 @@ describe("ALi-md-editor find & replace", () => {
 
   async function stubOpenDialog() {
     await browser.execute((p) => {
-      localStorage.setItem("alimd:e2e:open-path", p);
+      localStorage.setItem("markdownmagic:e2e:open-path", p);
     }, openPath);
   }
 
@@ -40,7 +40,7 @@ describe("ALi-md-editor find & replace", () => {
     await browser.keys(["Control", "o"]);
     await browser.waitUntil(
       async () =>
-        (await browser.getTitle()) === `${openFilename} — ALi-md-editor`,
+        (await browser.getTitle()) === `${openFilename} — Markdown-Magic`,
       { timeout: 10000, timeoutMsg: "Open did not load the file" },
     );
   }

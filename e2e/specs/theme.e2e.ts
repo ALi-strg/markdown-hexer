@@ -2,7 +2,7 @@
 // toolbar. System is the default and follows the OS via CSS; Light and Dark are
 // manual overrides persisted in localStorage. The E2E switches themes and
 // asserts `data-theme` plus the pane styling actually change.
-describe("ALi-md-editor theme", () => {
+describe("Markdown-Magic theme", () => {
   async function appTheme(): Promise<string | null> {
     return $('[data-testid="app"]').getAttribute("data-theme");
   }
@@ -10,6 +10,11 @@ describe("ALi-md-editor theme", () => {
   async function appBackground(): Promise<string> {
     const app = await $('[data-testid="app"]');
     return browser.execute((el) => getComputedStyle(el).backgroundColor, app);
+  }
+
+  async function appTextColor(): Promise<string> {
+    const app = await $('[data-testid="app"]');
+    return browser.execute((el) => getComputedStyle(el).color, app);
   }
 
   async function setTheme(label: string) {
@@ -33,7 +38,9 @@ describe("ALi-md-editor theme", () => {
   it("switches to Light and restyles the panes", async () => {
     await setTheme("Light");
     expect(await appTheme()).toBe("light");
-    expect(await appBackground()).toBe("rgb(245, 246, 248)");
+    // The warm beige background and dark brown text must reach the DOM.
+    expect(await appBackground()).toBe("rgb(245, 241, 227)");
+    expect(await appTextColor()).toBe("rgb(63, 50, 34)");
   });
 
   it("switches to Dark and restyles the panes", async () => {
@@ -44,7 +51,7 @@ describe("ALi-md-editor theme", () => {
 
   it("persists the manual override for the next launch", async () => {
     const stored = await browser.execute(() =>
-      localStorage.getItem("alimd:settings"),
+      localStorage.getItem("markdownmagic:settings"),
     );
     expect(stored).toContain("dark");
   });

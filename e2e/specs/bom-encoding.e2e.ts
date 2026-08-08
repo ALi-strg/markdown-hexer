@@ -9,8 +9,8 @@ const BOM = Buffer.from([0xef, 0xbb, 0xbf]);
 // the real open_document command, verifies the rendered content, then saves
 // through the real save_document command and asserts the on-disk bytes carry
 // no BOM.
-describe("ALi-md-editor BOM / UTF-8 encoding", () => {
-  const openPath = path.join(os.tmpdir(), `alimd-e2e-bom-${Date.now()}.md`);
+describe("Markdown-Magic BOM / UTF-8 encoding", () => {
+  const openPath = path.join(os.tmpdir(), `markdownmagic-e2e-bom-${Date.now()}.md`);
   const openFilename = path.basename(openPath);
 
   before(() => {
@@ -28,7 +28,7 @@ describe("ALi-md-editor BOM / UTF-8 encoding", () => {
 
   async function stubOpenDialog() {
     await browser.execute((p) => {
-      localStorage.setItem("alimd:e2e:open-path", p);
+      localStorage.setItem("markdownmagic:e2e:open-path", p);
     }, openPath);
   }
 
@@ -39,7 +39,7 @@ describe("ALi-md-editor BOM / UTF-8 encoding", () => {
 
     await browser.waitUntil(
       async () =>
-        (await browser.getTitle()) === `${openFilename} — ALi-md-editor`,
+        (await browser.getTitle()) === `${openFilename} — Markdown-Magic`,
       {
         timeout: 10000,
         timeoutMsg: "title did not update to the opened filename",

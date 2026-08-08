@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 export type GuardChoice = "save" | "dont-save" | "cancel";
 
-const E2E_GUARD_CHOICE_KEY = "alimd:e2e:guard-choice";
+const E2E_GUARD_CHOICE_KEY = "markdownmagic:e2e:guard-choice";
 
 const CHOICES: GuardChoice[] = ["save", "dont-save", "cancel"];
 

@@ -14,14 +14,14 @@ import { spawnSync } from "node:child_process";
 // tauri-driver, failing every remaining spec). On platforms with working
 // native single-instance forwarding, the test spawns a real second process to
 // validate the no-second-window behavior end to end.
-describe("ALi-md-editor file association & single-instance open", () => {
+describe("Markdown-Magic file association & single-instance open", () => {
   const firstPath = path.join(
     os.tmpdir(),
-    `alimd-e2e-open-first-${Date.now()}.md`,
+    `markdownmagic-e2e-open-first-${Date.now()}.md`,
   );
   const secondPath = path.join(
     os.tmpdir(),
-    `alimd-e2e-open-second-${Date.now()}.md`,
+    `markdownmagic-e2e-open-second-${Date.now()}.md`,
   );
   const firstFilename = path.basename(firstPath);
   const secondFilename = path.basename(secondPath);
@@ -53,7 +53,7 @@ describe("ALi-md-editor file association & single-instance open", () => {
 
   async function stubGuardChoice(choice: string) {
     await browser.execute((c) => {
-      localStorage.setItem("alimd:e2e:guard-choice", c);
+      localStorage.setItem("markdownmagic:e2e:guard-choice", c);
     }, choice);
   }
 
@@ -72,7 +72,7 @@ describe("ALi-md-editor file association & single-instance open", () => {
 
     await browser.waitUntil(
       async () =>
-        (await browser.getTitle()) === `${firstFilename} — ALi-md-editor`,
+        (await browser.getTitle()) === `${firstFilename} — Markdown-Magic`,
       { timeout: 10000, timeoutMsg: "file-open did not update the title" },
     );
 
@@ -102,7 +102,7 @@ describe("ALi-md-editor file association & single-instance open", () => {
     await typeText("# Local edits");
     await browser.waitUntil(
       async () =>
-        (await browser.getTitle()) === `${firstFilename} * — ALi-md-editor`,
+        (await browser.getTitle()) === `${firstFilename} * — Markdown-Magic`,
       { timeout: 10000, timeoutMsg: "asterisk did not appear after editing" },
     );
 
@@ -110,7 +110,7 @@ describe("ALi-md-editor file association & single-instance open", () => {
     await triggerFileOpen(secondPath);
     await browser.pause(500);
 
-    expect(await browser.getTitle()).toBe(`${firstFilename} * — ALi-md-editor`);
+    expect(await browser.getTitle()).toBe(`${firstFilename} * — Markdown-Magic`);
   });
 
   it("forwards a second launch to the running window without a second window", async () => {
@@ -142,7 +142,7 @@ describe("ALi-md-editor file association & single-instance open", () => {
 
     await browser.waitUntil(
       async () =>
-        (await browser.getTitle()) === `${secondFilename} — ALi-md-editor`,
+        (await browser.getTitle()) === `${secondFilename} — Markdown-Magic`,
       {
         timeout: 15000,
         timeoutMsg: "second launch did not open in the running window",

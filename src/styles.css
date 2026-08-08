@@ -7,36 +7,36 @@
   --preview-font-size: 15px;
   --pane-padding: 1.25rem;
 
-  /* Light theme (cool grey) — the default. The color-scheme property is what
+  /* Light theme (warm beige) — the default. The color-scheme property is what
      keeps native controls (select popups, scrollbars) readable in each theme:
      without it Chromium draws them with the light palette regardless of the
      dark CSS variables. */
   color-scheme: light;
-  --background-color: #f5f6f8;
-  --surface-color: #ffffff;
-  --text-color: #262b33;
-  --text-muted: #59636e;
-  --border-color: #d8dde3;
-  --input-background: #ffffff;
-  --accent-color: #2563eb;
-  --accent-contrast-color: #ffffff;
-  --hover-background: rgba(0, 0, 0, 0.05);
-  --selection-background: #b6d4fe;
-  --selection-color: #1f2937;
-  --caret-color: #2563eb;
+  --background-color: #f5f1e3;
+  --surface-color: #fdf9ee;
+  --text-color: #3f3222;
+  --text-muted: #85735a;
+  --border-color: #e2d6bb;
+  --input-background: #fdf9ee;
+  --accent-color: #a0522d;
+  --accent-contrast-color: #fffaf0;
+  --hover-background: rgba(122, 88, 44, 0.08);
+  --selection-background: #e6cba5;
+  --selection-color: #3f3222;
+  --caret-color: #a0522d;
   --gutter-background: transparent;
-  --gutter-text: #6e7781;
-  --active-line-background: rgba(0, 0, 0, 0.03);
-  --code-background: #eef1f4;
-  --code-border: #e2e6ec;
-  --link-color: #2563eb;
-  --blockquote-border: #d0d7de;
-  --blockquote-text: #57606a;
-  --table-stripe-background: rgba(0, 0, 0, 0.02);
-  --toast-background: #262b33;
-  --toast-color: #ffffff;
-  --scrollbar-thumb: rgba(0, 0, 0, 0.25);
-  --scrollbar-thumb-hover: rgba(0, 0, 0, 0.4);
+  --gutter-text: #9c8a6d;
+  --active-line-background: rgba(122, 88, 44, 0.06);
+  --code-background: #efe6d2;
+  --code-border: #e0d3b6;
+  --link-color: #a0522d;
+  --blockquote-border: #dcc9a0;
+  --blockquote-text: #85735a;
+  --table-stripe-background: rgba(122, 88, 44, 0.04);
+  --toast-background: #3f3222;
+  --toast-color: #fdf9ee;
+  --scrollbar-thumb: rgba(122, 88, 44, 0.3);
+  --scrollbar-thumb-hover: rgba(122, 88, 44, 0.5);
 }
 
 [data-theme="dark"] {

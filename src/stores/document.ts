@@ -6,7 +6,7 @@ import { pickExternalModificationChoice } from "../lib/externalDialog";
 import { useUiStore } from "./ui";
 
 const UNTITLED_FILENAME = "Untitled.md";
-const APP_TITLE_SUFFIX = " — ALi-md-editor";
+const APP_TITLE_SUFFIX = " — Markdown-Magic";
 const SAVE_FAILED_MESSAGE = "Save failed — your changes are not on disk";
 const OPEN_FAILED_MESSAGE = "Open failed — the file could not be read";
 

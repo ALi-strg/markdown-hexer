@@ -1,10 +1,10 @@
 /// Formats the native OS title bar text for a Document.
 ///
-/// `format_window_title("Untitled.md", false)` → `Untitled.md — ALi-md-editor`
-/// `format_window_title("notes.md", true)`  → `notes.md * — ALi-md-editor`
+/// `format_window_title("Untitled.md", false)` → `Untitled.md — Markdown-Magic`
+/// `format_window_title("notes.md", true)`  → `notes.md * — Markdown-Magic`
 pub fn format_window_title(filename: &str, dirty: bool) -> String {
     let dirty_marker = if dirty { " *" } else { "" };
-    format!("{filename}{dirty_marker} — ALi-md-editor")
+    format!("{filename}{dirty_marker} — Markdown-Magic")
 }
 
 #[cfg(test)]
@@ -15,7 +15,7 @@ mod tests {
     fn clean_document_title_has_no_asterisk() {
         assert_eq!(
             format_window_title("Untitled.md", false),
-            "Untitled.md — ALi-md-editor"
+            "Untitled.md — Markdown-Magic"
         );
     }
 
@@ -23,7 +23,7 @@ mod tests {
     fn dirty_document_title_has_asterisk_before_separator() {
         assert_eq!(
             format_window_title("notes.md", true),
-            "notes.md * — ALi-md-editor"
+            "notes.md * — Markdown-Magic"
         );
     }
 }

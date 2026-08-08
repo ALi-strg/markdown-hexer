@@ -7,8 +7,8 @@ import fs from "node:fs";
 // its links must render as ordinary anchors. The E2E uses a real temp directory
 // so the relative path actually resolves, and asserts the image loads (which
 // exercises the Rust directory-scoped protocol handler end to end).
-describe("ALi-md-editor preview asset handling", () => {
-  const dir = path.join(os.tmpdir(), `alimd-e2e-assets-${Date.now()}`);
+describe("Markdown-Magic preview asset handling", () => {
+  const dir = path.join(os.tmpdir(), `markdownmagic-e2e-assets-${Date.now()}`);
   const docPath = path.join(dir, "note.md");
   const imagePath = path.join(dir, "pic.png");
   const docFilename = path.basename(docPath);
@@ -41,13 +41,13 @@ describe("ALi-md-editor preview asset handling", () => {
 
   async function stubOpenDialog(filePath: string) {
     await browser.execute((p) => {
-      localStorage.setItem("alimd:e2e:open-path", p);
+      localStorage.setItem("markdownmagic:e2e:open-path", p);
     }, filePath);
   }
 
   async function stubGuardChoice(choice: string) {
     await browser.execute((c) => {
-      localStorage.setItem("alimd:e2e:guard-choice", c);
+      localStorage.setItem("markdownmagic:e2e:guard-choice", c);
     }, choice);
   }
 
@@ -58,7 +58,7 @@ describe("ALi-md-editor preview asset handling", () => {
     await browser.keys(["Control", "o"]);
     await browser.waitUntil(
       async () =>
-        (await browser.getTitle()) === `${docFilename} — ALi-md-editor`,
+        (await browser.getTitle()) === `${docFilename} — Markdown-Magic`,
       { timeout: 10000, timeoutMsg: "Open did not load the Document" },
     );
   }
