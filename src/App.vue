@@ -290,6 +290,10 @@ function onFind() {
 /// Applies a toolbar formatting operation to the Editor Pane. In Preview Only
 /// there is no visible Editor Pane to format, so the toolbar hides its buttons
 /// and the shortcuts no-op.
+///
+/// The toolbar button has focus when clicked, so the editor is refocused after
+/// the dispatch: continued keyboard input (including Cmd/Ctrl+Z undo, which
+/// CodeMirror's keymap only serves while the editor is focused) keeps working.
 function onFormat(operation: FormatOperation) {
   if (ui.layoutMode === "preview") {
     return;
@@ -297,6 +301,7 @@ function onFormat(operation: FormatOperation) {
   const view = editorPane.value?.getView();
   if (view) {
     applyFormatting(view, operation);
+    view.focus();
   }
 }
 
@@ -326,11 +331,14 @@ function onSaveAs() {
 /// Dispatches CodeMirror's native undo/redo commands, the exact commands the
 /// `Mod-z` / `Mod-Shift-z` keymap bind, so the buttons and the shortcuts can
 /// never disagree. In Preview Only the buttons are hidden, but the shortcuts
-/// still reach the mounted editor.
+/// still reach the mounted editor. The editor is refocused after the dispatch
+/// for the same reason as formatting: the clicked button holds focus, and the
+/// next keyboard input should land in the editor.
 function onUndo() {
   const view = getEditorView();
   if (view) {
     undoCommand(view);
+    view.focus();
   }
 }
 
@@ -338,6 +346,7 @@ function onRedo() {
   const view = getEditorView();
   if (view) {
     redoCommand(view);
+    view.focus();
   }
 }
 

@@ -95,12 +95,15 @@ describe("ALi-md-editor toolbar formatting & shortcuts", () => {
     await waitForEditorText("# Opened");
   });
 
-  it("wraps the selection in bold via the toolbar button", async () => {
+  it("wraps the selection in bold via the toolbar button and undoes it", async () => {
     await focusEditor();
     await browser.keys(["Control", "a"]);
     await (await $('[data-testid="toolbar-bold"]')).click();
 
     await waitForEditorText("**# Opened**");
+
+    await browser.keys(["Control", "z"]);
+    await waitForEditorText("# Opened");
   });
 
   it("applies heading via the Cmd/Ctrl+Shift+H shortcut and undoes it", async () => {
