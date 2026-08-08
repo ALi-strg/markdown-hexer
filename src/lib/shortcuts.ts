@@ -13,7 +13,7 @@ export interface ShortcutEntry {
   combo: KeyCombo | null;
 }
 
-function comboLabel(combo: KeyCombo): string {
+export function comboLabel(combo: KeyCombo): string {
   const parts: string[] = [];
   if (combo.ctrlCmd) {
     parts.push("Ctrl/Cmd");
@@ -146,3 +146,61 @@ export const REDO_SHORTCUT: ShortcutEntry = {
   label: "Redo",
   combo: { key: "z", ctrlCmd: true, shift: true },
 };
+
+/// The View action the Layout Switcher and the cycle shortcut both perform,
+/// listed in the Shortcuts Reference. Shares the cycle combo with the Layout
+/// Switcher segments' tooltips.
+export const CYCLE_LAYOUT_SHORTCUT: ShortcutEntry = {
+  label: "Cycle layout",
+  combo: CYCLE_LAYOUT_COMBO,
+};
+
+/// The Help control: a toolbar button that opens the Shortcuts Reference. Its
+/// `Ctrl/Cmd+/` shortcut also toggles the reference from any Layout Mode.
+export const HELP_SHORTCUT: ShortcutEntry = {
+  label: "Help",
+  combo: { key: "/", ctrlCmd: true, shift: false },
+};
+
+export interface ShortcutGroup {
+  label: string;
+  entries: ShortcutEntry[];
+}
+
+/// The Shortcuts Reference contents, grouped by category. Every entry is the
+/// same `ShortcutEntry` object the tooltips read, so the modal can never drift
+/// from the toolbar.
+export const SHORTCUT_GROUPS: ShortcutGroup[] = [
+  {
+    label: "File",
+    entries: [
+      DOCUMENT_SHORTCUTS.new,
+      DOCUMENT_SHORTCUTS.open,
+      DOCUMENT_SHORTCUTS.save,
+      DOCUMENT_SHORTCUTS.saveAs,
+    ],
+  },
+  {
+    label: "Edit",
+    entries: [UNDO_SHORTCUT, REDO_SHORTCUT, DOCUMENT_SHORTCUTS.findReplace],
+  },
+  {
+    label: "Format",
+    entries: [
+      FORMAT_SHORTCUTS.bold,
+      FORMAT_SHORTCUTS.italic,
+      FORMAT_SHORTCUTS.heading,
+      FORMAT_SHORTCUTS.list,
+      FORMAT_SHORTCUTS.link,
+      FORMAT_SHORTCUTS.code,
+    ],
+  },
+  {
+    label: "View",
+    entries: [CYCLE_LAYOUT_SHORTCUT],
+  },
+  {
+    label: "Help",
+    entries: [HELP_SHORTCUT],
+  },
+];

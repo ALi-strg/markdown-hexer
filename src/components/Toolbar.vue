@@ -190,6 +190,16 @@
         {{ LAYOUT_LABELS[mode] }}
       </button>
     </div>
+    <button
+      type="button"
+      class="toolbar-button toolbar-help"
+      data-testid="toolbar-help"
+      v-show="layoutMode !== 'preview'"
+      :title="tooltipText(HELP_SHORTCUT)"
+      @click="emit('help')"
+    >
+      Help
+    </button>
   </div>
 </template>
 
@@ -200,6 +210,7 @@ import {
   DOCUMENT_SHORTCUTS,
   FONT_CONTROL,
   FORMAT_SHORTCUTS,
+  HELP_SHORTCUT,
   REDO_SHORTCUT,
   THEME_CONTROL,
   UNDO_SHORTCUT,
@@ -238,6 +249,7 @@ const emit = defineEmits<{
   themeChange: [theme: Theme];
   fontChange: [font: Font];
   layoutChange: [mode: LayoutMode];
+  help: [];
 }>();
 
 function onThemeChange(event: Event) {

@@ -22,11 +22,16 @@
       @theme-change="onThemeChange"
       @font-change="onFontChange"
       @layout-change="onLayoutChange"
+      @help="onHelp"
     />
     <FindReplacePanel
       v-if="ui.findOverlayOpen"
       ref="findPanelRef"
       :get-view="getEditorView"
+    />
+    <ShortcutsReference
+      v-if="shortcutsOpen"
+      @close="closeShortcuts"
     />
     <div
       ref="workspaceRef"
@@ -82,6 +87,7 @@ import type { EditorView } from "@codemirror/view";
 import EditorPane from "./components/EditorPane.vue";
 import FindReplacePanel from "./components/FindReplacePanel.vue";
 import PreviewPane from "./components/PreviewPane.vue";
+import ShortcutsReference from "./components/ShortcutsReference.vue";
 import Toolbar from "./components/Toolbar.vue";
 import { confirmDiscard } from "./lib/confirmDiscard";
 import { applyFormatting } from "./lib/editorFormatting";
@@ -91,6 +97,7 @@ import {
   CYCLE_LAYOUT_COMBO,
   DOCUMENT_SHORTCUTS,
   FORMAT_SHORTCUTS,
+  HELP_SHORTCUT,
   matchesCombo,
   type DocumentControlOperation,
 } from "./lib/shortcuts";
@@ -117,6 +124,7 @@ const previewPane = ref<{
   getPreviewHost: () => HTMLElement | null;
 } | null>(null);
 const findPanelRef = ref<{ focusQuery: () => void } | null>(null);
+const shortcutsOpen = ref(false);
 const workspaceRef = ref<HTMLElement | null>(null);
 const dividerRef = ref<HTMLElement | null>(null);
 
@@ -248,6 +256,17 @@ async function runDocumentControl(operation: DocumentControlOperation) {
 }
 
 async function onKeydown(event: KeyboardEvent) {
+  if (shortcutsOpen.value && event.key === "Escape") {
+    event.preventDefault();
+    shortcutsOpen.value = false;
+    return;
+  }
+  const helpCombo = HELP_SHORTCUT.combo;
+  if (helpCombo !== null && matchesCombo(event, helpCombo)) {
+    event.preventDefault();
+    shortcutsOpen.value = !shortcutsOpen.value;
+    return;
+  }
   for (const operation of DOCUMENT_SHORTCUT_ORDER) {
     const combo = DOCUMENT_SHORTCUTS[operation].combo;
     if (combo !== null && matchesCombo(event, combo)) {
@@ -354,6 +373,17 @@ function onRedo() {
 /// auto-choice until the next Document load, same as the cycle shortcut.
 function onLayoutChange(mode: LayoutMode) {
   ui.setLayoutMode(mode);
+}
+
+/// Toggles the Shortcuts Reference. The Help button in source-visible modes and
+/// the `Ctrl/Cmd+/` shortcut both call this, so pressing the button again (or
+/// the shortcut again) closes the modal from any Layout Mode.
+function onHelp() {
+  shortcutsOpen.value = !shortcutsOpen.value;
+}
+
+function closeShortcuts() {
+  shortcutsOpen.value = false;
 }
 
 async function runNewDocument() {
