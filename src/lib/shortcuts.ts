@@ -98,3 +98,51 @@ export const FONT_CONTROL: ShortcutEntry = {
   label: "Font",
   combo: null,
 };
+
+export type DocumentControlOperation =
+  | "new"
+  | "open"
+  | "save"
+  | "saveAs"
+  | "findReplace";
+
+/// The Document Controls group — New, Open, Save, Save As, and Find & Replace —
+/// at the left end of the toolbar. Their tooltips (and the Shortcuts Reference)
+/// draw from this registry so the two can never drift.
+export const DOCUMENT_SHORTCUTS: Record<
+  DocumentControlOperation,
+  ShortcutEntry
+> = {
+  new: {
+    label: "New",
+    combo: { key: "n", ctrlCmd: true, shift: false },
+  },
+  open: {
+    label: "Open",
+    combo: { key: "o", ctrlCmd: true, shift: false },
+  },
+  save: {
+    label: "Save",
+    combo: { key: "s", ctrlCmd: true, shift: false },
+  },
+  saveAs: {
+    label: "Save As",
+    combo: { key: "s", ctrlCmd: true, shift: true },
+  },
+  findReplace: {
+    label: "Find & Replace",
+    combo: { key: "f", ctrlCmd: true, shift: false },
+  },
+};
+
+/// Undo / Redo reflect CodeMirror's native history; the shortcuts themselves are
+/// bound by CodeMirror's default keymap (`Mod-z`, `Mod-Shift-z` / `Mod-y`).
+export const UNDO_SHORTCUT: ShortcutEntry = {
+  label: "Undo",
+  combo: { key: "z", ctrlCmd: true, shift: false },
+};
+
+export const REDO_SHORTCUT: ShortcutEntry = {
+  label: "Redo",
+  combo: { key: "z", ctrlCmd: true, shift: true },
+};

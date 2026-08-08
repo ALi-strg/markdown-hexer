@@ -1,6 +1,61 @@
 <template>
   <div class="toolbar" data-testid="toolbar" role="toolbar">
     <div
+      class="toolbar-document-group"
+      v-show="layoutMode !== 'preview'"
+    >
+      <button
+        type="button"
+        class="toolbar-button"
+        data-testid="toolbar-new"
+        :title="tooltipText(DOCUMENT_SHORTCUTS.new)"
+        @click="emit('new')"
+      >
+        New
+      </button>
+      <button
+        type="button"
+        class="toolbar-button"
+        data-testid="toolbar-open"
+        :title="tooltipText(DOCUMENT_SHORTCUTS.open)"
+        @click="emit('open')"
+      >
+        Open
+      </button>
+      <button
+        type="button"
+        class="toolbar-button"
+        data-testid="toolbar-save"
+        :title="tooltipText(DOCUMENT_SHORTCUTS.save)"
+        @click="emit('save')"
+      >
+        Save
+      </button>
+      <button
+        type="button"
+        class="toolbar-button"
+        data-testid="toolbar-save-as"
+        :title="tooltipText(DOCUMENT_SHORTCUTS.saveAs)"
+        @click="emit('saveAs')"
+      >
+        Save As
+      </button>
+      <button
+        type="button"
+        class="toolbar-button"
+        data-testid="toolbar-find"
+        :title="tooltipText(DOCUMENT_SHORTCUTS.findReplace)"
+        @click="emit('find')"
+      >
+        Find &amp; Replace
+      </button>
+    </div>
+    <span
+      class="toolbar-separator"
+      aria-hidden="true"
+      v-show="layoutMode !== 'preview'"
+    ></span>
+    <div
       class="toolbar-format-group"
       v-show="layoutMode !== 'preview'"
     >
@@ -60,6 +115,32 @@
         Code
       </button>
     </div>
+    <div
+      class="toolbar-history-group"
+      v-show="layoutMode !== 'preview'"
+    >
+      <span class="toolbar-separator" aria-hidden="true"></span>
+      <button
+        type="button"
+        class="toolbar-button"
+        data-testid="toolbar-undo"
+        :disabled="!canUndo"
+        :title="tooltipText(UNDO_SHORTCUT)"
+        @click="emit('undo')"
+      >
+        Undo
+      </button>
+      <button
+        type="button"
+        class="toolbar-button"
+        data-testid="toolbar-redo"
+        :disabled="!canRedo"
+        :title="tooltipText(REDO_SHORTCUT)"
+        @click="emit('redo')"
+      >
+        Redo
+      </button>
+    </div>
     <span class="toolbar-spacer" aria-hidden="true"></span>
     <span class="toolbar-separator" aria-hidden="true"></span>
     <label class="toolbar-theme-label" for="toolbar-theme">Theme</label>
@@ -116,9 +197,12 @@
 import type { FormatOperation } from "../lib/formatting";
 import {
   CYCLE_LAYOUT_COMBO,
+  DOCUMENT_SHORTCUTS,
   FONT_CONTROL,
   FORMAT_SHORTCUTS,
+  REDO_SHORTCUT,
   THEME_CONTROL,
+  UNDO_SHORTCUT,
   tooltipText,
   tooltipWithCombo,
 } from "../lib/shortcuts";
@@ -139,9 +223,18 @@ defineProps<{
   layoutMode: LayoutMode;
   theme: Theme;
   font: Font;
+  canUndo: boolean;
+  canRedo: boolean;
 }>();
 const emit = defineEmits<{
   format: [operation: FormatOperation];
+  new: [];
+  open: [];
+  save: [];
+  saveAs: [];
+  find: [];
+  undo: [];
+  redo: [];
   themeChange: [theme: Theme];
   fontChange: [font: Font];
   layoutChange: [mode: LayoutMode];
@@ -165,6 +258,7 @@ function onFontChange(event: Event) {
 <style scoped>
 .toolbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 4px;
   padding: 6px 10px;
@@ -173,7 +267,9 @@ function onFontChange(event: Event) {
   user-select: none;
 }
 
-.toolbar-format-group {
+.toolbar-document-group,
+.toolbar-format-group,
+.toolbar-history-group {
   display: flex;
   align-items: center;
   gap: 4px;
@@ -195,6 +291,11 @@ function onFontChange(event: Event) {
 
 .toolbar-button:hover {
   background: var(--hover-background, rgba(128, 128, 128, 0.15));
+}
+
+.toolbar-button:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 .toolbar-bold {

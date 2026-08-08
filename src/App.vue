@@ -9,7 +9,16 @@
       :layout-mode="ui.layoutMode"
       :theme="settings.theme"
       :font="settings.font"
+      :can-undo="canUndo"
+      :can-redo="canRedo"
       @format="onFormat"
+      @new="runNewDocument"
+      @open="runOpenDocument"
+      @save="onSave"
+      @save-as="onSaveAs"
+      @find="onFind"
+      @undo="onUndo"
+      @redo="onRedo"
       @theme-change="onThemeChange"
       @font-change="onFontChange"
       @layout-change="onLayoutChange"
@@ -68,6 +77,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { openSearchPanel } from "@codemirror/search";
+import { redo as redoCommand, undo as undoCommand } from "@codemirror/commands";
 import type { EditorView } from "@codemirror/view";
 import EditorPane from "./components/EditorPane.vue";
 import FindReplacePanel from "./components/FindReplacePanel.vue";
@@ -79,8 +89,10 @@ import type { FormatOperation } from "./lib/formatting";
 import { pickOpenPath } from "./lib/openDialog";
 import {
   CYCLE_LAYOUT_COMBO,
+  DOCUMENT_SHORTCUTS,
   FORMAT_SHORTCUTS,
   matchesCombo,
+  type DocumentControlOperation,
 } from "./lib/shortcuts";
 import { useSyncedScrolling } from "./lib/useSyncedScrolling";
 import { useDocumentStore } from "./stores/document";
@@ -98,6 +110,8 @@ const ui = useUiStore();
 const editorPane = ref<{
   getView: () => EditorView | null;
   replaceContent: (text: string) => void;
+  canUndo: boolean;
+  canRedo: boolean;
 } | null>(null);
 const previewPane = ref<{
   getPreviewHost: () => HTMLElement | null;
@@ -105,6 +119,13 @@ const previewPane = ref<{
 const findPanelRef = ref<{ focusQuery: () => void } | null>(null);
 const workspaceRef = ref<HTMLElement | null>(null);
 const dividerRef = ref<HTMLElement | null>(null);
+
+/// The editor's native history availability, surfaced to the toolbar as the
+/// Undo/Redo disabled state. The editor-owning component tracks it through its
+/// update listener, so these reflect exactly what CodeMirror's own commands
+/// would do.
+const canUndo = computed(() => editorPane.value?.canUndo ?? false);
+const canRedo = computed(() => editorPane.value?.canRedo ?? false);
 
 /// Balances the panes in Split View: the Editor Pane takes `dividerPosition`
 /// of the workspace width and the Preview Pane the remainder. Outside Split
@@ -195,26 +216,45 @@ async function syncWindowTitle() {
   });
 }
 
-async function onKeydown(event: KeyboardEvent) {
-  const modifier = event.ctrlKey || event.metaKey;
-  if (modifier && (event.key === "s" || event.key === "S")) {
-    event.preventDefault();
-    if (event.shiftKey) {
-      await document.saveAs();
-    } else {
+/// Document Controls dispatch order. `saveAs` must be matched before `save`:
+/// Save's combo (Ctrl/Cmd+S) also fires when Shift is held, so the more specific
+/// Save As combo wins when both would match.
+const DOCUMENT_SHORTCUT_ORDER: DocumentControlOperation[] = [
+  "saveAs",
+  "new",
+  "open",
+  "save",
+  "findReplace",
+];
+
+async function runDocumentControl(operation: DocumentControlOperation) {
+  switch (operation) {
+    case "new":
+      await runNewDocument();
+      break;
+    case "open":
+      await runOpenDocument();
+      break;
+    case "save":
       await document.save();
+      break;
+    case "saveAs":
+      await document.saveAs();
+      break;
+    case "findReplace":
+      onFind();
+      break;
+  }
+}
+
+async function onKeydown(event: KeyboardEvent) {
+  for (const operation of DOCUMENT_SHORTCUT_ORDER) {
+    const combo = DOCUMENT_SHORTCUTS[operation].combo;
+    if (combo !== null && matchesCombo(event, combo)) {
+      event.preventDefault();
+      await runDocumentControl(operation);
+      return;
     }
-    return;
-  }
-  if (modifier && (event.key === "n" || event.key === "N")) {
-    event.preventDefault();
-    await runNewDocument();
-    return;
-  }
-  if (modifier && (event.key === "o" || event.key === "O")) {
-    event.preventDefault();
-    await runOpenDocument();
-    return;
   }
   for (const operation of Object.keys(FORMAT_SHORTCUTS) as FormatOperation[]) {
     const combo = FORMAT_SHORTCUTS[operation].combo;
@@ -223,11 +263,6 @@ async function onKeydown(event: KeyboardEvent) {
       onFormat(operation);
       return;
     }
-  }
-  if (modifier && (event.key === "f" || event.key === "F")) {
-    event.preventDefault();
-    onFind();
-    return;
   }
   if (matchesCombo(event, CYCLE_LAYOUT_COMBO)) {
     event.preventDefault();
@@ -276,6 +311,34 @@ function onThemeChange(theme: Theme) {
 /// that both panes consume.
 function onFontChange(font: Font) {
   settings.setFont(font);
+}
+
+/// Writes the Document through the same Save flow as the shortcut: an Untitled
+/// Document is routed to Save As so it gains a real path.
+function onSave() {
+  void document.save();
+}
+
+function onSaveAs() {
+  void document.saveAs();
+}
+
+/// Dispatches CodeMirror's native undo/redo commands, the exact commands the
+/// `Mod-z` / `Mod-Shift-z` keymap bind, so the buttons and the shortcuts can
+/// never disagree. In Preview Only the buttons are hidden, but the shortcuts
+/// still reach the mounted editor.
+function onUndo() {
+  const view = getEditorView();
+  if (view) {
+    undoCommand(view);
+  }
+}
+
+function onRedo() {
+  const view = getEditorView();
+  if (view) {
+    redoCommand(view);
+  }
 }
 
 /// Sets a Layout Mode from the Layout Switcher. Direct selection overrides any
