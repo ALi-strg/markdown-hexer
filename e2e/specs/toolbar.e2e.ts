@@ -102,4 +102,77 @@ describe("ALi-md-editor toolbar formatting & shortcuts", () => {
 
     await waitForEditorText("**# Opened**");
   });
+
+  it("applies heading via the Cmd/Ctrl+Shift+H shortcut and undoes it", async () => {
+    await focusEditor();
+    await browser.keys(["Control", "a"]);
+    await browser.keys(["Control", "Shift", "h"]);
+
+    await waitForEditorText("# # Opened");
+
+    await browser.keys(["Control", "z"]);
+    await waitForEditorText("# Opened");
+  });
+
+  it("applies list via the Cmd/Ctrl+Shift+L shortcut and undoes it", async () => {
+    await focusEditor();
+    await browser.keys(["Control", "a"]);
+    await browser.keys(["Control", "Shift", "l"]);
+
+    await waitForEditorText("- # Opened");
+
+    await browser.keys(["Control", "z"]);
+    await waitForEditorText("# Opened");
+  });
+
+  it("wraps the selection in a link via the Cmd/Ctrl+K shortcut and undoes it", async () => {
+    await focusEditor();
+    await browser.keys(["Control", "a"]);
+    await browser.keys(["Control", "k"]);
+
+    await waitForEditorText("[# Opened](url)");
+
+    await browser.keys(["Control", "z"]);
+    await waitForEditorText("# Opened");
+  });
+
+  it("wraps the selection in code via the Cmd/Ctrl+Shift+C shortcut and undoes it", async () => {
+    await focusEditor();
+    await browser.keys(["Control", "a"]);
+    await browser.keys(["Control", "Shift", "c"]);
+
+    await waitForEditorText("`# Opened`");
+
+    await browser.keys(["Control", "z"]);
+    await waitForEditorText("# Opened");
+  });
+
+  it("shows every formatting control's shortcut in its tooltip", async () => {
+    const expectations: Array<[string, string]> = [
+      ["toolbar-bold", "Bold (Ctrl/Cmd+B)"],
+      ["toolbar-italic", "Italic (Ctrl/Cmd+I)"],
+      ["toolbar-heading", "Heading (Ctrl/Cmd+Shift+H)"],
+      ["toolbar-list", "List (Ctrl/Cmd+Shift+L)"],
+      ["toolbar-link", "Link (Ctrl/Cmd+K)"],
+      ["toolbar-code", "Code (Ctrl/Cmd+Shift+C)"],
+    ];
+    for (const [id, title] of expectations) {
+      expect(await (await $(`[data-testid="${id}"]`)).getAttribute("title")).toBe(
+        title,
+      );
+    }
+  });
+
+  it("shows the cycle-layout shortcut in every Layout Switcher tooltip", async () => {
+    const expectations: Array<[string, string]> = [
+      ["layout-split", "Switch to Split (Ctrl/Cmd+Shift+P)"],
+      ["layout-preview", "Switch to Preview (Ctrl/Cmd+Shift+P)"],
+      ["layout-focus", "Switch to Focus (Ctrl/Cmd+Shift+P)"],
+    ];
+    for (const [id, title] of expectations) {
+      expect(await (await $(`[data-testid="${id}"]`)).getAttribute("title")).toBe(
+        title,
+      );
+    }
+  });
 });

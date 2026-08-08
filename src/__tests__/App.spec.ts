@@ -1016,6 +1016,179 @@ describe("App shell", () => {
     expect(document.content).toBe("hello");
   });
 
+  it("shows every formatting shortcut in its toolbar tooltip", () => {
+    const wrapper = mount(App);
+    const expectations: Array<[string, string]> = [
+      ["toolbar-bold", "Bold (Ctrl/Cmd+B)"],
+      ["toolbar-italic", "Italic (Ctrl/Cmd+I)"],
+      ["toolbar-heading", "Heading (Ctrl/Cmd+Shift+H)"],
+      ["toolbar-list", "List (Ctrl/Cmd+Shift+L)"],
+      ["toolbar-link", "Link (Ctrl/Cmd+K)"],
+      ["toolbar-code", "Code (Ctrl/Cmd+Shift+C)"],
+    ];
+    for (const [id, title] of expectations) {
+      expect(wrapper.find(`[data-testid="${id}"]`).attributes("title")).toBe(
+        title,
+      );
+    }
+  });
+
+  it("shows Theme and Font tooltips with their names only", () => {
+    const wrapper = mount(App);
+    expect(
+      wrapper.find('[data-testid="toolbar-theme"]').attributes("title"),
+    ).toBe("Theme");
+    expect(
+      wrapper.find('[data-testid="toolbar-font"]').attributes("title"),
+    ).toBe("Font");
+  });
+
+  it("shows the cycle-layout shortcut in every Layout Switcher tooltip", () => {
+    const wrapper = mount(App);
+    const expectations: Array<[string, string]> = [
+      ["layout-split", "Switch to Split (Ctrl/Cmd+Shift+P)"],
+      ["layout-preview", "Switch to Preview (Ctrl/Cmd+Shift+P)"],
+      ["layout-focus", "Switch to Focus (Ctrl/Cmd+Shift+P)"],
+    ];
+    for (const [id, title] of expectations) {
+      expect(wrapper.find(`[data-testid="${id}"]`).attributes("title")).toBe(
+        title,
+      );
+    }
+  });
+
+  it("applies heading to the selection via the Cmd/Ctrl+Shift+H shortcut", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    const pane = wrapper.findComponent({ ref: "editorPane" });
+    const view = (pane.vm as unknown as { getView: () => EditorView }).getView();
+    view.dispatch({ changes: { from: 0, insert: "hello" } });
+    view.dispatch({
+      selection: { anchor: 0, head: 5 },
+      annotations: Transaction.addToHistory.of(false),
+    });
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "H",
+        ctrlKey: true,
+        shiftKey: true,
+      }),
+    );
+    await nextTick();
+
+    expect(document.content).toBe("# hello");
+  });
+
+  it("applies list to the selection via the Cmd/Ctrl+Shift+L shortcut", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    const pane = wrapper.findComponent({ ref: "editorPane" });
+    const view = (pane.vm as unknown as { getView: () => EditorView }).getView();
+    view.dispatch({ changes: { from: 0, insert: "hello" } });
+    view.dispatch({
+      selection: { anchor: 0, head: 5 },
+      annotations: Transaction.addToHistory.of(false),
+    });
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "L",
+        ctrlKey: true,
+        shiftKey: true,
+      }),
+    );
+    await nextTick();
+
+    expect(document.content).toBe("- hello");
+  });
+
+  it("applies link to the selection via the Cmd/Ctrl+K shortcut", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    const pane = wrapper.findComponent({ ref: "editorPane" });
+    const view = (pane.vm as unknown as { getView: () => EditorView }).getView();
+    view.dispatch({ changes: { from: 0, insert: "hello" } });
+    view.dispatch({
+      selection: { anchor: 0, head: 5 },
+      annotations: Transaction.addToHistory.of(false),
+    });
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "k", ctrlKey: true }),
+    );
+    await nextTick();
+
+    expect(document.content).toBe("[hello](url)");
+  });
+
+  it("applies code to the selection via the Cmd/Ctrl+Shift+C shortcut", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    const pane = wrapper.findComponent({ ref: "editorPane" });
+    const view = (pane.vm as unknown as { getView: () => EditorView }).getView();
+    view.dispatch({ changes: { from: 0, insert: "hello" } });
+    view.dispatch({
+      selection: { anchor: 0, head: 5 },
+      annotations: Transaction.addToHistory.of(false),
+    });
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "C",
+        ctrlKey: true,
+        shiftKey: true,
+      }),
+    );
+    await nextTick();
+
+    expect(document.content).toBe("`hello`");
+  });
+
+  it("does not format via the new shortcuts in Preview Only", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const ui = useUiStore();
+    ui.cycleLayoutMode();
+    await nextTick();
+    const document = useDocumentStore();
+    const pane = wrapper.findComponent({ ref: "editorPane" });
+    const view = (pane.vm as unknown as { getView: () => EditorView }).getView();
+    view.dispatch({ changes: { from: 0, insert: "hello" } });
+    view.dispatch({
+      selection: { anchor: 0, head: 5 },
+      annotations: Transaction.addToHistory.of(false),
+    });
+
+    for (const event of [
+      new KeyboardEvent("keydown", {
+        key: "H",
+        ctrlKey: true,
+        shiftKey: true,
+      }),
+      new KeyboardEvent("keydown", {
+        key: "L",
+        ctrlKey: true,
+        shiftKey: true,
+      }),
+      new KeyboardEvent("keydown", { key: "k", ctrlKey: true }),
+      new KeyboardEvent("keydown", {
+        key: "C",
+        ctrlKey: true,
+        shiftKey: true,
+      }),
+    ]) {
+      window.dispatchEvent(event);
+    }
+    await nextTick();
+
+    expect(document.content).toBe("hello");
+  });
+
   it("opens the find overlay on Cmd/Ctrl+F", async () => {
     const wrapper = mount(App);
     await flushPromises();

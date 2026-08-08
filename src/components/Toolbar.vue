@@ -8,7 +8,7 @@
         type="button"
         class="toolbar-button toolbar-bold"
         data-testid="toolbar-bold"
-        title="Bold (Ctrl/Cmd+B)"
+        :title="tooltipText(FORMAT_SHORTCUTS.bold)"
         @click="emit('format', 'bold')"
       >
         B
@@ -17,7 +17,7 @@
         type="button"
         class="toolbar-button toolbar-italic"
         data-testid="toolbar-italic"
-        title="Italic (Ctrl/Cmd+I)"
+        :title="tooltipText(FORMAT_SHORTCUTS.italic)"
         @click="emit('format', 'italic')"
       >
         I
@@ -27,7 +27,7 @@
         type="button"
         class="toolbar-button"
         data-testid="toolbar-heading"
-        title="Heading"
+        :title="tooltipText(FORMAT_SHORTCUTS.heading)"
         @click="emit('format', 'heading')"
       >
         #
@@ -36,7 +36,7 @@
         type="button"
         class="toolbar-button"
         data-testid="toolbar-list"
-        title="List"
+        :title="tooltipText(FORMAT_SHORTCUTS.list)"
         @click="emit('format', 'list')"
       >
         -
@@ -45,7 +45,7 @@
         type="button"
         class="toolbar-button"
         data-testid="toolbar-link"
-        title="Link"
+        :title="tooltipText(FORMAT_SHORTCUTS.link)"
         @click="emit('format', 'link')"
       >
         Link
@@ -54,7 +54,7 @@
         type="button"
         class="toolbar-button"
         data-testid="toolbar-code"
-        title="Code"
+        :title="tooltipText(FORMAT_SHORTCUTS.code)"
         @click="emit('format', 'code')"
       >
         Code
@@ -68,7 +68,7 @@
       class="toolbar-theme"
       data-testid="toolbar-theme"
       :value="theme"
-      title="Theme"
+      :title="tooltipText(THEME_CONTROL)"
       @change="onThemeChange"
     >
       <option value="system">System</option>
@@ -81,7 +81,7 @@
       class="toolbar-font"
       data-testid="toolbar-font"
       :value="font"
-      title="Font"
+      :title="tooltipText(FONT_CONTROL)"
       @change="onFontChange"
     >
       <option v-for="option in FONTS" :key="option" :value="option">
@@ -103,7 +103,7 @@
         :class="{ active: layoutMode === mode }"
         :data-testid="`layout-${mode}`"
         :aria-pressed="layoutMode === mode"
-        :title="LAYOUT_LABELS[mode]"
+        :title="layoutTooltip(mode)"
         @click="emit('layoutChange', mode)"
       >
         {{ LAYOUT_LABELS[mode] }}
@@ -114,6 +114,14 @@
 
 <script setup lang="ts">
 import type { FormatOperation } from "../lib/formatting";
+import {
+  CYCLE_LAYOUT_COMBO,
+  FONT_CONTROL,
+  FORMAT_SHORTCUTS,
+  THEME_CONTROL,
+  tooltipText,
+  tooltipWithCombo,
+} from "../lib/shortcuts";
 import { FONTS, FONT_LABELS, type Font, type Theme } from "../stores/settings";
 import { LAYOUT_MODES, type LayoutMode } from "../stores/ui";
 
@@ -122,6 +130,10 @@ const LAYOUT_LABELS: Record<LayoutMode, string> = {
   preview: "Preview",
   focus: "Focus",
 };
+
+function layoutTooltip(mode: LayoutMode): string {
+  return tooltipWithCombo(`Switch to ${LAYOUT_LABELS[mode]}`, CYCLE_LAYOUT_COMBO);
+}
 
 defineProps<{
   layoutMode: LayoutMode;

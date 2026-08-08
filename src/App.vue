@@ -77,6 +77,11 @@ import { confirmDiscard } from "./lib/confirmDiscard";
 import { applyFormatting } from "./lib/editorFormatting";
 import type { FormatOperation } from "./lib/formatting";
 import { pickOpenPath } from "./lib/openDialog";
+import {
+  CYCLE_LAYOUT_COMBO,
+  FORMAT_SHORTCUTS,
+  matchesCombo,
+} from "./lib/shortcuts";
 import { useSyncedScrolling } from "./lib/useSyncedScrolling";
 import { useDocumentStore } from "./stores/document";
 import {
@@ -211,22 +216,20 @@ async function onKeydown(event: KeyboardEvent) {
     await runOpenDocument();
     return;
   }
-  if (modifier && (event.key === "b" || event.key === "B")) {
-    event.preventDefault();
-    onFormat("bold");
-    return;
-  }
-  if (modifier && (event.key === "i" || event.key === "I")) {
-    event.preventDefault();
-    onFormat("italic");
-    return;
+  for (const operation of Object.keys(FORMAT_SHORTCUTS) as FormatOperation[]) {
+    const combo = FORMAT_SHORTCUTS[operation].combo;
+    if (combo !== null && matchesCombo(event, combo)) {
+      event.preventDefault();
+      onFormat(operation);
+      return;
+    }
   }
   if (modifier && (event.key === "f" || event.key === "F")) {
     event.preventDefault();
     onFind();
     return;
   }
-  if (modifier && event.shiftKey && (event.key === "P" || event.key === "p")) {
+  if (matchesCombo(event, CYCLE_LAYOUT_COMBO)) {
     event.preventDefault();
     ui.cycleLayoutMode();
   }
