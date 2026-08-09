@@ -1,9 +1,10 @@
 name: build
 
 on:
-  push:
+  pull_request:
     branches:
       - main
+  push:
     tags:
       - "v*"
   workflow_dispatch:
@@ -24,7 +25,9 @@ jobs:
       - name: resolve release version from tag
         if: github.ref_type == 'tag'
         shell: bash
-        run: echo "RELEASE_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+        run: |
+          echo "RELEASE_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+          printf '{"version":"%s"}' "${GITHUB_REF_NAME#v}" > .release-version.json
 
       - name: install Linux build dependencies
         run: |
@@ -77,7 +80,7 @@ jobs:
           releaseBody: "Markdown-Magic ${{ env.RELEASE_VERSION }} — see the assets to download and install."
           releaseDraft: true
           prerelease: ${{ contains(env.RELEASE_VERSION, '-') }}
-          args: ${{ github.ref_type == 'tag' && format('--config ''{"version":"{0}"}''', env.RELEASE_VERSION) || '' }}
+          args: ${{ github.ref_type == 'tag' && '--config .release-version.json' || '' }}
           releaseAssetNamePattern: "[name]_[version]_linux-[arch][setup][ext]"
 
   release:
@@ -101,7 +104,9 @@ jobs:
       - name: resolve release version from tag
         if: github.ref_type == 'tag'
         shell: bash
-        run: echo "RELEASE_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+        run: |
+          echo "RELEASE_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+          printf '{"version":"%s"}' "${GITHUB_REF_NAME#v}" > .release-version.json
 
       - uses: actions/setup-node@v4
         with:
@@ -133,7 +138,7 @@ jobs:
           releaseBody: "Markdown-Magic ${{ env.RELEASE_VERSION }} — see the assets to download and install."
           releaseDraft: true
           prerelease: ${{ contains(env.RELEASE_VERSION, '-') }}
-          args: ${{ github.ref_type == 'tag' && format('--config ''{"version":"{0}"}''', env.RELEASE_VERSION) || '' }}
+          args: ${{ github.ref_type == 'tag' && '--config .release-version.json' || '' }}
           releaseAssetNamePattern: "[name]_[version]_${{ matrix.label }}-[arch][setup][ext]"
 
       - name: add windows arm64 rust target
@@ -151,5 +156,5 @@ jobs:
           releaseBody: "Markdown-Magic ${{ env.RELEASE_VERSION }} — see the assets to download and install."
           releaseDraft: true
           prerelease: ${{ contains(env.RELEASE_VERSION, '-') }}
-          args: ${{ github.ref_type == 'tag' && format('--config ''{"version":"{0}"}'' --target aarch64-pc-windows-msvc', env.RELEASE_VERSION) || '--target aarch64-pc-windows-msvc' }}
+          args: ${{ github.ref_type == 'tag' && '--config .release-version.json --target aarch64-pc-windows-msvc' || '--target aarch64-pc-windows-msvc' }}
           releaseAssetNamePattern: "[name]_[version]_windows-[arch][setup][ext]"
