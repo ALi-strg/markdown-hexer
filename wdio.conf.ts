@@ -79,10 +79,18 @@ export const config = {
     // bypass the native dialog via localStorage without shipping test hooks in
     // production builds.
     process.env.VITE_E2E = "1";
+    // Neutralize an ambient `CI` variable: the tauri CLI maps it onto `--ci`
+    // (accepting true/false), so a bare `CI=1` from the shell fails the build
+    // before compilation starts.
     spawnSync(
       process.platform === "win32" ? "npm.cmd" : "npm",
       ["run", "tauri", "build", "--", "--debug", "--no-bundle"],
-      { cwd: path.resolve(__dirname, "."), stdio: "inherit", shell: true },
+      {
+        cwd: path.resolve(__dirname, "."),
+        stdio: "inherit",
+        shell: true,
+        env: { ...process.env, CI: "false" },
+      },
     );
   },
 };

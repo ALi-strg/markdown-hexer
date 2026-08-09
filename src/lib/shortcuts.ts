@@ -99,6 +99,11 @@ export const FONT_CONTROL: ShortcutEntry = {
   combo: null,
 };
 
+export const SIZE_CONTROL: ShortcutEntry = {
+  label: "Text Size",
+  combo: null,
+};
+
 export type DocumentControlOperation =
   | "new"
   | "open"

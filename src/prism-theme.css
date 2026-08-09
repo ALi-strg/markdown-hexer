@@ -1,17 +1,17 @@
-/* Hand-tuned Prism token themes, driven by the app's data-theme attribute.
-   Light is the base; dark overrides via [data-theme="dark"] and the
-   system-dark media query for [data-theme="system"]. */
+/* One static Prism token stylesheet: every color comes from the theme's
+   --syntax-* variables, which each Palette block in styles.css declares. A
+   new Palette gets its code colors for free by defining the variables. */
 
 .token.comment,
 .token.prolog,
 .token.doctype,
 .token.cdata {
-  color: #6e7781;
+  color: var(--syntax-comment);
   font-style: italic;
 }
 
 .token.punctuation {
-  color: #57606a;
+  color: var(--syntax-punctuation);
 }
 
 .token.namespace {
@@ -19,41 +19,44 @@
 }
 
 .token.keyword,
-.token.operator,
+.token.operator {
+  color: var(--syntax-keyword);
+}
+
 .token.boolean,
 .token.number {
-  color: #cf222e;
+  color: var(--syntax-literal);
 }
 
 .token.property,
 .token.attr-name,
 .token.constant,
 .token.symbol {
-  color: #0550ae;
+  color: var(--syntax-property);
 }
 
 .token.tag,
 .token.deleted {
-  color: #953800;
+  color: var(--syntax-tag);
 }
 
 .token.string,
 .token.char,
 .token.attr-value,
 .token.regex {
-  color: #0a3069;
+  color: var(--syntax-string);
 }
 
 .token.function,
 .token.selector,
 .token.entity {
-  color: #8250df;
+  color: var(--syntax-function);
 }
 
 .token.class-name,
 .token.builtin,
 .token.inserted {
-  color: #953800;
+  color: var(--syntax-class);
 }
 
 .token.atrule,
@@ -61,12 +64,12 @@
 .token.rule,
 .token.important,
 .token.variable {
-  color: #953800;
+  color: var(--syntax-atrule);
 }
 
 .token.url,
 .token.parameter {
-  color: #57606a;
+  color: var(--syntax-url);
 }
 
 .token.important,
@@ -76,134 +79,4 @@
 
 .token.italic {
   font-style: italic;
-}
-
-[data-theme="dark"] .token.comment,
-[data-theme="dark"] .token.prolog,
-[data-theme="dark"] .token.doctype,
-[data-theme="dark"] .token.cdata {
-  color: #8b949e;
-}
-
-[data-theme="dark"] .token.punctuation {
-  color: #e6edf3;
-}
-
-[data-theme="dark"] .token.keyword,
-[data-theme="dark"] .token.operator {
-  color: #ff7b72;
-}
-
-[data-theme="dark"] .token.boolean,
-[data-theme="dark"] .token.number {
-  color: #79c0ff;
-}
-
-[data-theme="dark"] .token.property,
-[data-theme="dark"] .token.attr-name,
-[data-theme="dark"] .token.constant,
-[data-theme="dark"] .token.symbol {
-  color: #79c0ff;
-}
-
-[data-theme="dark"] .token.tag,
-[data-theme="dark"] .token.deleted {
-  color: #ffa657;
-}
-
-[data-theme="dark"] .token.string,
-[data-theme="dark"] .token.char,
-[data-theme="dark"] .token.attr-value,
-[data-theme="dark"] .token.regex {
-  color: #a5d6ff;
-}
-
-[data-theme="dark"] .token.function,
-[data-theme="dark"] .token.selector,
-[data-theme="dark"] .token.entity {
-  color: #d2a8ff;
-}
-
-[data-theme="dark"] .token.class-name,
-[data-theme="dark"] .token.builtin,
-[data-theme="dark"] .token.inserted {
-  color: #ffa657;
-}
-
-[data-theme="dark"] .token.atrule,
-[data-theme="dark"] .token.rule,
-[data-theme="dark"] .token.important,
-[data-theme="dark"] .token.variable {
-  color: #ffa657;
-}
-
-[data-theme="dark"] .token.url,
-[data-theme="dark"] .token.parameter {
-  color: #e6edf3;
-}
-
-@media (prefers-color-scheme: dark) {
-  [data-theme="system"] .token.comment,
-  [data-theme="system"] .token.prolog,
-  [data-theme="system"] .token.doctype,
-  [data-theme="system"] .token.cdata {
-    color: #8b949e;
-  }
-
-  [data-theme="system"] .token.punctuation {
-    color: #e6edf3;
-  }
-
-  [data-theme="system"] .token.keyword,
-  [data-theme="system"] .token.operator {
-    color: #ff7b72;
-  }
-
-  [data-theme="system"] .token.boolean,
-  [data-theme="system"] .token.number {
-    color: #79c0ff;
-  }
-
-  [data-theme="system"] .token.property,
-  [data-theme="system"] .token.attr-name,
-  [data-theme="system"] .token.constant,
-  [data-theme="system"] .token.symbol {
-    color: #79c0ff;
-  }
-
-  [data-theme="system"] .token.tag,
-  [data-theme="system"] .token.deleted {
-    color: #ffa657;
-  }
-
-  [data-theme="system"] .token.string,
-  [data-theme="system"] .token.char,
-  [data-theme="system"] .token.attr-value,
-  [data-theme="system"] .token.regex {
-    color: #a5d6ff;
-  }
-
-  [data-theme="system"] .token.function,
-  [data-theme="system"] .token.selector,
-  [data-theme="system"] .token.entity {
-    color: #d2a8ff;
-  }
-
-  [data-theme="system"] .token.class-name,
-  [data-theme="system"] .token.builtin,
-  [data-theme="system"] .token.inserted {
-    color: #ffa657;
-  }
-
-  [data-theme="system"] .token.atrule,
-  [data-theme="system"] .token.rule,
-  [data-theme="system"] .token.important,
-  [data-theme="system"] .token.variable {
-    color: #ffa657;
-  }
-
-  [data-theme="system"] .token.url,
-  [data-theme="system"] .token.parameter {
-    color: #e6edf3;
-  }
 }

@@ -1,6 +1,35 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createPinia, setActivePinia } from "pinia";
 import { useSettingsStore } from "../settings";
+
+/// Stubs `window.matchMedia` (absent in jsdom) so the store's System
+/// resolution can be driven from the tests. Returns a handle whose `setDark`
+/// flips the mocked OS preference and fires the registered change listeners,
+/// exactly like a real `prefers-color-scheme` change.
+function mockSystemDark(matches: boolean) {
+  const listeners = new Set<(event: { matches: boolean }) => void>();
+  const query = {
+    matches,
+    media: "(prefers-color-scheme: dark)",
+    addEventListener(
+      type: string,
+      listener: (event: { matches: boolean }) => void,
+    ) {
+      if (type === "change") {
+        listeners.add(listener);
+      }
+    },
+    removeEventListener() {},
+    setDark(next: boolean) {
+      query.matches = next;
+      for (const listener of listeners) {
+        listener({ matches: next });
+      }
+    },
+  };
+  vi.stubGlobal("matchMedia", vi.fn(() => query));
+  return query;
+}
 
 describe("settings store", () => {
   beforeEach(() => {
@@ -101,5 +130,101 @@ describe("settings store", () => {
   it("stays System when nothing has been persisted", () => {
     const settings = useSettingsStore();
     expect(settings.theme).toBe("system");
+  });
+
+  it("defaults to the Medium text size", () => {
+    const settings = useSettingsStore();
+    expect(settings.textSize).toBe("medium");
+  });
+
+  it("changes the text size and persists it to localStorage", () => {
+    const settings = useSettingsStore();
+    settings.setTextSize("large");
+    expect(settings.textSize).toBe("large");
+    expect(localStorage.getItem("markdownmagic:settings")).toBe(
+      JSON.stringify({ textSize: "large" }),
+    );
+  });
+
+  it("restores a persisted text size on the next launch", () => {
+    localStorage.setItem(
+      "markdownmagic:settings",
+      JSON.stringify({ textSize: "small" }),
+    );
+    setActivePinia(createPinia());
+
+    const settings = useSettingsStore();
+    expect(settings.textSize).toBe("small");
+  });
+
+  it("falls back to Medium for an unknown persisted text size", () => {
+    localStorage.setItem(
+      "markdownmagic:settings",
+      JSON.stringify({ textSize: "huge" }),
+    );
+    setActivePinia(createPinia());
+
+    const settings = useSettingsStore();
+    expect(settings.textSize).toBe("medium");
+  });
+
+  it("keeps the theme when the text size is set after it", () => {
+    const settings = useSettingsStore();
+    settings.setTheme("nord");
+    settings.setTextSize("large");
+    expect(settings.theme).toBe("nord");
+    expect(settings.textSize).toBe("large");
+    expect(localStorage.getItem("markdownmagic:settings")).toBe(
+      JSON.stringify({ theme: "nord", textSize: "large" }),
+    );
+  });
+
+  it("accepts a palette theme beyond Light and Dark", () => {
+    const settings = useSettingsStore();
+    settings.setTheme("high-contrast");
+    expect(settings.theme).toBe("high-contrast");
+    expect(localStorage.getItem("markdownmagic:settings")).toBe(
+      JSON.stringify({ theme: "high-contrast" }),
+    );
+  });
+
+  it("resolves System to Light when the OS prefers light", () => {
+    mockSystemDark(false);
+    const settings = useSettingsStore();
+    expect(settings.resolvedTheme).toBe("light");
+  });
+
+  it("resolves System to Dark when the OS prefers dark", () => {
+    mockSystemDark(true);
+    const settings = useSettingsStore();
+    expect(settings.resolvedTheme).toBe("dark");
+  });
+
+  it("follows a live OS preference change", () => {
+    const media = mockSystemDark(false);
+    const settings = useSettingsStore();
+    expect(settings.resolvedTheme).toBe("light");
+    media.setDark(true);
+    expect(settings.resolvedTheme).toBe("dark");
+  });
+
+  it("resolves a chosen Palette directly, ignoring the OS", () => {
+    mockSystemDark(true);
+    const settings = useSettingsStore();
+    settings.setTheme("nord");
+    expect(settings.resolvedTheme).toBe("nord");
+  });
+
+  it("resolves System back after a Palette is cleared", () => {
+    mockSystemDark(false);
+    const settings = useSettingsStore();
+    settings.setTheme("terminal-green");
+    expect(settings.resolvedTheme).toBe("terminal-green");
+    settings.setTheme("system");
+    expect(settings.resolvedTheme).toBe("light");
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 });

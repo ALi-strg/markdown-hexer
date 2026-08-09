@@ -152,9 +152,9 @@
       :title="tooltipText(THEME_CONTROL)"
       @change="onThemeChange"
     >
-      <option value="system">System</option>
-      <option value="light">Light</option>
-      <option value="dark">Dark</option>
+      <option v-for="option in THEMES" :key="option" :value="option">
+        {{ THEME_LABELS[option] }}
+      </option>
     </select>
     <label class="toolbar-font-label" for="toolbar-font">Font</label>
     <select
@@ -167,6 +167,19 @@
     >
       <option v-for="option in FONTS" :key="option" :value="option">
         {{ FONT_LABELS[option] }}
+      </option>
+    </select>
+    <label class="toolbar-size-label" for="toolbar-size">Size</label>
+    <select
+      id="toolbar-size"
+      class="toolbar-size"
+      data-testid="toolbar-size"
+      :value="textSize"
+      :title="tooltipText(SIZE_CONTROL)"
+      @change="onTextSizeChange"
+    >
+      <option v-for="option in TEXT_SIZES" :key="option" :value="option">
+        {{ TEXT_SIZE_LABELS[option] }}
       </option>
     </select>
     <span class="toolbar-separator" aria-hidden="true"></span>
@@ -212,12 +225,23 @@ import {
   FORMAT_SHORTCUTS,
   HELP_SHORTCUT,
   REDO_SHORTCUT,
+  SIZE_CONTROL,
   THEME_CONTROL,
   UNDO_SHORTCUT,
   tooltipText,
   tooltipWithCombo,
 } from "../lib/shortcuts";
-import { FONTS, FONT_LABELS, type Font, type Theme } from "../stores/settings";
+import {
+  FONTS,
+  FONT_LABELS,
+  TEXT_SIZES,
+  TEXT_SIZE_LABELS,
+  THEMES,
+  THEME_LABELS,
+  type Font,
+  type TextSize,
+  type Theme,
+} from "../stores/settings";
 import { LAYOUT_MODES, type LayoutMode } from "../stores/ui";
 
 const LAYOUT_LABELS: Record<LayoutMode, string> = {
@@ -234,6 +258,7 @@ defineProps<{
   layoutMode: LayoutMode;
   theme: Theme;
   font: Font;
+  textSize: TextSize;
   canUndo: boolean;
   canRedo: boolean;
 }>();
@@ -248,14 +273,15 @@ const emit = defineEmits<{
   redo: [];
   themeChange: [theme: Theme];
   fontChange: [font: Font];
+  textSizeChange: [size: TextSize];
   layoutChange: [mode: LayoutMode];
   help: [];
 }>();
 
 function onThemeChange(event: Event) {
   const value = (event.target as HTMLSelectElement).value;
-  if (value === "system" || value === "light" || value === "dark") {
-    emit("themeChange", value);
+  if ((THEMES as string[]).includes(value)) {
+    emit("themeChange", value as Theme);
   }
 }
 
@@ -263,6 +289,13 @@ function onFontChange(event: Event) {
   const value = (event.target as HTMLSelectElement).value;
   if ((FONTS as string[]).includes(value)) {
     emit("fontChange", value as Font);
+  }
+}
+
+function onTextSizeChange(event: Event) {
+  const value = (event.target as HTMLSelectElement).value;
+  if ((TEXT_SIZES as string[]).includes(value)) {
+    emit("textSizeChange", value as TextSize);
   }
 }
 </script>
@@ -336,7 +369,8 @@ function onFontChange(event: Event) {
 }
 
 .toolbar-theme,
-.toolbar-font {
+.toolbar-font,
+.toolbar-size {
   height: 26px;
   padding: 0 4px;
   border: 1px solid var(--border-color, #e0e0e0);
@@ -350,12 +384,14 @@ function onFontChange(event: Event) {
    background/text colors too (the color-scheme on the app root already tells
    Chromium which native palette to use in dark mode). */
 .toolbar-theme option,
-.toolbar-font option {
+.toolbar-font option,
+.toolbar-size option {
   background: var(--input-background, #ffffff);
   color: var(--text-color, inherit);
 }
 
-.toolbar-font-label {
+.toolbar-font-label,
+.toolbar-size-label {
   font-size: 0.8rem;
   color: var(--text-color, inherit);
   margin-left: 8px;
