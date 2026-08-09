@@ -1,7 +1,7 @@
 # Codebase Map — markdown-editor (Markdown-Magic)
 
 > Scope: whole repo
-> Last updated: 2026-08-07
+> Last updated: 2026-08-09
 > Purpose: Context brief for agents. Read this before working in this area.
 
 ## TL;DR
@@ -50,8 +50,9 @@ npm run tauri build -- --debug --no-bundle   # what test:e2e uses to build the a
 | `src/__tests__/` | Colocated Vitest specs (`*.spec.ts`), one `__tests__/` dir per area |
 | `src-tauri/` | Rust backend (`src/`), Tauri config, capabilities, icons |
 | `src-tauri/capabilities/` | Permission grants for the `main` window |
-| `e2e/specs/` | WebdriverIO E2E specs (20 files, one per feature) |
+| `e2e/specs/` | WebdriverIO E2E specs (23 files, one per feature) |
 | `docs/` | Product docs: `PRD.md`, `adr/` (3 ADRs), `slices/` (numbered build plan), `idea.md` |
+| `.scratch/` | Local issue tracker: one markdown file per feature (see `docs/agents/issue-tracker.md`) |
 | `.github/workflows/build.yml` | CI: build+release matrix (macOS/Linux/Windows), tauri-action |
 
 ## Entry Points
@@ -101,7 +102,7 @@ npm run tauri build -- --debug --no-bundle   # what test:e2e uses to build the a
 ## Key Modules / Files
 | File | Role |
 |---|---|
-| `src/App.vue` | Orchestrator: global shortcuts (`onKeydown` line 192), window events (close-request, focus, drag-drop, file-open-requested), divider drag, layout/style wiring |
+| `src/App.vue` | Orchestrator: global shortcuts (`onKeydown` line 262), window events (close-request, focus, drag-drop, file-open-requested), divider drag, layout/style wiring |
 | `src/components/EditorPane.vue` | CodeMirror 6 mount; mirrors edits into store; `replaceContent` rebuilds state; routes CM search panel into a hidden off-screen host |
 | `src/components/PreviewPane.vue` | Debounced render, `asset://` img rewrite, external-link opening |
 | `src/components/FindReplacePanel.vue` | App-hosted find/replace UI (works in Preview Only); replaces switch to Split View first |
@@ -110,6 +111,7 @@ npm run tauri build -- --debug --no-bundle   # what test:e2e uses to build the a
 | `src/stores/settings.ts` | Theme + font + text size, localStorage persistence |
 | `src/stores/ui.ts` | Layout mode, divider, toast, last-directory |
 | `src/lib/formatting.ts` + `editorFormatting.ts` | Pure markdown formatting (bold/italic/…), applied as a single undoable CM transaction |
+| `src/lib/shortcuts.ts` | Single shortcut registry: toolbar tooltips + Shortcuts Reference modal (`SHORTCUT_GROUPS`), incl. `THEME_CONTROL`/`FONT_CONTROL`/`SIZE_CONTROL` (label-only entries) |
 | `src/lib/findReplace.ts` | Match-count / next / prev helpers over CM search state |
 | `src/lib/blockMap.ts` | Block ranges for Synced Scrolling |
 | `src/lib/{open,save}Dialog.ts`, `guardDialog.ts`, `externalDialog.ts` | Native dialog wrappers with E2E localStorage stubs |
@@ -120,7 +122,7 @@ npm run tauri build -- --debug --no-bundle   # what test:e2e uses to build the a
 | `src-tauri/src/title.rs` | Window-title format string |
 | `src-tauri/tauri.conf.json` | Window, CSP, bundling, file associations (md/markdown/mdown, txt) |
 | `src-tauri/capabilities/default.json` | Permissions for the `main` window (core/dialog/opener defaults + close/destroy) |
-| `wdio.conf.ts` | WebdriverIO config; onPrepare builds debug app with `VITE_E2E=1`, kills orphaned `tauri-driver` on Windows |
+| `wdio.conf.ts` | WebdriverIO config; onPrepare builds debug app with `VITE_E2E=1` (spawns `tauri build` with `CI=false` — see gotcha), kills orphaned `tauri-driver` on Windows |
 
 ## Conventions
 - Source colocated tests: every `src/**/__tests__/*.spec.ts` mirrors its module; Rust unit tests are inline `#[cfg(test)]` in each module.
@@ -133,8 +135,10 @@ npm run tauri build -- --debug --no-bundle   # what test:e2e uses to build the a
 
 ## Gotchas & Non-obvious Facts
 - **Editor is authoritative**: after New/Open/external reload, `App.vue` must call `editorPane.replaceContent(...)`; `replaceContent` rebuilds CM state and **clears undo history**.
+- **Prism colors are per-Palette CSS variables**: `prism-theme.css` is one static token stylesheet reading `--syntax-*` vars; each Palette block in `styles.css` declares them (11 vars: comment/punctuation/keyword/literal/property/tag/string/function/class/atrule/url). A new Palette that skips them renders code blocks in the inherited palette's colors.
 - **E2E seam**: `VITE_E2E=1` (set by `wdio.conf.ts`) replaces native dialogs with localStorage stubs (`markdownmagic:e2e:guard-choice`, `:external-choice`, `:open-path`, `:save-path`) and installs global triggers (`__triggerWindowClose`, `__triggerExternalCheck`, `__triggerDrop`, `__triggerFileOpen`) in `App.vue` onMounted. The close-guard spec relies on `__triggerWindowClose`; the app does **not** actually destroy on close when `VITE_E2E=1`.
 - **Windows E2E**: `tauri-driver` is spawned via a `cmd.exe` shell wrapper that orphidifies the real process; `wdio.conf.ts` force-kills the tree with `taskkill /IM tauri-driver.exe /T /F`.
+- **Ambient `CI` env var breaks `tauri build`**: tauri CLI maps `CI` onto its `--ci` flag (accepts true/false), so a bare `CI=1` in the shell fails the e2e build before compilation ("invalid value '1' for '--ci'"). `wdio.conf.ts` onPrepare spawns the build with `env: { ...process.env, CI: "false" }`; if you build manually for e2e, prefix with `CI=false`.
 - **Find/replace never edits hidden text**: replacing in Preview Only first switches to Split View (`ui.showSourceForReplace()`); `dispatchSelectionToEditor`/`syncSelectionToEditor` mirror the tracked match into the editor.
 - CM's own search panel is routed into an **off-screen hidden host** (`EditorPane.vue` `hiddenPanelHost`) purely to activate match highlighting; the visible panel is `FindReplacePanel`.
 - BOM handling: open/inspect strip a single leading BOM; save writes clean UTF-8 (no BOM). Same read path means a BOM file is never falsely flagged Externally-Modified.
@@ -150,7 +154,7 @@ npm run tauri build -- --debug --no-bundle   # what test:e2e uses to build the a
 - **Rendering / sanitization / highlighting** → `src/lib/renderer.ts`, `src/components/PreviewPane.vue`, `src/lib/assetUrl.ts`, `src-tauri/src/asset.rs`.
 - **Save/Open/dialog flows or new IPC** → `src/stores/document.ts`, `src/lib/*Dialog.ts`, matching Rust module in `src-tauri/src/` + command registration in `src-tauri/src/lib.rs`.
 - **Keyboard shortcuts / window events** → `onKeydown` and `onMounted` listeners in `src/App.vue`.
-- **Theme/font/typography** → `src/stores/settings.ts`, `src/styles.css`, `src/prism-theme.css`, `src/components/Toolbar.vue`.
+- **Theme/font/text size/typography** → `src/stores/settings.ts` (types, persistence, `resolvedTheme`), `src/styles.css` (Palette token blocks), `src/prism-theme.css` (`--syntax-*`), `src/components/Toolbar.vue`, `src/lib/shortcuts.ts` (control tooltip entries).
 - **Layout / split divider / focus modes** → `src/stores/ui.ts`, `src/App.vue`, `src/lib/useSyncedScrolling.ts`.
 - **Native dialogs / titles / single-instance** → `src-tauri/src/{confirm,external,title,instance}.rs`.
 - **New E2E spec** → add `e2e/specs/*.e2e.ts` (needs a `data-testid` hook; uses localStorage stubs for dialogs).
