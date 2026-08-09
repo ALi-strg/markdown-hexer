@@ -92,3 +92,21 @@ _Avoid_: File changed, stale file
 
 The window title reads `<filename> — Markdown-Magic`, with `*` inserted after the filename when the Document is Dirty (e.g., `notes.md * — Markdown-Magic`). Untitled Documents read `Untitled.md — Markdown-Magic`. The product name is **Markdown-Magic**.
 _Avoid_: markdown-editor (the repo slug), Markdown Editor
+
+## Distribution
+
+**Version**:
+The product's release version, taken from the git tag at build time with the leading `v` stripped (`v1.0.3` → `1.0.3`). Every shipped Bundle carries it. The static version in the source manifests is a dev baseline and never ships.
+_Avoid_: build number, manifest version, 0.1.0
+
+**Release**:
+A tagged set of Bundles for one Version, published on GitHub Releases. Created as a draft when a `v*` tag is pushed; tags carrying a semver prerelease segment (e.g. `v1.1.0-rc.1`) are marked prerelease.
+_Avoid_: build, artifact set, milestone
+
+**Bundle**:
+A platform-specific installer or package produced by the CI build — `.exe`/`.msi` (Windows), `.dmg`/`.app.tar.gz` (macOS), `.deb`/`.AppImage`/`.rpm` (Linux). A Bundle's filename embeds its Version, Platform Label, and architecture.
+_Avoid_: artifact, installer, binary
+
+**Platform Label**:
+The canonical OS name in a Bundle filename: `windows`, `macos`, or `linux`.
+_Avoid_: darwin, ubuntu, win32
