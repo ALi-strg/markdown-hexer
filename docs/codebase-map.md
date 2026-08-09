@@ -94,7 +94,7 @@ npm run tauri build -- --debug --no-bundle   # what test:e2e uses to build the a
 
 **Layout/UI** (`src/stores/ui.ts`): `layoutMode` (split/preview/focus, cycled via `Ctrl/Cmd+Shift+P`), `dividerPosition` (0..1, clamped 0.15–0.85, persisted only in-session), `findOverlayOpen`, `toast`, `lastDirectory`. Auto-choose of mode happens only on Document load; manual override (`manualOverrideActive`) wins until the next load; modes never persist across launches.
 
-**Settings** (`src/stores/settings.ts`): Theme (`system`/`light`/`dark`, default system, System follows OS via `prefers-color-scheme` in `styles.css`) and font (`default`/`serif`/`sans`/`mono`); persisted in localStorage under `markdownmagic:settings`; applied via `data-theme`/`data-font` attributes on the app root.
+**Settings** (`src/stores/settings.ts`): Theme (six states — `system` default + Palettes `light`/`dark`/`high-contrast`/`nord`/`terminal-green`; System resolves to Light/Dark via `matchMedia`, so `data-theme` always carries a Palette), font (`default`/`serif`/`sans`/`mono`), and text size (`small`/`medium`/`large`, medium default); persisted in localStorage under `markdownmagic:settings`; applied via `data-theme`/`data-font`/`data-text-size` attributes on the app root.
 
 **Asset scope protocol** (`asset.rs`): `DocumentScope` state holds the current path; `asset://` requests must be absolute, canonicalized, and inside the Document's directory (403 otherwise, 404 if missing). MIME sniffed.
 
@@ -105,9 +105,9 @@ npm run tauri build -- --debug --no-bundle   # what test:e2e uses to build the a
 | `src/components/EditorPane.vue` | CodeMirror 6 mount; mirrors edits into store; `replaceContent` rebuilds state; routes CM search panel into a hidden off-screen host |
 | `src/components/PreviewPane.vue` | Debounced render, `asset://` img rewrite, external-link opening |
 | `src/components/FindReplacePanel.vue` | App-hosted find/replace UI (works in Preview Only); replaces switch to Split View first |
-| `src/components/Toolbar.vue` | Format buttons (bold/italic/heading/list/link/code) + Theme/Font selects |
+| `src/components/Toolbar.vue` | Format buttons (bold/italic/heading/list/link/code) + Theme/Font/Size selects |
 | `src/stores/document.ts` | Document state, save/open/new/reload/external-modification logic |
-| `src/stores/settings.ts` | Theme + font, localStorage persistence |
+| `src/stores/settings.ts` | Theme + font + text size, localStorage persistence |
 | `src/stores/ui.ts` | Layout mode, divider, toast, last-directory |
 | `src/lib/formatting.ts` + `editorFormatting.ts` | Pure markdown formatting (bold/italic/…), applied as a single undoable CM transaction |
 | `src/lib/findReplace.ts` | Match-count / next / prev helpers over CM search state |
@@ -124,7 +124,7 @@ npm run tauri build -- --debug --no-bundle   # what test:e2e uses to build the a
 
 ## Conventions
 - Source colocated tests: every `src/**/__tests__/*.spec.ts` mirrors its module; Rust unit tests are inline `#[cfg(test)]` in each module.
-- Styling: CSS custom properties driven by `data-theme`/`data-font` attributes (`styles.css`); scoped `<style>` in components; CodeMirror chrome follows the theme too.
+- Styling: CSS custom properties driven by `data-theme`/`data-font`/`data-text-size` attributes (`styles.css`); scoped `<style>` in components; CodeMirror chrome follows the theme too.
 - `data-testid` attributes everywhere (`editor-pane`, `preview-pane`, `toolbar-*`, `find-*`, `divider`, `toast`, …) used by Vitest + WDIO.
 - Vite test env is jsdom with `src/test-setup.ts` stubbing `getBoundingClientRect`/`getClientRects`.
 - Rust lib is named `markdown_editor_lib` (avoids Windows bin/lib name clash, see Cargo.toml comment).

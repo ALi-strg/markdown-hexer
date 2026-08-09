@@ -168,8 +168,10 @@ describe("App shell", () => {
     const wrapper = mount(App);
     expect(wrapper.find('[data-testid="editor-pane"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="preview-pane"]').exists()).toBe(true);
+    // The root always carries a resolved Palette, never "system"; jsdom has
+    // no matchMedia, so System resolves to Light here.
     expect(wrapper.find('[data-testid="app"]').attributes("data-theme")).toBe(
-      "system",
+      "light",
     );
   });
 
@@ -1043,7 +1045,7 @@ describe("App shell", () => {
     }
   });
 
-  it("shows Theme and Font tooltips with their names only", () => {
+  it("shows Theme, Font, and Text Size tooltips with their names only", () => {
     const wrapper = mount(App);
     expect(
       wrapper.find('[data-testid="toolbar-theme"]').attributes("title"),
@@ -1051,6 +1053,9 @@ describe("App shell", () => {
     expect(
       wrapper.find('[data-testid="toolbar-font"]').attributes("title"),
     ).toBe("Font");
+    expect(
+      wrapper.find('[data-testid="toolbar-size"]').attributes("title"),
+    ).toBe("Text Size");
   });
 
   it("shows the cycle-layout shortcut in every Layout Switcher tooltip", () => {
@@ -1420,8 +1425,10 @@ describe("App shell", () => {
       '[data-testid="toolbar-theme"]',
     ).element as HTMLSelectElement;
     expect(select.value).toBe("system");
+    // The preference stays System while the root renders the resolved Palette
+    // (Light in jsdom, which has no matchMedia).
     expect(wrapper.find('[data-testid="app"]').attributes("data-theme")).toBe(
-      "system",
+      "light",
     );
   });
 
@@ -1436,6 +1443,23 @@ describe("App shell", () => {
     expect(settings.theme).toBe("dark");
     expect(wrapper.find('[data-testid="app"]').attributes("data-theme")).toBe(
       "dark",
+    );
+  });
+
+  it("offers all six Themes in the toolbar", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    expect(
+      wrapper.findAll('[data-testid="toolbar-theme"] option'),
+    ).toHaveLength(6);
+  });
+
+  it("switches to a Palette theme from the toolbar", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    await wrapper.find('[data-testid="toolbar-theme"]').setValue("nord");
+    expect(wrapper.find('[data-testid="app"]').attributes("data-theme")).toBe(
+      "nord",
     );
   });
 
@@ -1515,6 +1539,60 @@ describe("App shell", () => {
     expect(wrapper.find('[data-testid="app"]').attributes("data-font")).toBe(
       "sans",
     );
+  });
+
+  it("shows a text size picker in the toolbar bound to the default", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const select = wrapper.find(
+      '[data-testid="toolbar-size"]',
+    ).element as HTMLSelectElement;
+    expect(select.value).toBe("medium");
+    expect(
+      wrapper.findAll('[data-testid="toolbar-size"] option'),
+    ).toHaveLength(3);
+    expect(wrapper.find('[data-testid="app"]').attributes("data-text-size")).toBe(
+      "medium",
+    );
+  });
+
+  it("switches the text size from the toolbar and updates data-text-size", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const settings = useSettingsStore();
+
+    await wrapper.find('[data-testid="toolbar-size"]').setValue("large");
+
+    expect(settings.textSize).toBe("large");
+    expect(
+      wrapper.find('[data-testid="app"]').attributes("data-text-size"),
+    ).toBe("large");
+  });
+
+  it("persists the chosen text size so the next launch restores it", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+
+    await wrapper.find('[data-testid="toolbar-size"]').setValue("small");
+
+    expect(localStorage.getItem("markdownmagic:settings")).toBe(
+      JSON.stringify({ textSize: "small" }),
+    );
+  });
+
+  it("keeps the text size picker usable in Preview Only", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const ui = useUiStore();
+    ui.cycleLayoutMode();
+    await nextTick();
+
+    const select = wrapper.find('[data-testid="toolbar-size"]');
+    expect((select.element as HTMLSelectElement).disabled).toBe(false);
+    await select.setValue("large");
+    expect(
+      wrapper.find('[data-testid="app"]').attributes("data-text-size"),
+    ).toBe("large");
   });
 
   it("drags the divider to rebalance the panes", async () => {

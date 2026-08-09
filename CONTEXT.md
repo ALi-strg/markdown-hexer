@@ -63,8 +63,20 @@ The auto-chosen layout mode applies only when a Document is loaded (Open → Pre
 ## Appearance
 
 **Theme**:
-The app's color scheme. A three-state preference: System (default, follows the OS live), Light, or Dark. A manual override wins until the app restarts. Persisted in localStorage.
+The appearance preference shown in the toolbar. Six states: System (default) or one of five curated Palettes — Light (warm beige), Dark (deep navy), High Contrast (near-black), Nord (cool arctic blue-grey), Terminal Green (green-on-black). A manual choice persists until changed. Persisted in localStorage.
 _Avoid_: Color mode, dark mode toggle
+
+**Palette**:
+A concrete color scheme, one of the five: Light, Dark, High Contrast, Nord, or Terminal Green. System is a Theme but not a Palette.
+_Avoid_: Theme (the six-state preference; System is a Theme but not a Palette)
+
+**System**:
+The default Theme state. Not a Palette: it follows the OS live and resolves to the Light or Dark Palette. Persisted in localStorage.
+_Avoid_: Auto theme, OS theme
+
+**Text Size**:
+The shared preference controlling how large text renders in the Editor Pane and the Preview Pane. Three choices — Small, Medium (default), Large — a single pick applies to both panes. Persisted in localStorage.
+_Avoid_: Font size (the typeface choice, not its size)
 
 ## File Lifecycle
 

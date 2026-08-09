@@ -1,8 +1,18 @@
-// Theme: a three-state preference (System / Light / Dark) driven through the
-// toolbar. System is the default and follows the OS via CSS; Light and Dark are
-// manual overrides persisted in localStorage. The E2E switches themes and
-// asserts `data-theme` plus the pane styling actually change.
+// Theme: a six-state preference (System plus five Palettes) driven through the
+// toolbar. System is the default and resolves to the Light or Dark Palette via
+// matchMedia, so `data-theme` always carries a Palette — never "system". The
+// E2E switches themes and asserts `data-theme` plus the pane styling actually
+// change.
 describe("Markdown-Magic theme", () => {
+  const THEME_VALUES: Record<string, string> = {
+    System: "system",
+    Light: "light",
+    Dark: "dark",
+    "High Contrast": "high-contrast",
+    Nord: "nord",
+    "Terminal Green": "terminal-green",
+  };
+
   async function appTheme(): Promise<string | null> {
     return $('[data-testid="app"]').getAttribute("data-theme");
   }
@@ -17,11 +27,22 @@ describe("Markdown-Magic theme", () => {
     return browser.execute((el) => getComputedStyle(el).color, app);
   }
 
+  async function storedTheme(): Promise<string | null> {
+    return browser.execute(() => {
+      const raw = localStorage.getItem("markdownmagic:settings");
+      if (raw === null) {
+        return null;
+      }
+      const parsed = JSON.parse(raw) as { theme?: string };
+      return parsed.theme ?? null;
+    });
+  }
+
   async function setTheme(label: string) {
     const select = await $('[data-testid="toolbar-theme"]');
     await select.selectByVisibleText(label);
     await browser.waitUntil(
-      async () => (await appTheme()) !== "system" || label === "System",
+      async () => (await storedTheme()) === THEME_VALUES[label],
       {
         timeout: 10000,
         timeoutMsg: `theme did not switch to "${label}"`,
@@ -29,10 +50,12 @@ describe("Markdown-Magic theme", () => {
     );
   }
 
-  it("starts from the System theme and keys all styling off data-theme", async () => {
+  it("starts from System and keys all styling off the resolved Palette", async () => {
     await browser.pause(1000);
-    await setTheme("System");
-    expect(await appTheme()).toBe("system");
+    // A fresh launch either persists nothing or the default; System is the
+    // default preference either way.
+    expect(["system", null]).toContain(await storedTheme());
+    expect(await appTheme()).not.toBe("system");
   });
 
   it("switches to Light and restyles the panes", async () => {
@@ -49,15 +72,32 @@ describe("Markdown-Magic theme", () => {
     expect(await appBackground()).toBe("rgb(15, 24, 38)");
   });
 
+  it("switches to High Contrast and restyles the panes", async () => {
+    await setTheme("High Contrast");
+    expect(await appTheme()).toBe("high-contrast");
+    expect(await appBackground()).toBe("rgb(0, 0, 0)");
+    expect(await appTextColor()).toBe("rgb(255, 255, 255)");
+  });
+
+  it("switches to Nord and restyles the panes", async () => {
+    await setTheme("Nord");
+    expect(await appTheme()).toBe("nord");
+    expect(await appBackground()).toBe("rgb(46, 52, 64)");
+  });
+
+  it("switches to Terminal Green and restyles the panes", async () => {
+    await setTheme("Terminal Green");
+    expect(await appTheme()).toBe("terminal-green");
+    expect(await appBackground()).toBe("rgb(10, 10, 10)");
+  });
+
   it("persists the manual override for the next launch", async () => {
-    const stored = await browser.execute(() =>
-      localStorage.getItem("markdownmagic:settings"),
-    );
-    expect(stored).toContain("dark");
+    await setTheme("Terminal Green");
+    expect(await storedTheme()).toBe("terminal-green");
   });
 
   it("leaves the app in the System default for later specs", async () => {
     await setTheme("System");
-    expect(await appTheme()).toBe("system");
+    expect(await storedTheme()).toBe("system");
   });
 });

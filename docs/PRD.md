@@ -6,7 +6,7 @@ Writing Markdown on a desktop often means a cluttered, browser-based tool or a h
 
 ## Solution
 
-Markdown-Magic is a cross-platform Tauri 2 desktop app. A single window opens one Document at a time, with a CodeMirror 6 Editor Pane and a live-rendered Preview Pane. It reads and writes real files through native dialogs, shows a dirty asterisk in the OS title bar, and protects unsaved work with a Confirm-Discard Guard. Layout modes (Split View, Preview Only, Focus Mode) let the user read, write, or do both; the Theme follows the OS with an optional manual override.
+Markdown-Magic is a cross-platform Tauri 2 desktop app. A single window opens one Document at a time, with a CodeMirror 6 Editor Pane and a live-rendered Preview Pane. It reads and writes real files through native dialogs, shows a dirty asterisk in the OS title bar, and protects unsaved work with a Confirm-Discard Guard. Layout modes (Split View, Preview Only, Focus Mode) let the user read, write, or do both; the Theme defaults to System (follows the OS) with five curated Palettes to choose from.
 
 ## User Stories
 
@@ -52,30 +52,31 @@ Markdown-Magic is a cross-platform Tauri 2 desktop app. A single window opens on
 40. As a Markdown author, I want links in the Preview Pane to open in the system browser, so that I can follow references.
 41. As a Markdown author, I want rendered text in the Preview Pane selectable and copyable, so that I can quote the rendered output.
 42. As a Markdown author, I want the app to follow my OS Light/Dark theme by default, so that it always feels native.
-43. As a Markdown author, I want a manual Light or Dark override, so that I can fix a preference the OS doesn't share.
+43. As a Markdown author, I want a manual override choosing among five curated Palettes (Light, Dark, High Contrast, Nord, Terminal Green), so that I can pick a look beyond what the OS offers.
 44. As a Markdown author, I want a small set of curated fonts to choose from for both panes, so that the text looks the way I like.
 45. As a Markdown author, I want the preview to keep up with my typing without stuttering on long Documents, so that live rendering feels smooth.
 46. As a Markdown author, I want save failures to show me an error and keep my Document Dirty, so that I know my work is not safe.
 47. As a Markdown author, I want the window title to read `<filename> — Markdown-Magic`, so that the app is identifiable and the Document is clear.
 48. As a Markdown author, I want a resizable split with a remembered divider position in Split View, so that I can balance the two panes.
-49. As a Markdown author, I want my theme and font preferences remembered between launches, so that I don't reconfigure the app.
+49. As a Markdown author, I want my theme, font, and text size preferences remembered between launches, so that I don't reconfigure the app.
 50. As a Markdown author, I want to open files with or without a BOM and have them saved back cleanly as UTF-8, so that Notepad-era files render correctly.
 51. As a Markdown author, I want a Layout Switcher in the toolbar with Split / Preview / Focus segments, so that I can switch Layout Modes with one click and always see which mode is active.
+52. As a Markdown author, I want a Text Size picker with Small, Medium, and Large applying to both panes, so that I can adjust reading comfort.
 
 ## Implementation Decisions
 
 - **Framework**: Tauri 2 (stable), Vite, Vue 3 Composition API. In Vue component files, the `<template>` block comes first, then `<script>`, then `<style>`.
-- **State management**: Pinia split into three stores — `document` (the Document's content, canonical path, Dirty flag; single source of truth for content), `ui` (Layout Mode, divider position, find-overlay state; reset per launch), and `settings` (Theme + font choice, persisted in localStorage).
+- **State management**: Pinia split into three stores — `document` (the Document's content, canonical path, Dirty flag; single source of truth for content), `ui` (Layout Mode, divider position, find-overlay state; reset per launch), and `settings` (Theme, font choice, text size; persisted in localStorage).
 - **Editor engine**: CodeMirror 6. CodeMirror is authoritative for edits; the `document` store mirrors text via an `updateListener` and is never written back into the editor. (ADR-0001)
 - **Rendering pipeline**: `marked` with GFM extensions → DOMPurify sanitization → DOM insertion. Prism highlighting wired through `marked`'s code renderer (`marked-highlight`), one pass at render time. Strict CSP in the Tauri config; no inline scripts, no remote content. (ADR-0002)
-- **Prism scope**: ~12 curated languages (markup, css, clike, javascript, typescript, python, json, yaml, bash, sql, java, go, markdown); two hand-tuned Prism themes (dark/light) driven by the `data-theme` attribute.
+- **Prism scope**: ~12 curated languages (markup, css, clike, javascript, typescript, python, json, yaml, bash, sql, java, go, markdown); one static Prism token stylesheet reading the `--syntax-*` variables each Palette declares, so every Palette carries its own code colors.
 - **Document model**: Single-Document in memory at any time. New/Open swap the Document; the Confirm-Discard Guard protects unsaved work. No autosave. (ADR-0003)
 - **Save semantics**: Save on an Untitled Document behaves as Save As. Save As sets the canonical path and updates the title. Dirty clears only on successful write. Save failures keep the Document Dirty and surface a toast.
 - **Layout Modes**: Split View (both panes, Synced Scrolling active), Preview Only (Editor hidden), Focus Mode (Preview hidden). Auto-chosen on Document load: Open → Preview Only, New → Split View. A Layout Switcher segmented control (Split / Preview / Focus) in the toolbar and the `Cmd/Ctrl+Shift+P` shortcut set the mode directly; the user's manual selection is authoritative until the next Document load; Save As does not change the mode; modes not persisted.
 - **Synced Scrolling**: one-way (Editor → Preview), block-anchored via the CodeMirror visible line range mapped through `marked` tokens to rendered blocks; recomputed on render. Never proportional. Only in Split View.
 - **Window chrome**: native OS title bar. `window.setTitle` drives `<filename> * — Markdown-Magic`. The "premium" look comes from the in-app toolbar, panes, and typography, not custom window frames.
-- **Theme**: three-state preference — System (default, follows `prefers-color-scheme` live), Light, Dark. Manual override wins until restart. `data-theme` attribute drives all styling. Persisted in localStorage. Light is a warm beige and Dark a deep navy; a shared token set drives the app chrome, the CodeMirror Editor Pane, and the Preview Pane typography. Native controls (select popups, scrollbars) get their palette via `color-scheme`.
-- **Typography**: curated picker of ~4 system font stacks (monospace + prose serif/sans/mono), one shared choice for both panes. Persisted in localStorage alongside Theme.
+- **Theme**: six-state preference — System (default) plus five curated Palettes: Light (warm beige), Dark (deep navy), High Contrast (near-black), Nord (cool arctic blue-grey), Terminal Green (green-on-black). System is a Theme but not a Palette: the settings store resolves it to Light or Dark via `matchMedia` and follows the OS live, so the `data-theme` attribute always carries a resolved Palette. A manual choice persists until changed. Persisted in localStorage. A shared token set (chrome + `--syntax-*` code colors) drives the app chrome, the CodeMirror Editor Pane, and the Preview Pane typography. Native controls (select popups, scrollbars) get their palette via `color-scheme`.
+- **Typography**: curated picker of ~4 system font stacks (monospace + prose serif/sans/mono) and a Text Size picker (Small/Medium/Large, Medium default), each a shared choice for both panes. Persisted in localStorage alongside Theme.
 - **File access**: Open dialog filtered to `.md`/`.markdown`/`.mdown`/`.txt` as a convenience, not a lock. Drag-and-drop opens files through the same Open flow (with Confirm-Discard Guard). Relative paths in the Document resolve against its directory via a scoped `asset://` custom protocol (directory-scoped, never whole-filesystem). Links open in the system browser via Tauri core `openUrl`. The `@tauri-apps/plugin-shell` plugin is dropped from the stack.
 - **File association + single-instance**: the app registers as a Markdown handler per-OS; a second launch forwards the requested path to the running instance, which runs the normal Open flow in the existing window.
 - **Encoding**: always UTF-8; strip a leading BOM on read; write without BOM. Non-UTF-8 files surface the error surface rather than being mangled.

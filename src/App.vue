@@ -1,14 +1,16 @@
 <template>
   <div
     class="app"
-    :data-theme="settings.theme"
+    :data-theme="settings.resolvedTheme"
     :data-font="settings.font"
+    :data-text-size="settings.textSize"
     data-testid="app"
   >
     <Toolbar
       :layout-mode="ui.layoutMode"
       :theme="settings.theme"
       :font="settings.font"
+      :text-size="settings.textSize"
       :can-undo="canUndo"
       :can-redo="canRedo"
       @format="onFormat"
@@ -21,6 +23,7 @@
       @redo="onRedo"
       @theme-change="onThemeChange"
       @font-change="onFontChange"
+      @text-size-change="onTextSizeChange"
       @layout-change="onLayoutChange"
       @help="onHelp"
     />
@@ -106,6 +109,7 @@ import { useDocumentStore } from "./stores/document";
 import {
   useSettingsStore,
   type Font,
+  type TextSize,
   type Theme,
 } from "./stores/settings";
 import { useUiStore, type LayoutMode } from "./stores/ui";
@@ -325,7 +329,8 @@ function onFormat(operation: FormatOperation) {
 }
 
 /// Applies a Theme chosen from the toolbar. The store persists it, so the next
-/// launch restores it; System keeps following the OS via CSS.
+/// launch restores it; System keeps following the OS via the store's matchMedia
+/// resolution.
 function onThemeChange(theme: Theme) {
   settings.setTheme(theme);
 }
@@ -335,6 +340,13 @@ function onThemeChange(theme: Theme) {
 /// that both panes consume.
 function onFontChange(font: Font) {
   settings.setFont(font);
+}
+
+/// Applies a text size chosen from the toolbar. The store persists it, so the
+/// next launch restores it; the app root's data-text-size drives the size
+/// tokens that both panes consume.
+function onTextSizeChange(size: TextSize) {
+  settings.setTextSize(size);
 }
 
 /// Writes the Document through the same Save flow as the shortcut: an Untitled
