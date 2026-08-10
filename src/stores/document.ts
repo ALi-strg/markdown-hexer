@@ -3,6 +3,7 @@ import { computed, ref } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { pickSavePath } from "../lib/saveDialog";
 import { pickExternalModificationChoice } from "../lib/externalDialog";
+import { clearPreservedTabEditorState } from "../lib/tabEditorState";
 import type { MatchRange } from "../lib/findReplace";
 import { useUiStore, type LayoutMode } from "./ui";
 
@@ -234,12 +235,16 @@ export const useDocumentStore = defineStore("document", () => {
 
   /// Replaces the Active Document with the on-disk version, treating it as the
   /// new saved baseline so Dirty clears and the change is not re-detected.
-  /// `tab` defaults to the Active Tab; a caller that captured a Tab across an
-  /// await passes it so the reload always targets the same Document.
+  /// The preserved editor state is cleared: the on-disk version replaced the
+  /// Document, so a later switch back must rebuild rather than restore a stale
+  /// cursor and undo history. `tab` defaults to the Active Tab; a caller that
+  /// captured a Tab across an await passes it so the reload always targets the
+  /// same Document.
   function reloadFrom(text: string, tab: Tab = activeTab()) {
     tab.content = text;
     tab.savedContent = text;
     tab.diskContent = text;
+    clearPreservedTabEditorState(tab);
   }
 
   /// Writes the current content over the Document's file without clearing
@@ -311,6 +316,7 @@ export const useDocumentStore = defineStore("document", () => {
   return {
     tabs,
     activeIndex,
+    activeTab,
     switchTab,
     content,
     canonicalPath,

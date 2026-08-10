@@ -4,6 +4,7 @@ import { createPinia, setActivePinia } from "pinia";
 import { nextTick } from "vue";
 import { EditorView } from "@codemirror/view";
 import { Transaction } from "@codemirror/state";
+import { undo as undoCommand, undoDepth } from "@codemirror/commands";
 import App from "../App.vue";
 import { useUiStore } from "../stores/ui";
 import { useDocumentStore } from "../stores/document";
@@ -1133,7 +1134,8 @@ describe("App shell", () => {
     vi.useFakeTimers();
     const wrapper = mount(App);
     await flushPromises();
-    const document = useDocumentStore();
+    const pane = wrapper.findComponent({ ref: "editorPane" });
+    const view = (pane.vm as unknown as { getView: () => EditorView }).getView();
     invokeMock.mockImplementation((command: string) => {
       if (command === "open_document") {
         return Promise.resolve("# File B");
@@ -1147,7 +1149,12 @@ describe("App shell", () => {
     await flushPromises();
     await nextTick();
     vi.advanceTimersByTime(200);
-    document.mirrorContent("# B edited");
+    // Edit through the editor (the authoritative source) so the store mirror
+    // and the preserved editor state stay in sync.
+    view.dispatch({
+      changes: { from: 0, to: view.state.doc.length, insert: "# B edited" },
+    });
+    await nextTick();
 
     // Switch to the launch Tab and back; each switch re-renders that Tab's
     // content in the Editor and Preview Panes.
@@ -1163,6 +1170,205 @@ describe("App shell", () => {
     expect(editorContent.text()).toBe("# B edited");
     const preview = wrapper.find('[data-testid="preview-pane"] .preview-host');
     expect(preview.text()).toContain("B edited");
+  });
+
+  it("restores a Tab's cursor and undo history after a switch round trip", async () => {
+    vi.useFakeTimers();
+    const wrapper = mount(App);
+    await flushPromises();
+    const pane = wrapper.findComponent({ ref: "editorPane" });
+    const view = (pane.vm as unknown as { getView: () => EditorView }).getView();
+    pickOpenPathMock.mockResolvedValue("C:\\notes\\b.md");
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "open_document") {
+        return Promise.resolve("# File B");
+      }
+      return Promise.resolve(undefined);
+    });
+
+    // Type into the launch Tab and move the cursor off the end of the insert.
+    view.dispatch({ changes: { from: 0, insert: "# Draft\n\nBody" } });
+    view.dispatch({ selection: { anchor: 8 } });
+    await nextTick();
+    expect(view.state.selection.main.head).toBe(8);
+
+    // Open a second file, then click back to the launch Tab.
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "o", ctrlKey: true }),
+    );
+    await flushPromises();
+    await nextTick();
+    await wrapper.findAll('[data-testid="tab"]')[0].trigger("click");
+    await nextTick();
+
+    // Cursor position and undo history survived the round trip.
+    expect(view.state.doc.toString()).toBe("# Draft\n\nBody");
+    expect(view.state.selection.main.head).toBe(8);
+    expect(undoDepth(view.state)).toBe(1);
+
+    // The preserved history is live: undoing reverts the insert.
+    undoCommand(view);
+    expect(view.state.doc.toString()).toBe("");
+  });
+
+  it("restores a Tab's scroll offset after a switch round trip", async () => {
+    vi.useFakeTimers();
+    const wrapper = mount(App);
+    await flushPromises();
+    const pane = wrapper.findComponent({ ref: "editorPane" });
+    const view = (pane.vm as unknown as { getView: () => EditorView }).getView();
+    pickOpenPathMock.mockResolvedValue("C:\\notes\\b.md");
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "open_document") {
+        return Promise.resolve("# File B");
+      }
+      return Promise.resolve(undefined);
+    });
+
+    view.scrollDOM.scrollTop = 240;
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "o", ctrlKey: true }),
+    );
+    await flushPromises();
+    await nextTick();
+
+    // Back to the launch Tab: its captured offset is restored.
+    await wrapper.findAll('[data-testid="tab"]')[0].trigger("click");
+    await nextTick();
+    await nextTick();
+
+    expect(view.scrollDOM.scrollTop).toBe(240);
+  });
+
+  it("defers a restored scroll offset until the pane becomes visible", async () => {
+    vi.useFakeTimers();
+    const wrapper = mount(App);
+    await flushPromises();
+    const pane = wrapper.findComponent({ ref: "editorPane" });
+    const view = (pane.vm as unknown as { getView: () => EditorView }).getView();
+    const ui = useUiStore();
+    pickOpenPathMock.mockResolvedValue("C:\\notes\\b.md");
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "open_document") {
+        return Promise.resolve("# File B");
+      }
+      return Promise.resolve(undefined);
+    });
+
+    view.scrollDOM.scrollTop = 240;
+    // Open b.md (Preview Only) and return to the launch Tab: its restore runs
+    // while the pane is hidden, so the offset is deferred, not dropped.
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "o", ctrlKey: true }),
+    );
+    await flushPromises();
+    await nextTick();
+    await wrapper.findAll('[data-testid="tab"]')[0].trigger("click");
+    await nextTick();
+    await nextTick();
+
+    // Back to Split: the deferred offset is applied now that the pane shows.
+    // (jsdom keeps the scroller's property even under display:none, so force
+    // the 0 a real browser would read there, proving the apply is the
+    // mechanism that restores it.)
+    view.scrollDOM.scrollTop = 0;
+    ui.setLayoutMode("split");
+    await nextTick();
+    await nextTick();
+    expect(view.scrollDOM.scrollTop).toBe(240);
+
+    // A Preview-Only round trip keeps the offset: leave and return while the
+    // pane is hidden, then show the pane again.
+    ui.setLayoutMode("preview");
+    await wrapper.findAll('[data-testid="tab"]')[1].trigger("click");
+    await nextTick();
+    await wrapper.findAll('[data-testid="tab"]')[0].trigger("click");
+    await nextTick();
+    await nextTick();
+    ui.setLayoutMode("split");
+    await nextTick();
+    await nextTick();
+    expect(view.scrollDOM.scrollTop).toBe(240);
+
+    // The restored offset then survives the next switch away and back.
+    await wrapper.findAll('[data-testid="tab"]')[1].trigger("click");
+    await nextTick();
+    await wrapper.findAll('[data-testid="tab"]')[0].trigger("click");
+    await nextTick();
+    await nextTick();
+    expect(view.scrollDOM.scrollTop).toBe(240);
+  });
+
+  it("starts an opened Tab with cleared undo history", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const pane = wrapper.findComponent({ ref: "editorPane" });
+    const view = (pane.vm as unknown as { getView: () => EditorView }).getView();
+
+    view.dispatch({ changes: { from: 0, insert: "# Draft" } });
+    await nextTick();
+    expect(undoDepth(view.state)).toBe(1);
+
+    pickOpenPathMock.mockResolvedValue("C:\\notes\\b.md");
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "open_document") {
+        return Promise.resolve("# File B");
+      }
+      return Promise.resolve(undefined);
+    });
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "o", ctrlKey: true }),
+    );
+    await flushPromises();
+    await nextTick();
+
+    // The opened file starts fresh: content loaded, no undo history, exactly
+    // as today's destructive rebuild.
+    expect(view.state.doc.toString()).toBe("# File B");
+    expect(undoDepth(view.state)).toBe(0);
+  });
+
+  it("clears the preserved editor state when the Active Tab is externally reloaded", async () => {
+    const mockWin = mockWindow();
+    const wrapper = mount(App);
+    await flushPromises();
+    const pane = wrapper.findComponent({ ref: "editorPane" });
+    const view = (pane.vm as unknown as { getView: () => EditorView }).getView();
+    pickOpenPathMock.mockResolvedValue("C:\\notes\\a.md");
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "open_document") {
+        return Promise.resolve("# A content");
+      }
+      if (command === "inspect_document") {
+        return Promise.resolve({ content: "# A changed", mtime_ms: 3 });
+      }
+      return Promise.resolve(undefined);
+    });
+
+    // Open a.md, edit it (building undo history), and round-trip through
+    // another Tab so the editor state is preserved for it.
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "o", ctrlKey: true }),
+    );
+    await flushPromises();
+    view.dispatch({ changes: { from: 0, insert: "# A edited" } });
+    await nextTick();
+    expect(undoDepth(view.state)).toBe(1);
+    await wrapper.findAll('[data-testid="tab"]')[0].trigger("click");
+    await nextTick();
+    await wrapper.findAll('[data-testid="tab"]')[1].trigger("click");
+    await nextTick();
+    expect(undoDepth(view.state)).toBe(1);
+
+    // The file changed on disk; Reload replaces the Document and the editor
+    // rebuilds, so the undo history no longer reaches into the old content.
+    pickExternalChoiceMock.mockResolvedValue("reload");
+    mockWin.getFocusHandler()({ payload: true });
+    await flushPromises();
+    await nextTick();
+
+    expect(view.state.doc.toString()).toBe("# A changed");
+    expect(undoDepth(view.state)).toBe(0);
   });
 
   it("resolves relative images against the Active Document's directory after a switch", async () => {

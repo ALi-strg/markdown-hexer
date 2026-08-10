@@ -1,7 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createPinia, setActivePinia } from "pinia";
+import { EditorState } from "@codemirror/state";
 import { useDocumentStore, type Tab } from "../document";
 import { useUiStore } from "../ui";
+import {
+  getPreservedTabEditorState,
+  preserveTabEditorState,
+} from "../../lib/tabEditorState";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
@@ -282,5 +287,30 @@ describe("workspace store model", () => {
     await document.openPathInTab("C:\\notes\\drafts\\b.md");
 
     expect(useUiStore().lastDirectory).toBe("C:/notes/drafts");
+  });
+
+  it("clears a Tab's preserved editor state when the file is externally reloaded", async () => {
+    const document = useDocumentStore();
+    pushTab(document, "C:\\notes\\a.md");
+    document.switchTab(1);
+    // A preserved state from an earlier switch away; the on-disk version that
+    // replaces the Document makes it stale.
+    preserveTabEditorState(
+      document.tabs[1],
+      EditorState.create({ doc: "" }),
+      300,
+    );
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "inspect_document") {
+        return Promise.resolve({ content: "# Changed", mtime_ms: 3 });
+      }
+      return Promise.resolve(undefined);
+    });
+
+    const replaced = await document.checkExternalModification();
+
+    expect(replaced).toBe(true);
+    expect(document.tabs[1].content).toBe("# Changed");
+    expect(getPreservedTabEditorState(document.tabs[1])).toBeNull();
   });
 });

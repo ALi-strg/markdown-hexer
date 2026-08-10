@@ -128,6 +128,8 @@ const ui = useUiStore();
 const editorPane = ref<{
   getView: () => EditorView | null;
   replaceContent: (text: string) => void;
+  captureActiveTabState: () => void;
+  restoreActiveTabState: () => void;
   canUndo: boolean;
   canRedo: boolean;
 } | null>(null);
@@ -407,8 +409,11 @@ function closeShortcuts() {
 
 /// Creates a New Untitled Tab and makes it Active. New never runs the
 /// Confirm-Discard Guard: it adds a Tab instead of replacing a Document, so
-/// nothing is discarded.
+/// nothing is discarded. The outgoing Tab's editor state is preserved first,
+/// so returning to it lands where the user left off; the new Tab starts with
+/// a destructive rebuild (empty content, cleared undo history) as today.
 function runNewDocument() {
+  editorPane.value?.captureActiveTabState();
   document.newTab();
   ui.findOverlayOpen = false;
   editorPane.value?.replaceContent(document.content);
@@ -421,15 +426,23 @@ function runNewDocument() {
 /// new Tab is created; focusing an already-open Tab leaves the window's mode
 /// untouched. Shared by the native Open dialog, drag-and-drop, and OS file-open
 /// so all use one code path. Never runs the Confirm-Discard Guard.
+///
+/// The outgoing Tab's editor state is preserved before the workspace switches;
+/// focusing an existing Tab restores its preserved state, while a newly opened
+/// Tab starts with a destructive rebuild (fresh content, cleared undo history)
+/// as today.
 async function openPath(path: string) {
+  editorPane.value?.captureActiveTabState();
   const result = await document.openPathInTab(path);
   if (result === null) {
     return;
   }
   ui.findOverlayOpen = false;
-  editorPane.value?.replaceContent(document.content);
   if (result === "opened") {
+    editorPane.value?.replaceContent(document.content);
     ui.applyDocumentLoadMode(false);
+  } else {
+    editorPane.value?.restoreActiveTabState();
   }
 }
 
@@ -443,17 +456,19 @@ async function runOpenDocument() {
   await openPath(path);
 }
 
-/// Activates the Tab at `index` (from the Tab Bar): the editor loads the Active
-/// Tab's content, the preview and window title follow through their reactive
-/// bindings, and the store re-points the `asset://` scope at the Active
-/// Document. A rebuild of the editor is acceptable here; preserving the Tab's
-/// cursor, scroll, and undo history is ticket 03.
+/// Activates the Tab at `index` (from the Tab Bar): the outgoing Tab's editor
+/// state is captured into its record, the workspace switches the Active Tab,
+/// and the editor restores the incoming Tab's preserved state — cursor and
+/// undo history travel with the EditorState — plus its scroll offset. The
+/// preview and window title follow through their reactive bindings, and the
+/// store re-points the `asset://` scope at the Active Document.
 function onTabActivate(index: number) {
+  editorPane.value?.captureActiveTabState();
   if (!document.switchTab(index)) {
     return;
   }
   ui.findOverlayOpen = false;
-  editorPane.value?.replaceContent(document.content);
+  editorPane.value?.restoreActiveTabState();
 }
 
 const appWindow = getCurrentWindow();
