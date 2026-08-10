@@ -17,26 +17,50 @@ The editor-driven behavior where scrolling the Editor Pane scrolls the Preview P
 _Avoid_: Scroll sync, synchronized scrollbars
 
 **Document**:
-The Markdown file currently being edited, plus its in-memory unsaved changes.
+A Markdown file open in a Tab, plus its in-memory unsaved changes. There is exactly one Document per Tab and one Tab per Document.
 _Avoid_: File, note, buffer
 
 **Confirm-Discard Guard**:
-The native dialog shown before `New`, `Open`, or app close when the current Document has unsaved changes. Offers Save / Don't Save / Cancel.
+The native dialog shown before a Tab close or the app close when a Dirty Document would be discarded. Offers Save / Don't Save / Cancel. `New` and `Open` never trigger it — they add Tabs rather than replace a Document. On app close with several Dirty Tabs, the Guard runs once per Dirty Tab; Cancel anywhere aborts the close.
 _Avoid_: Save prompt, unsaved-changes dialog
 
 **Dirty**:
-The state of a Document whose content differs from what's on disk, shown as an asterisk (*) in the window title.
+The state of a Document whose content differs from what's on disk, shown as an asterisk (*) in that Document's Tab and in the window title when it is the Active Document.
 _Avoid_: Modified, unsaved, needs-saving
 
 **Save**:
-Write the current Document to disk. For an untitled Document, Save becomes Save As. Clears the Dirty state on success.
+Write the Active Document to disk. For an Untitled Document, Save becomes Save As. Clears the Dirty state on success.
 _Avoid_: Save File, write to disk
 
 **Save As**:
-Write the current Document to a user-chosen path, which then becomes the Document's canonical path. The title updates to the new filename.
+Write the Active Document to a user-chosen path, which then becomes that Document's canonical path. The Document's Tab and the window title update to the new filename.
 _Avoid_: Save copy, export
 
+## Tabs
+
+**Tab**:
+The slot in the Tab Bar holding one Document. Each Tab keeps its own Document state — content, Dirty state, canonical path, Layout Mode, Find & Replace state, and the editor's cursor, scroll, and undo history — for the session. `New` inserts the new Tab after the active one and makes it Active. Tabs stay in insertion order (not reorderable).
+_Avoid_: File tab, buffer
+
+**Tab Bar**:
+The strip at the very top of the window, above the toolbar, showing every open Tab in insertion order. Each Tab is labelled with its Document's filename (with the parent folder added when two open Documents share a basename) and a Dirty marker, and carries its own close control. Always visible in every Layout Mode; clicking a Tab makes it Active. A `+` affordance creates a New (Untitled) Tab. Tab shortcuts: Cmd/Ctrl+T New Tab, Cmd/Ctrl+W Close Tab, Ctrl+Tab / Ctrl+Shift+Tab next / previous Tab.
+_Avoid_: Tab strip, tabs row
+
+**Active Document**:
+The Document in the focused Tab — the one the window's panes, Toolbar, and title reflect. The window displays the Active Document's Layout Mode and switches to it on Tab switch.
+_Avoid_: Current document, open document
+
+**Close Tab**:
+Remove a Tab and its Document. If the Document is Dirty, the Confirm-Discard Guard runs first; Cancel keeps the Tab. Closing the Active Tab makes the Tab to its right Active (or the new last Tab). Closing the last Tab closes the window.
+_Avoid_: Close file, destroy tab
+
+**Find & Replace**:
+The app-hosted search panel that operates on the Active Document. Each Tab keeps its own Find & Replace state (query and current match), so switching Tabs swaps the panel to that Tab's state. In Preview Only, triggering a replace first switches the Active Document to Split View.
+_Avoid_: Search box, search-and-replace
+
 ## Layout Modes
+
+The Layout Mode is a property of each Document, not of the window; the window displays the Active Document's mode.
 
 **Split View**:
 The default layout with both panes visible side by side. Chosen automatically when a New Document is created. The only mode in which Synced Scrolling is active.
@@ -51,14 +75,14 @@ The layout with the Preview Pane hidden and the Editor Pane filling the window.
 _Avoid_: Writing mode, Zen mode
 
 **Layout Switcher**:
-The toolbar segmented control (Split / Preview / Focus) that sets the Layout Mode directly. Always visible and enabled in every Layout Mode — it is the way out of Preview Only. A selection behaves as a manual toggle: authoritative until the next Document load. The keyboard shortcut Cmd/Ctrl+Shift+P cycles the same modes.
+The toolbar segmented control (Split / Preview / Focus) that sets the Active Document's Layout Mode directly. Always visible and enabled in every Layout Mode — it is the way out of Preview Only. The keyboard shortcut Cmd/Ctrl+Shift+P cycles the Active Document's modes.
 _Avoid_: View toggle, mode selector, segmented buttons
 
 **Formatting Buttons**:
 The toolbar's Bold, Italic, Heading, List, Link, and Code controls. Visible in Split View and Focus Mode; hidden in Preview Only, where there is no Editor Pane to format. The Bold/Italic keyboard shortcuts no-op in Preview Only.
 _Avoid_: Edit buttons, markup buttons
 
-The auto-chosen layout mode applies only when a Document is loaded (Open → Preview Only, New → Split View); the user's manual toggle is authoritative until the next Document load, and Save As does not change the layout mode. Modes are not persisted across launches.
+Each Document carries its own Layout Mode. When a Tab is created, the mode is auto-chosen (Open → Preview Only, New → Split View); afterwards the Layout Switcher sets only the Active Document's mode, remembered for that Tab's session. Save As does not change the Layout Mode. Modes are not persisted across launches (the app does not restore the previous session).
 
 ## Appearance
 
@@ -81,16 +105,16 @@ _Avoid_: Font size (the typeface choice, not its size)
 ## File Lifecycle
 
 **Untitled Document**:
-A Document created by `New` or at first launch that has no canonical path. Its window title reads `Untitled.md`; Save behaves as Save As until it gains a path.
+A Document created by `New` or at first launch that has no canonical path. Multiple Untitled Documents may be open at once, disambiguated by a per-session number (`Untitled.md`, `Untitled 2.md`, …). Save behaves as Save As until it gains a path.
 _Avoid_: New file, nameless file
 
 **Externally-Modified**:
-The state where the file on disk changed (mtime or content) since the Document was loaded or last saved. Detected on window focus. If the Document is Dirty the user chooses Reload / Overwrite / Cancel; if clean it reloads silently.
+The state where the file on disk changed (mtime or content) since the Document was loaded or last saved. Checked for the Active Document on window focus and on Tab activation; a background Tab is only checked when it becomes Active, one dialog at a time. If the Document is Dirty the user chooses Reload / Overwrite / Cancel; if clean it reloads silently.
 _Avoid_: File changed, stale file
 
 ## Window Title
 
-The window title reads `<filename> — Markdown-Magic`, with `*` inserted after the filename when the Document is Dirty (e.g., `notes.md * — Markdown-Magic`). Untitled Documents read `Untitled.md — Markdown-Magic`. The product name is **Markdown-Magic**.
+The window title reads `<filename> — Markdown-Magic`, where `<filename>` is the Active Document's, with `*` inserted after it when the Active Document is Dirty (e.g., `notes.md * — Markdown-Magic`). Untitled Documents read `Untitled.md — Markdown-Magic` (or `Untitled 2.md`, …). The product name is **Markdown-Magic**.
 _Avoid_: markdown-editor (the repo slug), Markdown Editor
 
 ## Distribution
