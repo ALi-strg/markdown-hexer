@@ -10,6 +10,7 @@
       :tabs="document.tabs"
       :active-index="document.activeIndex"
       @activate="onTabActivate"
+      @close="onTabClose"
       @new="runNewDocument"
     />
     <Toolbar
@@ -112,7 +113,7 @@ import {
   type DocumentControlOperation,
 } from "./lib/shortcuts";
 import { useSyncedScrolling } from "./lib/useSyncedScrolling";
-import { useDocumentStore } from "./stores/document";
+import { isTabDirty, useDocumentStore } from "./stores/document";
 import {
   useSettingsStore,
   type Font,
@@ -470,27 +471,64 @@ function onTabActivate(index: number) {
   editorPane.value?.restoreActiveTabState();
 }
 
+/// Closes the Tab at `index` (from the Tab Bar's close control). A Dirty Tab
+/// runs the Confirm-Discard Guard first — Cancel keeps the Tab open,
+/// Save/Don't Save close it. Closing the Active Tab activates the Tab to its
+/// right, or the new last Tab; closing the last Tab closes the window (the
+/// Guard already ran for that Tab, so nothing remains to prompt).
+async function onTabClose(index: number) {
+  const tab = document.tabs[index];
+  if (tab === undefined) {
+    return;
+  }
+  const decision = await confirmDiscard(document.guardDocumentFor(tab));
+  if (decision === "cancel") {
+    return;
+  }
+  if (document.tabs.length === 1) {
+    // The last Tab closed: close the window. The store keeps the Tab — the
+    // workspace must never render empty — and the window (with it) goes away.
+    await destroyAppWindow();
+    return;
+  }
+  const wasActive = index === document.activeIndex;
+  document.closeTab(index);
+  if (wasActive) {
+    ui.findOverlayOpen = false;
+    editorPane.value?.restoreActiveTabState();
+  }
+}
+
 const appWindow = getCurrentWindow();
 let unlistenCloseRequested: (() => void) | null = null;
 let unlistenFocusChanged: (() => void) | null = null;
 let unlistenDragDrop: (() => void) | null = null;
 let unlistenFileOpen: (() => void) | null = null;
 
+/// The window's close request. A window holding any Dirty Tab runs the
+/// Confirm-Discard Guard once per Dirty Tab, sequentially — Save writes that
+/// Tab, Cancel on any of them aborts the whole close.
 async function onCloseRequested(event: { preventDefault: () => void }) {
-  if (!document.dirty) {
+  if (!document.tabs.some(isTabDirty)) {
     return;
   }
   event.preventDefault();
-  const decision = await confirmDiscard(document);
-  if (decision === "cancel") {
-    return;
+  for (const tab of document.tabs) {
+    if ((await confirmDiscard(document.guardDocumentFor(tab))) === "cancel") {
+      return;
+    }
   }
-  // E2E seam: keep the window alive so the close-guard suite survives the
-  // single app instance a wdio run launches.
-  if (import.meta.env.VITE_E2E === "1") {
-    return;
+  await destroyAppWindow();
+}
+
+/// Destroys the window unless the E2E build is running. A wdio run launches a
+/// single app instance, so the E2E build keeps the window alive after any
+/// close path — the window close request or the last Tab closing — and the
+/// suite survives to its next spec.
+async function destroyAppWindow() {
+  if (import.meta.env.VITE_E2E !== "1") {
+    await appWindow.destroy();
   }
-  await appWindow.destroy();
 }
 
 /// Detects an Externally-Modified file when the window regains focus.

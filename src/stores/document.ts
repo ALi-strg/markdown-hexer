@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { pickSavePath } from "../lib/saveDialog";
 import { pickExternalModificationChoice } from "../lib/externalDialog";
 import { clearPreservedTabEditorState } from "../lib/tabEditorState";
+import type { GuardDocument } from "../lib/confirmDiscard";
 import type { MatchRange } from "../lib/findReplace";
 import { useUiStore, type LayoutMode } from "./ui";
 
@@ -130,8 +131,14 @@ export const useDocumentStore = defineStore("document", () => {
     }
   }
 
-  async function writeToPath(path: string): Promise<boolean> {
-    const tab = activeTab();
+  /// Writes the Tab's content to `path` and makes it the saved baseline.
+  /// `tab` defaults to the Active Tab; the Guard passes the Tab it is
+  /// prompting for, so a background Dirty Tab's Save writes its own content —
+  /// never the Active Tab's.
+  async function writeToPath(
+    path: string,
+    tab: Tab = activeTab(),
+  ): Promise<boolean> {
     if (!(await writeToDisk(path, tab.content))) {
       return false;
     }
@@ -147,23 +154,37 @@ export const useDocumentStore = defineStore("document", () => {
     return true;
   }
 
-  async function save(): Promise<boolean> {
-    const tab = activeTab();
+  /// Saves the Tab: Save As for a pathless (Untitled) Tab, direct write
+  /// otherwise. `tab` defaults to the Active Tab; the Guard passes the Tab it
+  /// is prompting for.
+  async function save(tab: Tab = activeTab()): Promise<boolean> {
     if (tab.canonicalPath === null) {
-      return saveAs();
+      return saveAs(tab);
     }
-    return writeToPath(tab.canonicalPath);
+    return writeToPath(tab.canonicalPath, tab);
   }
 
-  async function saveAs(): Promise<boolean> {
+  async function saveAs(tab: Tab = activeTab()): Promise<boolean> {
     const ui = useUiStore();
     const path = await pickSavePath({
-      defaultPath: activeTab().canonicalPath ?? ui.lastDirectory ?? undefined,
+      defaultPath: tab.canonicalPath ?? ui.lastDirectory ?? undefined,
     });
     if (path === null) {
       return false;
     }
-    return writeToPath(path);
+    return writeToPath(path, tab);
+  }
+
+  /// The Confirm-Discard Guard's view of a Tab: its Dirty flag and filename,
+  /// with a Save that targets the Tab itself rather than the Active one. The
+  /// Tab Bar's close control and the window-close pass both prompt per Tab
+  /// through this, so every Guard in the app agrees on what a Tab's Save does.
+  function guardDocumentFor(tab: Tab): GuardDocument {
+    return {
+      dirty: isTabDirty(tab),
+      filename: tabDisplayName(tab),
+      save: () => save(tab),
+    };
   }
 
   /// Inserts `tab` right after the Active Tab and makes it Active. Every Tab
@@ -300,6 +321,27 @@ export const useDocumentStore = defineStore("document", () => {
     return false;
   }
 
+  /// Removes the Tab at `index`. Closing the Active Tab activates the Tab to
+  /// its right, or — when the last Tab closes — the new last Tab; closing a
+  /// background Tab leaves the Active Tab alone. The last remaining Tab is
+  /// never removed: the workspace must always hold at least one Tab so the
+  /// Active index stays valid, and closing the last Tab means closing the
+  /// window (the caller owns that step, so the store stays Tauri-free). The
+  /// closed Tab's preserved editor state dies with it (the WeakMap keys on
+  /// the Tab record).
+  function closeTab(index: number): void {
+    if (index < 0 || index >= tabs.value.length || tabs.value.length === 1) {
+      return;
+    }
+    tabs.value.splice(index, 1);
+    if (index < activeIndex.value) {
+      activeIndex.value -= 1;
+    } else if (index === activeIndex.value) {
+      activeIndex.value = Math.min(index, tabs.value.length - 1);
+    }
+    syncAssetRoot();
+  }
+
   /// Switches the Active Tab to `index`. Indices outside the Tab list are
   /// ignored so the Active index always stays a valid Tab index. Returns
   /// whether the switch happened. The `asset://` scope follows the Active
@@ -318,6 +360,8 @@ export const useDocumentStore = defineStore("document", () => {
     activeIndex,
     activeTab,
     switchTab,
+    closeTab,
+    guardDocumentFor,
     content,
     canonicalPath,
     dirty,

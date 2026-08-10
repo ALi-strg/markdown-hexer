@@ -21,8 +21,10 @@ vi.mock("../../lib/externalDialog", () => ({
 }));
 
 import { invoke } from "@tauri-apps/api/core";
+import { pickSavePath } from "../../lib/saveDialog";
 
 const invokeMock = vi.mocked(invoke);
+const pickSavePathMock = vi.mocked(pickSavePath);
 
 /// Seeds a second, non-Untitled Tab so switch behaviour can be exercised.
 function pushTab(document: ReturnType<typeof useDocumentStore>, path: string) {
@@ -45,6 +47,7 @@ describe("workspace store model", () => {
     setActivePinia(createPinia());
     invokeMock.mockReset();
     invokeMock.mockResolvedValue(undefined);
+    pickSavePathMock.mockReset();
   });
 
   it("starts with exactly one Untitled Tab as the Active Tab", () => {
@@ -312,5 +315,110 @@ describe("workspace store model", () => {
     expect(replaced).toBe(true);
     expect(document.tabs[1].content).toBe("# Changed");
     expect(getPreservedTabEditorState(document.tabs[1])).toBeNull();
+  });
+
+  it("removes a background Tab and leaves the Active Tab alone", () => {
+    const document = useDocumentStore();
+    pushTab(document, "C:\\notes\\b.md");
+    document.closeTab(1);
+    expect(document.tabs).toHaveLength(1);
+    expect(document.activeIndex).toBe(0);
+  });
+
+  it("activates the Tab to the right when the Active Tab closes", () => {
+    const document = useDocumentStore();
+    pushTab(document, "C:\\notes\\b.md");
+    pushTab(document, "C:\\notes\\c.md");
+    document.switchTab(1); // b.md Active
+    document.closeTab(1);
+    expect(document.tabs.map((tab) => tab.canonicalPath)).toEqual([
+      null,
+      "C:\\notes\\c.md",
+    ]);
+    expect(document.activeIndex).toBe(1); // c.md takes b.md's place
+  });
+
+  it("activates the new last Tab when the last Tab closes", () => {
+    const document = useDocumentStore();
+    pushTab(document, "C:\\notes\\b.md");
+    document.switchTab(1);
+    document.closeTab(1);
+    expect(document.tabs).toHaveLength(1);
+    expect(document.activeIndex).toBe(0);
+  });
+
+  it("shifts the Active index down when a Tab to its left closes", () => {
+    const document = useDocumentStore();
+    pushTab(document, "C:\\notes\\b.md");
+    pushTab(document, "C:\\notes\\c.md");
+    document.switchTab(2); // c.md Active
+    document.closeTab(0);
+    expect(document.tabs.map((tab) => tab.canonicalPath)).toEqual([
+      "C:\\notes\\b.md",
+      "C:\\notes\\c.md",
+    ]);
+    expect(document.activeIndex).toBe(1);
+  });
+
+  it("keeps the last remaining Tab so the workspace never renders empty", () => {
+    const document = useDocumentStore();
+    document.closeTab(0);
+    expect(document.tabs).toHaveLength(1);
+    expect(document.activeIndex).toBe(0);
+  });
+
+  it("ignores closing a Tab index outside the workspace", () => {
+    const document = useDocumentStore();
+    pushTab(document, "C:\\notes\\b.md");
+    document.closeTab(5);
+    expect(document.tabs).toHaveLength(2);
+    expect(document.activeIndex).toBe(0);
+  });
+
+  it("builds the Guard's view of a Tab: Dirty flag, filename, and a save targeting that Tab", async () => {
+    const document = useDocumentStore();
+    document.mirrorContent("# launch edits");
+    const background = pushTab(document, "C:\\notes\\b.md");
+    background.content = "# b edits";
+
+    const guard = document.guardDocumentFor(background);
+    expect(guard.dirty).toBe(true);
+    expect(guard.filename).toBe("b.md");
+
+    expect(await guard.save()).toBe(true);
+    expect(invokeMock).toHaveBeenCalledWith("save_document", {
+      path: "C:\\notes\\b.md",
+      content: "# b edits",
+    });
+    expect(background.savedContent).toBe("# b edits");
+    // The Active Tab is untouched.
+    expect(document.content).toBe("# launch edits");
+    expect(document.dirty).toBe(true);
+  });
+
+  it("builds a clean Guard view for a clean Tab", () => {
+    const document = useDocumentStore();
+    const guard = document.guardDocumentFor(document.tabs[0]);
+    expect(guard.dirty).toBe(false);
+    expect(guard.filename).toBe("Untitled.md");
+  });
+
+  it("routes a background Untitled Tab's Guard save through Save As", async () => {
+    const document = useDocumentStore();
+    document.mirrorContent("# launch edits");
+    const untitled = document.newTab();
+    untitled.content = "# untitled edits";
+    document.switchTab(0); // launch Tab Active again; Untitled 2 stays dirty
+
+    const guard = document.guardDocumentFor(untitled);
+    pickSavePathMock.mockResolvedValue("C:\\notes\\saved.md");
+    expect(await guard.save()).toBe(true);
+    expect(pickSavePathMock).toHaveBeenCalled();
+    expect(invokeMock).toHaveBeenCalledWith("save_document", {
+      path: "C:\\notes\\saved.md",
+      content: "# untitled edits",
+    });
+    expect(untitled.canonicalPath).toBe("C:\\notes\\saved.md");
+    expect(untitled.savedContent).toBe("# untitled edits");
   });
 });

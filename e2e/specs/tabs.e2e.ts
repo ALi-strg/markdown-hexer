@@ -86,4 +86,36 @@ describe("Markdown-Magic Tab Bar", () => {
       { timeout: 10000, timeoutMsg: "clicking a Tab did not activate it" },
     );
   });
+
+  it("activates the Tab to the right when the Active Tab closes", async () => {
+    // [Untitled.md, Untitled 2.md, a.md] — activate the middle Tab and close
+    // it; the Tab to its right takes its place.
+    const tabs = await $$('[data-testid="tab"]');
+    expect(tabs.length).toBe(3);
+    await tabs[1].click();
+
+    await browser.waitUntil(
+      async () =>
+        (await browser.getTitle()) === "Untitled 2.md — Markdown-Magic",
+      { timeout: 10000, timeoutMsg: "clicking the middle Tab did not activate it" },
+    );
+
+    await $$('[data-testid="tab-close"]')[1].click();
+
+    await browser.waitUntil(
+      async () => (await browser.getTitle()) === `${firstFilename} — Markdown-Magic`,
+      { timeout: 10000, timeoutMsg: "closing the Active Tab did not activate its right neighbour" },
+    );
+    expect(await $$('[data-testid="tab"]')).toHaveLength(2);
+  });
+
+  it("closes a background Tab without touching the Active Tab", async () => {
+    // [Untitled.md, a.md], a.md Active — closing the launch Tab changes nothing.
+    const activeTitle = await browser.getTitle();
+    await $$('[data-testid="tab-close"]')[0].click();
+    await browser.pause(400);
+
+    expect(await $$('[data-testid="tab"]')).toHaveLength(1);
+    expect(await browser.getTitle()).toBe(activeTitle);
+  });
 });

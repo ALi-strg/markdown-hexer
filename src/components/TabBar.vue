@@ -1,20 +1,33 @@
 <template>
   <nav class="tab-bar" data-testid="tab-bar" aria-label="Open Documents">
-    <button
+    <div
       v-for="(tab, index) in tabs"
       :key="tab.canonicalPath ?? `untitled-${tab.untitledNumber}`"
-      type="button"
       class="tab"
       :class="{ active: index === activeIndex }"
-      data-testid="tab"
-      role="tab"
-      :aria-selected="index === activeIndex"
       :title="tab.canonicalPath ?? undefined"
-      @click="emit('activate', index)"
     >
-      <span class="tab-label">{{ tabLabel(tab) }}</span>
-      <span v-if="isTabDirty(tab)" class="tab-dirty" data-testid="tab-dirty">*</span>
-    </button>
+      <button
+        type="button"
+        class="tab-activate"
+        data-testid="tab"
+        role="tab"
+        :aria-selected="index === activeIndex"
+        @click="emit('activate', index)"
+      >
+        <span class="tab-label">{{ tabLabel(tab) }}</span>
+        <span v-if="isTabDirty(tab)" class="tab-dirty" data-testid="tab-dirty">*</span>
+      </button>
+      <button
+        type="button"
+        class="tab-close"
+        data-testid="tab-close"
+        :aria-label="`Close ${tabDisplayName(tab)}`"
+        @click="emit('close', index)"
+      >
+        ×
+      </button>
+    </div>
     <button
       type="button"
       class="tab-new"
@@ -39,6 +52,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   activate: [index: number];
+  close: [index: number];
   new: [];
 }>();
 
@@ -88,17 +102,14 @@ function tabLabel(tab: Tab): string {
 
 .tab {
   display: inline-flex;
-  align-items: center;
-  gap: 4px;
+  align-items: stretch;
   max-width: 220px;
-  padding: 6px 12px;
   border: 1px solid transparent;
   border-bottom: none;
   border-radius: 6px 6px 0 0;
   background: transparent;
   color: var(--text-color);
   font-size: 0.85rem;
-  cursor: pointer;
   white-space: nowrap;
 }
 
@@ -109,6 +120,24 @@ function tabLabel(tab: Tab): string {
 .tab.active {
   background: var(--background-color);
   border-color: var(--border-color, #e0e0e0);
+}
+
+/* The clickable label fills the Tab; the close control sits at its right. */
+.tab-activate {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.tab.active .tab-activate {
   font-weight: 600;
 }
 
@@ -120,6 +149,27 @@ function tabLabel(tab: Tab): string {
 .tab-dirty {
   color: var(--accent-color, #888);
   font-weight: 700;
+}
+
+.tab-close {
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin-right: 6px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-color);
+  font-size: 0.9rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.tab-close:hover {
+  background: rgba(128, 128, 128, 0.2);
 }
 
 .tab-new {
