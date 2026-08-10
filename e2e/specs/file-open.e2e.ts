@@ -104,10 +104,11 @@ describe("Markdown-Magic file association & single-instance open", () => {
       { timeout: 10000, timeoutMsg: "forwarded file did not open a new Tab" },
     );
 
-    // The Dirty Document is still open in its own Tab.
+    // The Dirty Document is still open in its own Tab. (The launch Tab was
+    // consumed by the first open, so the workspace is [firstFile, secondFile].)
     const tabs = await $$('[data-testid="tab"]');
-    expect(tabs.length).toBe(3);
-    expect(await tabs[1].getText()).toContain("*");
+    expect(tabs.length).toBe(2);
+    expect(await tabs[0].getText()).toContain("*");
   });
 
   it("forwards a second launch to the running window without a second window", async () => {
@@ -146,7 +147,7 @@ describe("Markdown-Magic file association & single-instance open", () => {
     );
 
     const tabs = await $$('[data-testid="tab"]');
-    expect(tabs.length).toBe(3);
+    expect(tabs.length).toBe(2);
 
     const preview = await $('[data-testid="preview-pane"] .preview-host');
     await browser.waitUntil(

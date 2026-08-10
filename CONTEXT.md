@@ -21,7 +21,7 @@ A Markdown file open in a Tab, plus its in-memory unsaved changes. There is exac
 _Avoid_: File, note, buffer
 
 **Confirm-Discard Guard**:
-The native dialog shown before a Tab close or the app close when a Dirty Document would be discarded. Offers Save / Don't Save / Cancel. `New` and `Open` never trigger it — they add Tabs rather than replace a Document. On app close with several Dirty Tabs, the Guard runs once per Dirty Tab; Cancel anywhere aborts the close.
+The native dialog shown before a Tab close or the app close when a Dirty Document would be discarded. Offers Save / Don't Save / Cancel. `New` never triggers it — it adds a Tab rather than replacing a Document. `Open` adds a Tab, or — when the sole Tab is an empty Untitled Document — replaces it with the opened file; it never discards content, so it never triggers the Guard. On app close with several Dirty Tabs, the Guard runs once per Dirty Tab; Cancel anywhere aborts the close.
 _Avoid_: Save prompt, unsaved-changes dialog
 
 **Dirty**:
@@ -105,7 +105,7 @@ _Avoid_: Font size (the typeface choice, not its size)
 ## File Lifecycle
 
 **Untitled Document**:
-A Document created by `New` or at first launch that has no canonical path. Multiple Untitled Documents may be open at once, disambiguated by a per-session number (`Untitled.md`, `Untitled 2.md`, …). Save behaves as Save As until it gains a path.
+A Document created by `New` or at first launch that has no canonical path. Multiple Untitled Documents may be open at once, disambiguated by a number (`Untitled.md`, `Untitled 2.md`, …). Numbering is derived from the open set: the next number is one past the highest currently open, or 1 when no Untitled Document is open — so the launch Tab's consumption by an Open frees its number. An empty Untitled Document that is the sole Tab is a placeholder: Open replaces it with the opened file rather than stacking a second Tab. Save behaves as Save As until it gains a path.
 _Avoid_: New file, nameless file
 
 **Externally-Modified**:

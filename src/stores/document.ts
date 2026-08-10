@@ -28,7 +28,9 @@ export interface Tab {
   findQuery: string;
   currentMatch: MatchRange | null;
   /// The per-session Untitled number of a pathless Document; `null` once the
-  /// Document has a canonical path. The number is never reused in a session.
+  /// Document has a canonical path. Numbers are handed out from the currently
+  /// open Untitled Tabs: the next number is one past the highest open one, or
+  /// 1 when no Untitled Tab is open (so a consumed launch Tab frees number 1).
   untitledNumber: number | null;
 }
 
@@ -90,10 +92,7 @@ function isOpenInAnotherTab(tabs: Tab[], tab: Tab, path: string): boolean {
 /// name and the Document-shaped public surface are kept so existing consumers
 /// and tests keep working unchanged while the state model becomes a Tab list.
 export const useDocumentStore = defineStore("document", () => {
-  /// The next Untitled number handed out, never reused within a session. The
-  /// launch Tab takes number 1, so the first `New` creates `Untitled 2.md`.
-  let nextUntitledNumber = 1;
-  const tabs = ref<Tab[]>([createUntitledTab(nextUntitledNumber++)]);
+  const tabs = ref<Tab[]>([createUntitledTab(1)]);
   const activeIndex = ref(0);
 
   /// The Active Tab — the one the Document surface mirrors.
@@ -220,10 +219,18 @@ export const useDocumentStore = defineStore("document", () => {
   }
 
   /// Adds a fresh Untitled Tab right after the Active Tab and makes it Active.
-  /// The Untitled number is never reused within a session. Never runs the
-  /// Confirm-Discard Guard — nothing is discarded.
+  /// The Untitled number is one past the highest number currently open — or 1
+  /// when no Untitled Tab is open, so the first `New` after the launch Tab was
+  /// consumed restarts at `Untitled.md`. Never runs the Confirm-Discard Guard
+  /// — nothing is discarded.
   function newTab(): Tab {
-    const tab = createUntitledTab(nextUntitledNumber++);
+    let highest = 0;
+    for (const tab of tabs.value) {
+      if (tab.untitledNumber !== null && tab.untitledNumber > highest) {
+        highest = tab.untitledNumber;
+      }
+    }
+    const tab = createUntitledTab(highest + 1);
     insertAfterActive(tab);
     syncAssetRoot();
     return tab;
@@ -272,6 +279,23 @@ export const useDocumentStore = defineStore("document", () => {
       currentMatch: null,
       untitledNumber: null,
     };
+    // A sole empty Untitled Tab is a placeholder the workspace holds until a
+    // real file arrives: Open replaces it in place instead of stacking the
+    // opened file behind it. The rule fires only when the Tab is the sole one
+    // (a user who deliberately keeps an Untitled Tab open is never surprised)
+    // and only when its content is empty — an empty Untitled Document is clean
+    // by construction, so nothing is discarded and the Confirm-Discard Guard
+    // cannot run.
+    if (
+      tabs.value.length === 1 &&
+      tabs.value[0].canonicalPath === null &&
+      tabs.value[0].content === ""
+    ) {
+      tabs.value[0] = tab;
+      syncAssetRoot();
+      useUiStore().setLastDirectory(path);
+      return "opened";
+    }
     insertAfterActive(tab);
     syncAssetRoot();
     useUiStore().setLastDirectory(path);

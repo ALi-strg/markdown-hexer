@@ -52,7 +52,7 @@ describe("Markdown-Magic drag-and-drop open", () => {
     await editorContent.addValue(text);
   }
 
-  it("opens a dropped file into a new Tab in Preview Only", async () => {
+  it("consumes the launch Tab when a file is dropped in Preview Only", async () => {
     await browser.pause(1000);
     await triggerDrop(dropAPath);
 
@@ -77,11 +77,12 @@ describe("Markdown-Magic drag-and-drop open", () => {
       },
     );
 
+    // The dropped file replaced the empty launch Tab in place.
     const tabs = await $$('[data-testid="tab"]');
-    expect(tabs.length).toBe(2);
+    expect(tabs.length).toBe(1);
     // WebKitGTK's getElementText drops the ellipsized tab label, so read the
     // accessible label (the same text the visible label renders) instead.
-    expect(await tabs[1].getAttribute("aria-label")).toContain(dropAFilename);
+    expect(await tabs[0].getAttribute("aria-label")).toContain(dropAFilename);
   });
 
   it("opens a drop onto a Dirty Document without the Confirm-Discard Guard", async () => {
@@ -101,10 +102,11 @@ describe("Markdown-Magic drag-and-drop open", () => {
       { timeout: 10000, timeoutMsg: "drop did not open a new Tab" },
     );
 
-    // The Dirty Document is still open in its own Tab.
+    // The Dirty Document is still open in its own Tab. (The launch Tab was
+    // consumed by the first drop, so the workspace is [dropA, dropB].)
     const tabs = await $$('[data-testid="tab"]');
-    expect(tabs.length).toBe(3);
-    expect(await tabs[1].getText()).toContain("*");
+    expect(tabs.length).toBe(2);
+    expect(await tabs[0].getText()).toContain("*");
   });
 
   it("focuses the existing Tab when the same path is dropped again", async () => {
@@ -112,7 +114,7 @@ describe("Markdown-Magic drag-and-drop open", () => {
     await browser.pause(500);
 
     const tabs = await $$('[data-testid="tab"]');
-    expect(tabs.length).toBe(3);
+    expect(tabs.length).toBe(2);
     expect(await browser.getTitle()).toBe(`${dropBFilename} — Markdown-Magic`);
   });
 });

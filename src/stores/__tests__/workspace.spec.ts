@@ -169,10 +169,11 @@ describe("workspace store model", () => {
       return Promise.resolve(undefined);
     });
 
+    // Consuming the empty launch Tab still produces a fresh file Tab.
     await document.openPathInTab("C:\\notes\\new.md");
 
-    expect(document.tabs[1].findQuery).toBe("");
-    expect(document.tabs[1].currentMatch).toBeNull();
+    expect(document.tabs[0].findQuery).toBe("");
+    expect(document.tabs[0].currentMatch).toBeNull();
   });
 
   it("creates a new Untitled Tab with empty Find & Replace state", () => {
@@ -215,6 +216,25 @@ describe("workspace store model", () => {
     expect(document.filename).toBe("Untitled 3.md");
   });
 
+  it("restarts Untitled numbering at 1 when no Untitled Tab is open", async () => {
+    const document = useDocumentStore();
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "open_document") {
+        return Promise.resolve("# New file");
+      }
+      return Promise.resolve(undefined);
+    });
+    // Consuming the launch Tab removes the only Untitled Tab in the workspace.
+    await document.openPathInTab("C:\\notes\\new.md");
+    expect(document.tabs.some((tab) => tab.untitledNumber !== null)).toBe(false);
+
+    document.newTab();
+
+    // No Untitled Tab is open, so numbering restarts at Untitled.md.
+    expect(document.filename).toBe("Untitled.md");
+    expect(document.tabs[1].untitledNumber).toBe(1);
+  });
+
   it("clears the asset scope when a new Untitled Tab becomes Active", () => {
     const document = useDocumentStore();
     document.canonicalPath = "C:\\notes\\a.md";
@@ -239,7 +259,7 @@ describe("workspace store model", () => {
     });
   });
 
-  it("opens a file into a new Tab after the Active Tab and makes it Active", async () => {
+  it("consumes a sole empty Untitled Tab when a file is opened", async () => {
     const document = useDocumentStore();
     invokeMock.mockImplementation((command: string) => {
       if (command === "open_document") {
@@ -251,14 +271,58 @@ describe("workspace store model", () => {
     const result = await document.openPathInTab("C:\\notes\\new.md");
 
     expect(result).toBe("opened");
-    expect(document.tabs).toHaveLength(2);
-    expect(document.activeIndex).toBe(1);
-    expect(document.tabs[1].canonicalPath).toBe("C:\\notes\\new.md");
-    expect(document.tabs[1].content).toBe("# New file");
-    expect(document.tabs[1].layoutMode).toBe("preview");
+    // The opened file replaces the empty launch Tab in place: the workspace
+    // holds the file alone, not the file stacked behind an empty Untitled Tab.
+    expect(document.tabs).toHaveLength(1);
+    expect(document.activeIndex).toBe(0);
+    expect(document.tabs[0].canonicalPath).toBe("C:\\notes\\new.md");
+    expect(document.tabs[0].content).toBe("# New file");
+    expect(document.tabs[0].layoutMode).toBe("preview");
+    expect(document.tabs[0].untitledNumber).toBeNull();
     expect(document.content).toBe("# New file");
     expect(document.filename).toBe("new.md");
     expect(document.dirty).toBe(false);
+  });
+
+  it("adds a second Tab when the sole Tab is a Dirty Untitled Document", async () => {
+    const document = useDocumentStore();
+    document.mirrorContent("# Draft");
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "open_document") {
+        return Promise.resolve("# New file");
+      }
+      return Promise.resolve(undefined);
+    });
+
+    const result = await document.openPathInTab("C:\\notes\\new.md");
+
+    expect(result).toBe("opened");
+    // Typed content is never silently discarded: a Dirty Untitled Tab is not
+    // consumed, so the file lands in a second Tab.
+    expect(document.tabs).toHaveLength(2);
+    expect(document.activeIndex).toBe(1);
+    expect(document.tabs[0].content).toBe("# Draft");
+    expect(document.tabs[1].canonicalPath).toBe("C:\\notes\\new.md");
+  });
+
+  it("adds a Tab when a real file Tab is already open", async () => {
+    const document = useDocumentStore();
+    pushTab(document, "C:\\notes\\a.md");
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "open_document") {
+        return Promise.resolve("# New file");
+      }
+      return Promise.resolve(undefined);
+    });
+
+    const result = await document.openPathInTab("C:\\notes\\new.md");
+
+    expect(result).toBe("opened");
+    // The empty Untitled Tab is no longer the sole Tab, so nothing is consumed;
+    // the file lands in a new Tab right after the Active launch Tab.
+    expect(document.tabs).toHaveLength(3);
+    expect(document.activeIndex).toBe(1);
+    expect(document.tabs[1].canonicalPath).toBe("C:\\notes\\new.md");
   });
 
   it("focuses the existing Tab when the path is already open, with no duplicate", async () => {
@@ -296,11 +360,12 @@ describe("workspace store model", () => {
     ]);
 
     expect([first, second].sort()).toEqual(["focused", "opened"]);
-    expect(document.tabs).toHaveLength(2);
+    // One of the two consumes the sole empty launch Tab; the other focuses it.
+    expect(document.tabs).toHaveLength(1);
     expect(
       document.tabs.filter((tab) => tab.canonicalPath === "C:\\notes\\race.md"),
     ).toHaveLength(1);
-    expect(document.activeIndex).toBe(1);
+    expect(document.activeIndex).toBe(0);
   });
 
   it("shows a toast and adds no Tab when the read fails", async () => {

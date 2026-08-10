@@ -459,11 +459,13 @@ function runNewDocument() {
 }
 
 /// Opens the file at `path` in a Tab: a new Tab is added and made Active, or —
-/// when the path is already open — the existing Tab is focused instead (one Tab
-/// per path). A new Tab carries the auto-chosen Preview Only mode on its
-/// record; focusing an already-open Tab makes the window render that Tab's own
-/// mode. Shared by the native Open dialog, drag-and-drop, and OS file-open so
-/// all use one code path. Never runs the Confirm-Discard Guard.
+/// when the sole Tab is an empty Untitled Document — that Tab is replaced in
+/// place by the opened file, or — when the path is already open — the existing
+/// Tab is focused instead (one Tab per path). A new Tab carries the auto-chosen
+/// Preview Only mode on its record; focusing an already-open Tab makes the
+/// window render that Tab's own mode. Shared by the native Open dialog,
+/// drag-and-drop, and OS file-open so all use one code path. Never runs the
+/// Confirm-Discard Guard.
 ///
 /// The outgoing Tab's editor state is preserved before the workspace switches;
 /// focusing an existing Tab restores its preserved state, while a newly opened

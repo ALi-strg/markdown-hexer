@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { flushPromises, mount, enableAutoUnmount } from "@vue/test-utils";
+import { flushPromises, mount, enableAutoUnmount, type VueWrapper } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { nextTick } from "vue";
 import { EditorView } from "@codemirror/view";
@@ -458,10 +458,12 @@ describe("App shell", () => {
     );
     await flushPromises();
 
+    // The launch Tab now has a canonical path, so no Untitled Tab is open:
+    // numbering restarts at Untitled.md (Q6-b).
     expect(document.tabs).toHaveLength(2);
     expect(document.activeIndex).toBe(1);
     expect(document.canonicalPath).toBeNull();
-    expect(document.filename).toBe("Untitled 2.md");
+    expect(document.filename).toBe("Untitled.md");
     expect(document.dirty).toBe(false);
     expect(ui.layoutMode).toBe("split");
     expect(pickGuardChoiceMock).not.toHaveBeenCalled();
@@ -531,15 +533,15 @@ describe("App shell", () => {
     expect(document.activeIndex).toBe(1);
     expect(document.content).toBe("");
     expect(document.dirty).toBe(false);
-    expect(document.filename).toBe("Untitled 2.md");
+    expect(document.filename).toBe("Untitled.md");
     expect(ui.layoutMode).toBe("split");
   });
 
   it("closes the Active Tab on Cmd/Ctrl+W without the Guard when clean", async () => {
-    mount(App);
+    const wrapper = mount(App);
     await flushPromises();
     const document = useDocumentStore();
-    await openSecondTab("C:\\notes\\b.md");
+    await openSecondTab(wrapper, "C:\\notes\\b.md");
 
     window.dispatchEvent(
       new KeyboardEvent("keydown", { key: "w", ctrlKey: true }),
@@ -553,10 +555,10 @@ describe("App shell", () => {
   });
 
   it("runs the Confirm-Discard Guard for a Dirty Active Tab on Cmd/Ctrl+W", async () => {
-    mount(App);
+    const wrapper = mount(App);
     await flushPromises();
     const document = useDocumentStore();
-    await openSecondTab("C:\\notes\\b.md");
+    await openSecondTab(wrapper, "C:\\notes\\b.md");
     document.mirrorContent("# B edits");
     pickGuardChoiceMock.mockResolvedValue("cancel");
 
@@ -590,6 +592,7 @@ describe("App shell", () => {
     const wrapper = mount(App);
     await flushPromises();
     const document = useDocumentStore();
+    seedLaunchTab(wrapper);
     pickOpenPathMock.mockResolvedValue("C:\\notes\\b.md");
     invokeMock.mockImplementation((command: string) => {
       if (command === "open_document") {
@@ -619,14 +622,14 @@ describe("App shell", () => {
     const editorContent = wrapper.find(
       '[data-testid="editor-pane"] .cm-content',
     );
-    expect(editorContent.text()).toBe("");
+    expect(editorContent.text()).toBe("# Draft");
   });
 
   it("cycles to the previous Tab on Ctrl+Shift+Tab", async () => {
-    mount(App);
+    const wrapper = mount(App);
     await flushPromises();
     const document = useDocumentStore();
-    await openSecondTab("C:\\notes\\b.md");
+    await openSecondTab(wrapper, "C:\\notes\\b.md");
     document.switchTab(0);
 
     window.dispatchEvent(
@@ -687,7 +690,7 @@ describe("App shell", () => {
     expect(editorContent.text()).toBe("# Loaded");
   });
 
-  it("opens a picked file into a new Tab in Preview Only on Cmd/Ctrl+O", async () => {
+  it("consumes the launch Tab when a file is opened on Cmd/Ctrl+O", async () => {
     mount(App);
     await flushPromises();
     const document = useDocumentStore();
@@ -707,9 +710,9 @@ describe("App shell", () => {
 
     expect(pickOpenPathMock).toHaveBeenCalled();
     expect(pickGuardChoiceMock).not.toHaveBeenCalled();
-    // The launch Tab stays open; the picked file lands in a new Active Tab.
-    expect(document.tabs).toHaveLength(2);
-    expect(document.activeIndex).toBe(1);
+    // The opened file replaces the empty launch Tab in place.
+    expect(document.tabs).toHaveLength(1);
+    expect(document.activeIndex).toBe(0);
     expect(document.content).toBe("# Loaded");
     expect(document.canonicalPath).toBe("C:\\notes\\b.md");
     expect(document.filename).toBe("b.md");
@@ -772,8 +775,10 @@ describe("App shell", () => {
       "open_document",
       expect.anything(),
     );
-    expect(document.tabs).toHaveLength(2);
-    expect(document.activeIndex).toBe(1);
+    // The first open consumed the launch Tab, leaving the file as the only
+    // Tab; re-opening the same path focuses it and adds no duplicate.
+    expect(document.tabs).toHaveLength(1);
+    expect(document.activeIndex).toBe(0);
     expect(document.content).toBe("# Edited in b");
   });
 
@@ -950,8 +955,9 @@ describe("App shell", () => {
     );
     await flushPromises();
 
-    // b.md is Active; a background a.md changed on disk.
-    expect(document.activeIndex).toBe(2);
+    // b.md is Active; a background a.md changed on disk. (The first open
+    // consumed the empty launch Tab, so a.md sits at index 0.)
+    expect(document.activeIndex).toBe(1);
 
     // Window focus checks only the Active Tab (b.md): the background a.md is
     // neither inspected nor reloaded.
@@ -964,11 +970,11 @@ describe("App shell", () => {
     expect(invokeMock).not.toHaveBeenCalledWith("inspect_document", {
       path: "C:\\notes\\a.md",
     });
-    expect(document.tabs[1].content).toBe("# C:\\notes\\a.md");
+    expect(document.tabs[0].content).toBe("# C:\\notes\\a.md");
 
     // The moment a.md becomes Active it is checked, and its clean Document
     // reloads silently from disk.
-    await wrapper.findAll('[data-testid="tab"]')[1].trigger("click");
+    await wrapper.findAll('[data-testid="tab"]')[0].trigger("click");
     await flushPromises();
     await nextTick();
 
@@ -1008,12 +1014,13 @@ describe("App shell", () => {
     );
     await flushPromises();
 
-    // a.md is a background Dirty Tab: edited locally, changed on disk.
-    document.tabs[1].content = "# My edits";
+    // a.md is a background Dirty Tab: edited locally, changed on disk. (The
+    // first open consumed the empty launch Tab, so a.md sits at index 0.)
+    document.tabs[0].content = "# My edits";
     pickExternalChoiceMock.mockResolvedValue("reload");
 
     // Activating it checks it and, because it is Dirty, asks the user.
-    await wrapper.findAll('[data-testid="tab"]')[1].trigger("click");
+    await wrapper.findAll('[data-testid="tab"]')[0].trigger("click");
     await flushPromises();
     await nextTick();
 
@@ -1060,13 +1067,14 @@ describe("App shell", () => {
     await flushPromises();
 
     // b.md Active; closing it makes the background a.md Active, which is then
-    // checked and reloads silently.
-    expect(document.activeIndex).toBe(2);
-    await wrapper.findAll('[data-testid="tab-close"]')[2].trigger("click");
+    // checked and reloads silently. (The first open consumed the empty launch
+    // Tab, so the workspace is [a.md, b.md].)
+    expect(document.activeIndex).toBe(1);
+    await wrapper.findAll('[data-testid="tab-close"]')[1].trigger("click");
     await flushPromises();
     await nextTick();
 
-    expect(document.activeIndex).toBe(1);
+    expect(document.activeIndex).toBe(0);
     expect(document.filename).toBe("a.md");
     expect(document.content).toBe("# A changed");
     expect(document.dirty).toBe(false);
@@ -1102,6 +1110,7 @@ describe("App shell", () => {
 
     // Re-opening an already-open path focuses its background Tab — which
     // becomes Active, so it is checked and its clean Document reloads silently.
+    // (The first open consumed the empty launch Tab, so a.md sits at index 0.)
     pickOpenPathMock.mockResolvedValue("C:\\notes\\a.md");
     window.dispatchEvent(
       new KeyboardEvent("keydown", { key: "o", ctrlKey: true }),
@@ -1109,7 +1118,7 @@ describe("App shell", () => {
     await flushPromises();
     await nextTick();
 
-    expect(document.activeIndex).toBe(1);
+    expect(document.activeIndex).toBe(0);
     expect(document.content).toBe("# Changed");
     expect(document.dirty).toBe(false);
     const editorContent = wrapper.find(
@@ -1118,7 +1127,7 @@ describe("App shell", () => {
     expect(editorContent.text()).toBe("# Changed");
   });
 
-  it("opens a dropped file into a new Tab in Preview Only", async () => {
+  it("consumes the launch Tab when a file is dropped in Preview Only", async () => {
     const window = mockWindow();
     const wrapper = mount(App);
     await flushPromises();
@@ -1137,8 +1146,9 @@ describe("App shell", () => {
     await flushPromises();
 
     expect(pickGuardChoiceMock).not.toHaveBeenCalled();
-    expect(document.tabs).toHaveLength(2);
-    expect(document.activeIndex).toBe(1);
+    // The dropped file replaces the empty launch Tab in place.
+    expect(document.tabs).toHaveLength(1);
+    expect(document.activeIndex).toBe(0);
     expect(document.content).toBe("# Dropped");
     expect(document.canonicalPath).toBe("C:\\notes\\d.md");
     expect(document.filename).toBe("d.md");
@@ -1230,12 +1240,14 @@ describe("App shell", () => {
       "open_document",
       expect.anything(),
     );
-    expect(document.tabs).toHaveLength(2);
-    expect(document.activeIndex).toBe(1);
+    // The first drop consumed the launch Tab; re-dropping the same path
+    // focuses it and adds no duplicate.
+    expect(document.tabs).toHaveLength(1);
+    expect(document.activeIndex).toBe(0);
     expect(document.content).toBe("# Edited");
   });
 
-  it("opens a file the app was launched with through the Open flow", async () => {
+  it("consumes the launch Tab when the app opens a file it was launched with", async () => {
     const wrapper = mount(App);
     const document = useDocumentStore();
     const ui = useUiStore();
@@ -1251,9 +1263,9 @@ describe("App shell", () => {
     await flushPromises();
     await nextTick();
 
-    // The launch Tab stays open; the launched file lands in a new Active Tab.
-    expect(document.tabs).toHaveLength(2);
-    expect(document.activeIndex).toBe(1);
+    // The launched file replaces the empty launch Tab in place.
+    expect(document.tabs).toHaveLength(1);
+    expect(document.activeIndex).toBe(0);
     expect(document.content).toBe("# Launched");
     expect(document.canonicalPath).toBe("C:\\notes\\start.md");
     expect(document.filename).toBe("start.md");
@@ -1265,7 +1277,7 @@ describe("App shell", () => {
     expect(editorContent.text()).toBe("# Launched");
   });
 
-  it("opens a file forwarded by a second instance in the existing window", async () => {
+  it("consumes the launch Tab when a second instance forwards a file", async () => {
     const window = mockWindow();
     mount(App);
     await flushPromises();
@@ -1283,8 +1295,9 @@ describe("App shell", () => {
     window.getFileOpenHandler()({ payload: "C:\\notes\\fwd.md" });
     await flushPromises();
 
-    expect(document.tabs).toHaveLength(2);
-    expect(document.activeIndex).toBe(1);
+    // The forwarded file replaces the empty launch Tab in place.
+    expect(document.tabs).toHaveLength(1);
+    expect(document.activeIndex).toBe(0);
     expect(document.content).toBe("# Forwarded");
     expect(document.canonicalPath).toBe("C:\\notes\\fwd.md");
     expect(document.dirty).toBe(false);
@@ -1400,10 +1413,16 @@ describe("App shell", () => {
       new KeyboardEvent("keydown", { key: "o", ctrlKey: true }),
     );
     await flushPromises();
+    pickOpenPathMock.mockResolvedValue("C:\\notes\\c.md");
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "o", ctrlKey: true }),
+    );
+    await flushPromises();
 
     const tabs = wrapper.findAll('[data-testid="tab"]');
     expect(tabs).toHaveLength(2);
-    expect(tabs[1].text()).toContain("b.md");
+    expect(tabs[0].text()).toContain("b.md");
+    expect(tabs[1].text()).toContain("c.md");
   });
 
   it("appends the parent folder when two open Documents share a basename", async () => {
@@ -1428,10 +1447,10 @@ describe("App shell", () => {
     );
     await flushPromises();
 
-    expect(document.tabs).toHaveLength(3);
+    expect(document.tabs).toHaveLength(2);
     const labels = wrapper.findAll('[data-testid="tab"]').map((tab) => tab.text());
-    expect(labels[1]).toContain("a.md — notes");
-    expect(labels[2]).toContain("a.md — docs");
+    expect(labels[0]).toContain("a.md — notes");
+    expect(labels[1]).toContain("a.md — docs");
   });
 
   it("activates a Tab on click, swapping the editor, preview, and window title", async () => {
@@ -1440,6 +1459,7 @@ describe("App shell", () => {
     await flushPromises();
     const document = useDocumentStore();
     const ui = useUiStore();
+    seedLaunchTab(wrapper);
     pickOpenPathMock.mockResolvedValue("C:\\notes\\b.md");
     invokeMock.mockImplementation((command: string) => {
       if (command === "open_document") {
@@ -1476,12 +1496,12 @@ describe("App shell", () => {
     const editorContent = wrapper.find(
       '[data-testid="editor-pane"] .cm-content',
     );
-    expect(editorContent.text()).toBe("");
+    expect(editorContent.text()).toBe("# Draft");
     const preview = wrapper.find('[data-testid="preview-pane"] .preview-host');
     expect(preview.text()).not.toContain("B edited");
     expect(invokeMock).toHaveBeenCalledWith("set_document_title", {
       filename: "Untitled.md",
-      dirty: false,
+      dirty: true,
     });
   });
 
@@ -1491,6 +1511,7 @@ describe("App shell", () => {
     await flushPromises();
     const pane = wrapper.findComponent({ ref: "editorPane" });
     const view = (pane.vm as unknown as { getView: () => EditorView }).getView();
+    seedLaunchTab(wrapper);
     invokeMock.mockImplementation((command: string) => {
       if (command === "open_document") {
         return Promise.resolve("# File B");
@@ -1532,6 +1553,7 @@ describe("App shell", () => {
     await flushPromises();
     const document = useDocumentStore();
     const ui = useUiStore();
+    seedLaunchTab(wrapper);
     pickOpenPathMock.mockResolvedValue("C:\\notes\\b.md");
     invokeMock.mockImplementation((command: string) => {
       if (command === "open_document") {
@@ -1576,6 +1598,7 @@ describe("App shell", () => {
     await flushPromises();
     const document = useDocumentStore();
     const ui = useUiStore();
+    seedLaunchTab(wrapper);
     pickOpenPathMock.mockResolvedValue("C:\\notes\\b.md");
     invokeMock.mockImplementation((command: string) => {
       if (command === "open_document") {
@@ -1625,6 +1648,7 @@ describe("App shell", () => {
   it("renders the Active Tab's Layout Mode in the panes on switch", async () => {
     const wrapper = mount(App);
     await flushPromises();
+    seedLaunchTab(wrapper);
     pickOpenPathMock.mockResolvedValue("C:\\notes\\b.md");
     invokeMock.mockImplementation((command: string) => {
       if (command === "open_document") {
@@ -1665,6 +1689,7 @@ describe("App shell", () => {
     await flushPromises();
     const ui = useUiStore();
     ui.dividerPosition = 0.7;
+    seedLaunchTab(wrapper);
     pickOpenPathMock.mockResolvedValue("C:\\notes\\b.md");
     invokeMock.mockImplementation((command: string) => {
       if (command === "open_document") {
@@ -1770,6 +1795,7 @@ describe("App shell", () => {
     const pane = wrapper.findComponent({ ref: "editorPane" });
     const view = (pane.vm as unknown as { getView: () => EditorView }).getView();
     const ui = useUiStore();
+    seedLaunchTab(wrapper);
     pickOpenPathMock.mockResolvedValue("C:\\notes\\b.md");
     invokeMock.mockImplementation((command: string) => {
       if (command === "open_document") {
@@ -1855,6 +1881,7 @@ describe("App shell", () => {
     await flushPromises();
     const pane = wrapper.findComponent({ ref: "editorPane" });
     const view = (pane.vm as unknown as { getView: () => EditorView }).getView();
+    seedLaunchTab(wrapper);
     pickOpenPathMock.mockResolvedValue("C:\\notes\\a.md");
     invokeMock.mockImplementation((command: string) => {
       if (command === "open_document") {
@@ -1897,6 +1924,7 @@ describe("App shell", () => {
     const wrapper = mount(App);
     await flushPromises();
     const document = useDocumentStore();
+    seedLaunchTab(wrapper);
     invokeMock.mockImplementation((command: string) => {
       if (command === "open_document") {
         return Promise.resolve("![pic](img.png)");
@@ -2332,6 +2360,7 @@ describe("App shell", () => {
     await flushPromises();
     const document = useDocumentStore();
     const ui = useUiStore();
+    seedLaunchTab(wrapper);
     // The launch Tab keeps its own mode while a Preview-Only Tab replaces.
     ui.cycleLayoutMode();
     ui.cycleLayoutMode();
@@ -2938,7 +2967,7 @@ describe("App shell", () => {
     await flushPromises();
     const document = useDocumentStore();
     const ui = useUiStore();
-    await openSecondTab("C:\\notes\\b.md");
+    await openSecondTab(wrapper, "C:\\notes\\b.md");
     // Return to the Untitled launch Tab before Save As.
     await wrapper.findAll('[data-testid="tab"]')[0].trigger("click");
     await nextTick();
@@ -2967,7 +2996,7 @@ describe("App shell", () => {
     const wrapper = mount(App);
     await flushPromises();
     const document = useDocumentStore();
-    await openSecondTab("C:\\notes\\b.md");
+    await openSecondTab(wrapper, "C:\\notes\\b.md");
     await wrapper.findAll('[data-testid="tab"]')[0].trigger("click");
     await nextTick();
 
@@ -2983,7 +3012,7 @@ describe("App shell", () => {
 
     expect(invokeMock).toHaveBeenCalledWith("save_document", {
       path: "C:\\notes\\free.md",
-      content: "",
+      content: "# Draft",
     });
     expect(document.tabs[0].canonicalPath).toBe("C:\\notes\\free.md");
     expect(document.filename).toBe("free.md");
@@ -3349,7 +3378,19 @@ describe("App shell", () => {
   /// Opens `path` into a new Tab via the Ctrl/Cmd+O shortcut. Shared by the
   /// close-control tests: the Guard's per-Tab Save needs a real second Tab to
   /// act on.
-  async function openSecondTab(path: string) {
+  /// Types a draft into the launch Tab so an Open does not consume it: a user
+  /// who wrote into the launch Untitled Document keeps it when opening a file,
+  /// producing the two-Tab [Untitled.md, file] workspace the tab-management
+  /// tests assume. Dispatched through the editor so the store mirror and the
+  /// preserved editor state stay in sync.
+  function seedLaunchTab(wrapper: VueWrapper) {
+    const pane = wrapper.findComponent({ ref: "editorPane" });
+    const view = (pane.vm as unknown as { getView: () => EditorView }).getView();
+    view.dispatch({ changes: { from: 0, insert: "# Draft" } });
+  }
+
+  async function openSecondTab(wrapper: VueWrapper, path: string) {
+    seedLaunchTab(wrapper);
     pickOpenPathMock.mockResolvedValue(path);
     invokeMock.mockImplementation((command: string) => {
       if (command === "open_document") {
@@ -3368,7 +3409,7 @@ describe("App shell", () => {
     const wrapper = mount(App);
     await flushPromises();
     const document = useDocumentStore();
-    await openSecondTab("C:\\notes\\b.md");
+    await openSecondTab(wrapper, "C:\\notes\\b.md");
 
     await wrapper.findAll('[data-testid="tab-close"]')[1].trigger("click");
     await flushPromises();
@@ -3383,7 +3424,7 @@ describe("App shell", () => {
     const wrapper = mount(App);
     await flushPromises();
     const document = useDocumentStore();
-    await openSecondTab("C:\\notes\\b.md");
+    await openSecondTab(wrapper, "C:\\notes\\b.md");
     document.mirrorContent("# B edits");
     pickGuardChoiceMock.mockResolvedValue("cancel");
 
@@ -3400,7 +3441,7 @@ describe("App shell", () => {
     const wrapper = mount(App);
     await flushPromises();
     const document = useDocumentStore();
-    await openSecondTab("C:\\notes\\b.md");
+    await openSecondTab(wrapper, "C:\\notes\\b.md");
     document.mirrorContent("# B edits");
     pickGuardChoiceMock.mockResolvedValue("dont-save");
 
@@ -3419,7 +3460,7 @@ describe("App shell", () => {
     const wrapper = mount(App);
     await flushPromises();
     const document = useDocumentStore();
-    await openSecondTab("C:\\notes\\b.md");
+    await openSecondTab(wrapper, "C:\\notes\\b.md");
     document.mirrorContent("# B edits");
     pickGuardChoiceMock.mockResolvedValue("save");
 
@@ -3439,6 +3480,7 @@ describe("App shell", () => {
     const wrapper = mount(App);
     await flushPromises();
     const document = useDocumentStore();
+    seedLaunchTab(wrapper);
     pickOpenPathMock
       .mockResolvedValueOnce("C:\\notes\\b.md")
       .mockResolvedValueOnce("C:\\notes\\c.md");
@@ -3484,7 +3526,7 @@ describe("App shell", () => {
     const wrapper = mount(App);
     await flushPromises();
     const document = useDocumentStore();
-    await openSecondTab("C:\\notes\\b.md");
+    await openSecondTab(wrapper, "C:\\notes\\b.md");
     document.switchTab(1);
 
     await wrapper.findAll('[data-testid="tab-close"]')[1].trigger("click");
@@ -3534,7 +3576,7 @@ describe("App shell", () => {
     const wrapper = mount(App);
     await flushPromises();
     const document = useDocumentStore();
-    await openSecondTab("C:\\notes\\b.md");
+    await openSecondTab(wrapper, "C:\\notes\\b.md");
     await wrapper.findAll('[data-testid="tab"]')[0].trigger("click");
     await nextTick();
 
@@ -3546,7 +3588,7 @@ describe("App shell", () => {
     const editorContent = wrapper.find(
       '[data-testid="editor-pane"] .cm-content',
     );
-    expect(editorContent.text()).toBe("");
+    expect(editorContent.text()).toBe("# Draft");
   });
 
   it("runs the Guard once per Dirty Tab on window close, aborting when any cancels", async () => {

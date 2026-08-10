@@ -530,7 +530,8 @@ describe("document store", () => {
     invokeMock.mockClear();
 
     // b.md is Active. A background a.md changed on disk, but a check inspects
-    // only the Active Tab, so a.md is neither inspected nor reloaded.
+    // only the Active Tab, so a.md is neither inspected nor reloaded. (The
+    // first open consumed the empty launch Tab, so a.md sits at index 0.)
     const replaced = await document.checkExternalModification();
 
     expect(replaced).toBe(false);
@@ -538,8 +539,8 @@ describe("document store", () => {
     expect(invokeMock).toHaveBeenCalledWith("inspect_document", {
       path: "C:\\notes\\b.md",
     });
-    expect(document.tabs[1].content).toBe("# C:\\notes\\a.md");
-    expect(document.tabs[1].diskContent).toBe("# C:\\notes\\a.md");
+    expect(document.tabs[0].content).toBe("# C:\\notes\\a.md");
+    expect(document.tabs[0].diskContent).toBe("# C:\\notes\\a.md");
     expect(pickExternalChoiceMock).not.toHaveBeenCalled();
   });
 
@@ -592,14 +593,16 @@ describe("document store", () => {
       }
       return Promise.resolve(undefined);
     });
+    // Two opens leave two Tabs (the first consumed the empty launch Tab).
     await document.openPathInTab("C:\\notes\\a.md");
+    await document.openPathInTab("C:\\notes\\b.md");
     invokeMock.mockClear();
     document.switchTab(0);
 
     document.cycleTab(1);
 
     expect(invokeMock).toHaveBeenCalledWith("set_asset_root", {
-      documentPath: "C:\\notes\\a.md",
+      documentPath: "C:\\notes\\b.md",
     });
   });
 });
