@@ -390,8 +390,8 @@ function onRedo() {
   }
 }
 
-/// Sets a Layout Mode from the Layout Switcher. Direct selection overrides any
-/// auto-choice until the next Document load, same as the cycle shortcut.
+/// Sets the Active Document's Layout Mode from the Layout Switcher. Only the
+/// Active Tab's mode changes; every other Tab keeps its own.
 function onLayoutChange(mode: LayoutMode) {
   ui.setLayoutMode(mode);
 }
@@ -411,21 +411,21 @@ function closeShortcuts() {
 /// Confirm-Discard Guard: it adds a Tab instead of replacing a Document, so
 /// nothing is discarded. The outgoing Tab's editor state is preserved first,
 /// so returning to it lands where the user left off; the new Tab starts with
-/// a destructive rebuild (empty content, cleared undo history) as today.
+/// a destructive rebuild (empty content, cleared undo history) and the Split
+/// View mode its record was created with.
 function runNewDocument() {
   editorPane.value?.captureActiveTabState();
   document.newTab();
   ui.findOverlayOpen = false;
   editorPane.value?.replaceContent(document.content);
-  ui.applyDocumentLoadMode(true);
 }
 
 /// Opens the file at `path` in a Tab: a new Tab is added and made Active, or —
 /// when the path is already open — the existing Tab is focused instead (one Tab
-/// per path). The auto-chosen Layout Mode (Preview Only) applies only when a
-/// new Tab is created; focusing an already-open Tab leaves the window's mode
-/// untouched. Shared by the native Open dialog, drag-and-drop, and OS file-open
-/// so all use one code path. Never runs the Confirm-Discard Guard.
+/// per path). A new Tab carries the auto-chosen Preview Only mode on its
+/// record; focusing an already-open Tab makes the window render that Tab's own
+/// mode. Shared by the native Open dialog, drag-and-drop, and OS file-open so
+/// all use one code path. Never runs the Confirm-Discard Guard.
 ///
 /// The outgoing Tab's editor state is preserved before the workspace switches;
 /// focusing an existing Tab restores its preserved state, while a newly opened
@@ -440,7 +440,6 @@ async function openPath(path: string) {
   ui.findOverlayOpen = false;
   if (result === "opened") {
     editorPane.value?.replaceContent(document.content);
-    ui.applyDocumentLoadMode(false);
   } else {
     editorPane.value?.restoreActiveTabState();
   }

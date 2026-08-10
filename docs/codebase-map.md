@@ -1,7 +1,7 @@
 # Codebase Map — markdown-editor (Markdown-Magic)
 
 > Scope: whole repo
-> Last updated: 2026-08-09
+> Last updated: 2026-08-10
 > Purpose: Context brief for agents. Read this before working in this area.
 
 ## TL;DR
@@ -78,11 +78,11 @@ npm run tauri build -- --debug --no-bundle   # what test:e2e uses to build the a
 - New/Open/Reload: App calls `editorPane.replaceContent()` which **rebuilds the CodeMirror state** (clears undo history).
 - Dirty = `content !== savedContent`; `savedContent`/`diskContent` are the two baselines (saved state vs what's on disk).
 - Save (`Ctrl/Cmd+S`): `document.save()` → Save As for Untitled (`saveAs()` → `pickSavePath`) → `save_document` → update `canonicalPath`/`savedContent`/`diskContent`, `syncAssetRoot()`, set last-directory.
-- Open (`Ctrl/Cmd+O`): Confirm-Discard Guard → `pickOpenPath` → `open_document` → swap doc + `ui.applyDocumentLoadMode(false)` (Preview Only).
-- New (`Ctrl/Cmd+N`): Guard → `newDocument()` + `ui.applyDocumentLoadMode(true)` (Split View).
+- Open (`Ctrl/Cmd+O`): `pickOpenPath` → `document.openPathInTab(path)` → new Tab (Preview Only, chosen on the Tab record) made Active; no Confirm-Discard Guard. Same path already open → the existing Tab is focused instead (one Tab per path). Drag-drop and OS file-open share this path.
+- New (`Ctrl/Cmd+N`): `runNewDocument()` → `document.newTab()` → numbered Untitled Tab (Split View, chosen on the Tab record) made Active; no Guard. `+` affordance calls the same action.
 - Confirm-Discard Guard (`src/lib/confirmDiscard.ts`): clean → proceed; dirty → native dialog (`guardDialog.ts` → Rust `confirm.rs`).
 - Externally-Modified: window focus (`onFocusChanged` in `App.vue`) → `document.checkExternalModification()` → `inspect_document`; compare to `diskContent`; clean → silent reload, dirty → native dialog (`externalDialog.ts` → Rust `external.rs`) with Reload/Overwrite/Cancel.
-- Drag-and-drop (`onDragDropEvent`) and second-instance opens (`listen("file-open-requested")`, startup `get_pending_file`) share `runGuardedOpen` → same guarded Open path.
+- Drag-and-drop (`onDragDropEvent`) and second-instance opens (`listen("file-open-requested")`, startup `get_pending_file`) share `openPath` → same add-or-focus Open path (no Guard).
 
 **Rendering** (`PreviewPane.vue` + `src/lib/renderer.ts`):
 - Watches `document.content`/`canonicalPath` → debounced 200ms → `renderMarkdown(source, { wrapBlocks: true })`.
@@ -93,7 +93,7 @@ npm run tauri build -- --debug --no-bundle   # what test:e2e uses to build the a
 **Synced Scrolling** (`src/lib/useSyncedScrolling.ts` + `blockMap.ts`):
 - Editor scroll → compute top visible line → `computeBlockRanges` (marked lexer, skips `space`/`def` tokens) → binary search block index → scroll preview to `[data-block-index]`. Active only in Split View; one-way editor→preview; block-anchored, never proportional.
 
-**Layout/UI** (`src/stores/ui.ts`): `layoutMode` (split/preview/focus, cycled via `Ctrl/Cmd+Shift+P`), `dividerPosition` (0..1, clamped 0.15–0.85, persisted only in-session), `findOverlayOpen`, `toast`, `lastDirectory`. Auto-choose of mode happens only on Document load; manual override (`manualOverrideActive`) wins until the next load; modes never persist across launches.
+**Layout/UI** (`src/stores/ui.ts`): `layoutMode` is a per-Tab record field — chosen at Tab creation (New → Split View, Open → Preview Only) — surfaced to the window as a computed over the Active Tab; the Layout Switcher and `Ctrl/Cmd+Shift+P` mutate only the Active Tab's mode. `dividerPosition` (0..1, clamped 0.15–0.85) stays app-wide (persisted only in-session), plus `findOverlayOpen`, `toast`, `lastDirectory`. Modes never persist across launches.
 
 **Settings** (`src/stores/settings.ts`): Theme (six states — `system` default + Palettes `light`/`dark`/`high-contrast`/`nord`/`terminal-green`; System resolves to Light/Dark via `matchMedia`, so `data-theme` always carries a Palette), font (`default`/`serif`/`sans`/`mono`), and text size (`small`/`medium`/`large`, medium default); persisted in localStorage under `markdownmagic:settings`; applied via `data-theme`/`data-font`/`data-text-size` attributes on the app root.
 

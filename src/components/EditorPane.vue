@@ -181,10 +181,14 @@ function restoreActiveTabState() {
   // `setState` does not fire the update listener and does not touch the
   // scroller; apply the saved offset after the pane's `v-show` settles. A
   // hidden pane (incoming Tab in Preview Only) has no layout, so the offset is
-  // deferred until the pane becomes visible instead of being dropped.
+  // deferred until the pane becomes visible instead of being dropped. A
+  // visible restore supersedes any deferred value: the pending slot holds the
+  // offset of whichever Tab was last restored hidden, and the mode-change
+  // watcher would otherwise replay it over this Tab's freshly applied offset.
   nextTick(() => {
     if (paneVisible()) {
       v.scrollDOM.scrollTop = scrollTop;
+      pendingScrollTop = null;
     } else {
       pendingScrollTop = scrollTop;
     }

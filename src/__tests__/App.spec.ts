@@ -1172,6 +1172,174 @@ describe("App shell", () => {
     expect(preview.text()).toContain("B edited");
   });
 
+  it("keeps each Tab's Layout Mode independent of the others", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    const ui = useUiStore();
+    pickOpenPathMock.mockResolvedValue("C:\\notes\\b.md");
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "open_document") {
+        return Promise.resolve("# File B");
+      }
+      return Promise.resolve(undefined);
+    });
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "o", ctrlKey: true }),
+    );
+    await flushPromises();
+
+    // b.md opened in Preview Only.
+    expect(ui.layoutMode).toBe("preview");
+
+    // The Layout Switcher changes only the Active Document (b.md): the launch
+    // Tab's record keeps its own mode.
+    await wrapper.find('[data-testid="layout-split"]').trigger("click");
+    await nextTick();
+    expect(ui.layoutMode).toBe("split");
+    expect(document.tabs[0].layoutMode).toBe("split");
+
+    // Switching to the launch Tab shows its own mode; changing it there never
+    // leaks into b.md (whose record keeps the Split set above).
+    await wrapper.findAll('[data-testid="tab"]')[0].trigger("click");
+    await nextTick();
+    expect(ui.layoutMode).toBe("split");
+    await wrapper.find('[data-testid="layout-focus"]').trigger("click");
+    await nextTick();
+    expect(ui.layoutMode).toBe("focus");
+    expect(document.tabs[1].layoutMode).toBe("split");
+
+    // Back to b.md: the window renders b.md's Split mode, not the launch
+    // Tab's Focus.
+    await wrapper.findAll('[data-testid="tab"]')[1].trigger("click");
+    await nextTick();
+    expect(ui.layoutMode).toBe("split");
+  });
+
+  it("cycles only the Active Document's mode on Cmd/Ctrl+Shift+P", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    const ui = useUiStore();
+    pickOpenPathMock.mockResolvedValue("C:\\notes\\b.md");
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "open_document") {
+        return Promise.resolve("# File B");
+      }
+      return Promise.resolve(undefined);
+    });
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "o", ctrlKey: true }),
+    );
+    await flushPromises();
+
+    // b.md (Preview Only) cycles to Focus; the launch Tab's record is
+    // untouched.
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "P",
+        ctrlKey: true,
+        shiftKey: true,
+      }),
+    );
+    await nextTick();
+    expect(ui.layoutMode).toBe("focus");
+    expect(document.tabs[0].layoutMode).toBe("split");
+
+    // The launch Tab's own cycle moves only its record: b.md's Focus survives.
+    await wrapper.findAll('[data-testid="tab"]')[0].trigger("click");
+    await nextTick();
+    expect(ui.layoutMode).toBe("split");
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "P",
+        ctrlKey: true,
+        shiftKey: true,
+      }),
+    );
+    await nextTick();
+    expect(ui.layoutMode).toBe("preview");
+    expect(document.tabs[1].layoutMode).toBe("focus");
+
+    // Back to b.md: still Focus.
+    await wrapper.findAll('[data-testid="tab"]')[1].trigger("click");
+    await nextTick();
+    expect(ui.layoutMode).toBe("focus");
+  });
+
+  it("renders the Active Tab's Layout Mode in the panes on switch", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    pickOpenPathMock.mockResolvedValue("C:\\notes\\b.md");
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "open_document") {
+        return Promise.resolve("# File B");
+      }
+      return Promise.resolve(undefined);
+    });
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "o", ctrlKey: true }),
+    );
+    await flushPromises();
+    await nextTick();
+
+    const editor = wrapper.find('[data-testid="editor-pane"]')
+      .element as HTMLElement;
+    const preview = wrapper.find('[data-testid="preview-pane"]')
+      .element as HTMLElement;
+
+    // b.md opened in Preview Only: the Editor Pane is hidden.
+    expect(editor.style.display).toBe("none");
+    expect(preview.style.display).not.toBe("none");
+
+    // The launch Tab is Split View: both panes are visible again.
+    await wrapper.findAll('[data-testid="tab"]')[0].trigger("click");
+    await nextTick();
+    expect(editor.style.display).not.toBe("none");
+    expect(preview.style.display).not.toBe("none");
+
+    // Back to b.md: Preview Only hides the Editor Pane again.
+    await wrapper.findAll('[data-testid="tab"]')[1].trigger("click");
+    await nextTick();
+    expect(editor.style.display).toBe("none");
+    expect(preview.style.display).not.toBe("none");
+  });
+
+  it("keeps the divider position app-wide across Tabs", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const ui = useUiStore();
+    ui.dividerPosition = 0.7;
+    pickOpenPathMock.mockResolvedValue("C:\\notes\\b.md");
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "open_document") {
+        return Promise.resolve("# File B");
+      }
+      return Promise.resolve(undefined);
+    });
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "o", ctrlKey: true }),
+    );
+    await flushPromises();
+
+    // The Split launch Tab renders the app-wide balance.
+    await wrapper.findAll('[data-testid="tab"]')[0].trigger("click");
+    await nextTick();
+    const editor = wrapper.find('[data-testid="editor-pane"]')
+      .element as HTMLElement;
+    expect(editor.style.flexBasis).toBe("70%");
+
+    // b.md (Preview Only) renders no basis; the stored position is unchanged.
+    await wrapper.findAll('[data-testid="tab"]')[1].trigger("click");
+    await nextTick();
+    expect(ui.dividerPosition).toBe(0.7);
+
+    // Back to the Split Tab: the same app-wide position applies.
+    await wrapper.findAll('[data-testid="tab"]')[0].trigger("click");
+    await nextTick();
+    expect(editor.style.flexBasis).toBe("70%");
+  });
+
   it("restores a Tab's cursor and undo history after a switch round trip", async () => {
     vi.useFakeTimers();
     const wrapper = mount(App);
@@ -1257,7 +1425,9 @@ describe("App shell", () => {
 
     view.scrollDOM.scrollTop = 240;
     // Open b.md (Preview Only) and return to the launch Tab: its restore runs
-    // while the pane is hidden, so the offset is deferred, not dropped.
+    // while the pane is still hidden by b.md's Preview Only, so the offset is
+    // deferred, not dropped. The switch lands in the launch Tab's Split View,
+    // which makes the pane visible and applies the deferred offset.
     window.dispatchEvent(
       new KeyboardEvent("keydown", { key: "o", ctrlKey: true }),
     );
@@ -1266,25 +1436,21 @@ describe("App shell", () => {
     await wrapper.findAll('[data-testid="tab"]')[0].trigger("click");
     await nextTick();
     await nextTick();
-
-    // Back to Split: the deferred offset is applied now that the pane shows.
-    // (jsdom keeps the scroller's property even under display:none, so force
-    // the 0 a real browser would read there, proving the apply is the
-    // mechanism that restores it.)
-    view.scrollDOM.scrollTop = 0;
-    ui.setLayoutMode("split");
-    await nextTick();
-    await nextTick();
     expect(view.scrollDOM.scrollTop).toBe(240);
 
-    // A Preview-Only round trip keeps the offset: leave and return while the
-    // pane is hidden, then show the pane again.
+    // A Preview-Only round trip keeps the offset: send the launch Tab to
+    // Preview Only, leave and return while the pane is hidden, then bring it
+    // back to Split View. (jsdom keeps the scroller's property even under
+    // display:none, so zero it after the round trip, proving the deferred
+    // apply — not the stale property — restores it.)
     ui.setLayoutMode("preview");
+    await nextTick();
     await wrapper.findAll('[data-testid="tab"]')[1].trigger("click");
     await nextTick();
     await wrapper.findAll('[data-testid="tab"]')[0].trigger("click");
     await nextTick();
     await nextTick();
+    view.scrollDOM.scrollTop = 0;
     ui.setLayoutMode("split");
     await nextTick();
     await nextTick();
