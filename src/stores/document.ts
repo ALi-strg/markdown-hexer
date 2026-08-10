@@ -23,9 +23,35 @@ export interface Tab {
   layoutMode: LayoutMode;
   findQuery: string;
   currentMatch: MatchRange | null;
+  /// The per-session Untitled number of a pathless Document; `null` once the
+  /// Document has a canonical path. The number is never reused in a session.
+  untitledNumber: number | null;
 }
 
-function createUntitledTab(): Tab {
+/// The Display name of an Untitled Document from its session number:
+/// `Untitled.md`, `Untitled 2.md`, …
+export function untitledName(number: number): string {
+  return number === 1 ? UNTITLED_FILENAME : `Untitled ${number}.md`;
+}
+
+/// Whether a Tab's Document is Dirty: its content differs from what is saved.
+/// The store's `dirty` computed and the Tab Bar's Dirty marker share this, so
+/// the definition of Dirty has a single home.
+export function isTabDirty(tab: Tab): boolean {
+  return tab.content !== tab.savedContent;
+}
+
+/// The Display name of a Tab's Document: the filename for a titled Document,
+/// the numbered Untitled name for a pathless one. The Tab Bar and the window
+/// title both derive their labels from this.
+export function tabDisplayName(tab: Tab): string {
+  if (tab.canonicalPath !== null) {
+    return tab.canonicalPath.split(/[\\/]/).pop() ?? UNTITLED_FILENAME;
+  }
+  return untitledName(tab.untitledNumber ?? 1);
+}
+
+function createUntitledTab(number: number): Tab {
   return {
     content: "",
     canonicalPath: null,
@@ -34,6 +60,7 @@ function createUntitledTab(): Tab {
     layoutMode: "split",
     findQuery: "",
     currentMatch: null,
+    untitledNumber: number,
   };
 }
 
@@ -41,7 +68,10 @@ function createUntitledTab(): Tab {
 /// name and the Document-shaped public surface are kept so existing consumers
 /// and tests keep working unchanged while the state model becomes a Tab list.
 export const useDocumentStore = defineStore("document", () => {
-  const tabs = ref<Tab[]>([createUntitledTab()]);
+  /// The next Untitled number handed out, never reused within a session. The
+  /// launch Tab takes number 1, so the first `New` creates `Untitled 2.md`.
+  let nextUntitledNumber = 1;
+  const tabs = ref<Tab[]>([createUntitledTab(nextUntitledNumber++)]);
   const activeIndex = ref(0);
 
   /// The Active Tab — the one the Document surface mirrors.
@@ -61,15 +91,9 @@ export const useDocumentStore = defineStore("document", () => {
     },
   });
 
-  const dirty = computed(() => activeTab().content !== activeTab().savedContent);
+  const dirty = computed(() => isTabDirty(activeTab()));
 
-  const filename = computed(() => {
-    const path = activeTab().canonicalPath;
-    if (path === null) {
-      return UNTITLED_FILENAME;
-    }
-    return path.split(/[\\/]/).pop() ?? UNTITLED_FILENAME;
-  });
+  const filename = computed(() => tabDisplayName(activeTab()));
 
   const title = computed(() => {
     const asterisk = dirty.value ? " *" : "";
@@ -137,25 +161,35 @@ export const useDocumentStore = defineStore("document", () => {
     return writeToPath(path);
   }
 
-  /// Swaps the Active Document for a fresh Untitled Document.
-  ///
-  /// The caller runs the Confirm-Discard Guard first when the Document is Dirty.
-  function newDocument() {
-    const tab = activeTab();
-    tab.content = "";
-    tab.canonicalPath = null;
-    tab.savedContent = "";
-    tab.diskContent = null;
-    syncAssetRoot();
+  /// Inserts `tab` right after the Active Tab and makes it Active. Every Tab
+  /// added during a session goes through here, so the insertion rule (new work
+  /// appears adjacent to what the user was doing) has a single home.
+  function insertAfterActive(tab: Tab) {
+    tabs.value.splice(activeIndex.value + 1, 0, tab);
+    activeIndex.value += 1;
   }
 
-  /// Reads a file from disk and swaps it into the Active Document.
-  ///
-  /// On success the path becomes canonical, the title updates to the filename,
-  /// and Dirty clears. A failed read keeps the current Document and surfaces the
-  /// error as a toast. Returns whether the swap happened.
-  async function openDocument(path: string): Promise<boolean> {
-    const tab = activeTab();
+  /// Adds a fresh Untitled Tab right after the Active Tab and makes it Active.
+  /// The Untitled number is never reused within a session. Never runs the
+  /// Confirm-Discard Guard — nothing is discarded.
+  function newTab(): Tab {
+    const tab = createUntitledTab(nextUntitledNumber++);
+    insertAfterActive(tab);
+    syncAssetRoot();
+    return tab;
+  }
+
+  /// Opens a file at `path` in a Tab: a new Tab is added right after the Active
+  /// Tab and made Active, or — when the path is already open — the existing Tab
+  /// is focused instead (one Tab per path). Never runs the Confirm-Discard
+  /// Guard. Returns "opened" for a new Tab, "focused" for an already-open path,
+  /// or null when the read failed (a toast is shown and no Tab changes).
+  async function openPathInTab(path: string): Promise<"opened" | "focused" | null> {
+    const existing = tabs.value.findIndex((tab) => tab.canonicalPath === path);
+    if (existing !== -1) {
+      switchTab(existing);
+      return "focused";
+    }
     let text: string;
     try {
       text = await invoke<string>("open_document", { path });
@@ -166,15 +200,22 @@ export const useDocumentStore = defineStore("document", () => {
           ? `Open failed: ${error}`
           : OPEN_FAILED_MESSAGE,
       );
-      return false;
+      return null;
     }
-    tab.content = text;
-    tab.canonicalPath = path;
-    tab.savedContent = text;
-    tab.diskContent = text;
+    const tab: Tab = {
+      content: text,
+      canonicalPath: path,
+      savedContent: text,
+      diskContent: text,
+      layoutMode: "preview",
+      findQuery: "",
+      currentMatch: null,
+      untitledNumber: null,
+    };
+    insertAfterActive(tab);
     syncAssetRoot();
     useUiStore().setLastDirectory(path);
-    return true;
+    return "opened";
   }
 
   /// Replaces the Active Document with the on-disk version, treating it as the
@@ -242,12 +283,14 @@ export const useDocumentStore = defineStore("document", () => {
 
   /// Switches the Active Tab to `index`. Indices outside the Tab list are
   /// ignored so the Active index always stays a valid Tab index. Returns
-  /// whether the switch happened.
+  /// whether the switch happened. The `asset://` scope follows the Active
+  /// Document, so it is re-scoped on every switch.
   function switchTab(index: number): boolean {
     if (index < 0 || index >= tabs.value.length) {
       return false;
     }
     activeIndex.value = index;
+    syncAssetRoot();
     return true;
   }
 
@@ -263,8 +306,8 @@ export const useDocumentStore = defineStore("document", () => {
     mirrorContent,
     save,
     saveAs,
-    newDocument,
-    openDocument,
+    newTab,
+    openPathInTab,
     checkExternalModification,
   };
 });

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createPinia, setActivePinia } from "pinia";
 import { useDocumentStore, type Tab } from "../document";
+import { useUiStore } from "../ui";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
@@ -28,6 +29,7 @@ function pushTab(document: ReturnType<typeof useDocumentStore>, path: string) {
     layoutMode: "preview",
     findQuery: "draft",
     currentMatch: { from: 0, to: 5 },
+    untitledNumber: null,
   };
   document.tabs.push(tab);
   return tab;
@@ -131,5 +133,128 @@ describe("workspace store model", () => {
     expect(tab.canonicalPath).toBe("C:\\notes\\b.md");
     expect(tab.content).toBe("# typed");
     expect(document.dirty).toBe(true);
+  });
+
+  it("adds a fresh Untitled Tab after the Active Tab and makes it Active", () => {
+    const document = useDocumentStore();
+    pushTab(document, "C:\\notes\\a.md");
+    document.switchTab(1);
+
+    const tab = document.newTab();
+
+    expect(document.tabs).toHaveLength(3);
+    expect(document.tabs[2]).toStrictEqual(tab);
+    expect(document.activeIndex).toBe(2);
+    expect(tab.canonicalPath).toBeNull();
+    expect(tab.content).toBe("");
+    expect(tab.savedContent).toBe("");
+    expect(tab.layoutMode).toBe("split");
+    expect(document.dirty).toBe(false);
+  });
+
+  it("numbers Untitled Tabs per session, never reusing a number", () => {
+    const document = useDocumentStore();
+    expect(document.filename).toBe("Untitled.md");
+
+    document.newTab();
+    expect(document.filename).toBe("Untitled 2.md");
+
+    document.newTab();
+    expect(document.filename).toBe("Untitled 3.md");
+  });
+
+  it("clears the asset scope when a new Untitled Tab becomes Active", () => {
+    const document = useDocumentStore();
+    document.canonicalPath = "C:\\notes\\a.md";
+    invokeMock.mockClear();
+
+    document.newTab();
+
+    expect(invokeMock).toHaveBeenCalledWith("set_asset_root", {
+      documentPath: null,
+    });
+  });
+
+  it("re-scopes the asset protocol to the switched Tab's directory", () => {
+    const document = useDocumentStore();
+    pushTab(document, "C:\\notes\\a.md");
+    invokeMock.mockClear();
+
+    document.switchTab(1);
+
+    expect(invokeMock).toHaveBeenCalledWith("set_asset_root", {
+      documentPath: "C:\\notes\\a.md",
+    });
+  });
+
+  it("opens a file into a new Tab after the Active Tab and makes it Active", async () => {
+    const document = useDocumentStore();
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "open_document") {
+        return Promise.resolve("# New file");
+      }
+      return Promise.resolve(undefined);
+    });
+
+    const result = await document.openPathInTab("C:\\notes\\new.md");
+
+    expect(result).toBe("opened");
+    expect(document.tabs).toHaveLength(2);
+    expect(document.activeIndex).toBe(1);
+    expect(document.tabs[1].canonicalPath).toBe("C:\\notes\\new.md");
+    expect(document.tabs[1].content).toBe("# New file");
+    expect(document.tabs[1].layoutMode).toBe("preview");
+    expect(document.content).toBe("# New file");
+    expect(document.filename).toBe("new.md");
+    expect(document.dirty).toBe(false);
+  });
+
+  it("focuses the existing Tab when the path is already open, with no duplicate", async () => {
+    const document = useDocumentStore();
+    pushTab(document, "C:\\notes\\a.md");
+    document.switchTab(1);
+
+    const result = await document.openPathInTab("C:\\notes\\a.md");
+
+    expect(result).toBe("focused");
+    expect(document.tabs).toHaveLength(2);
+    expect(document.activeIndex).toBe(1);
+    expect(invokeMock).not.toHaveBeenCalledWith(
+      "open_document",
+      expect.anything(),
+    );
+  });
+
+  it("shows a toast and adds no Tab when the read fails", async () => {
+    const document = useDocumentStore();
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "open_document") {
+        return Promise.reject("not found");
+      }
+      return Promise.resolve(undefined);
+    });
+    const ui = useUiStore();
+
+    const result = await document.openPathInTab("C:\\notes\\missing.md");
+
+    expect(result).toBeNull();
+    expect(document.tabs).toHaveLength(1);
+    expect(document.activeIndex).toBe(0);
+    expect(document.content).toBe("");
+    expect(ui.toast).toContain("not found");
+  });
+
+  it("remembers the directory of an opened path", async () => {
+    const document = useDocumentStore();
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "open_document") {
+        return Promise.resolve("# Hello");
+      }
+      return Promise.resolve(undefined);
+    });
+
+    await document.openPathInTab("C:\\notes\\drafts\\b.md");
+
+    expect(useUiStore().lastDirectory).toBe("C:/notes/drafts");
   });
 });

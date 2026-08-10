@@ -191,7 +191,7 @@ describe("document store", () => {
     });
   });
 
-  it("opens a file into the Document, updating the title and clearing Dirty", async () => {
+  it("opens a file into a new Tab, updating the title and clearing Dirty", async () => {
     const document = useDocumentStore();
     document.canonicalPath = "C:\\notes\\old.md";
     document.mirrorContent("# Old");
@@ -202,14 +202,18 @@ describe("document store", () => {
       return Promise.resolve(undefined);
     });
 
-    const opened = await document.openDocument("C:\\notes\\new.md");
+    const result = await document.openPathInTab("C:\\notes\\new.md");
 
-    expect(opened).toBe(true);
+    expect(result).toBe("opened");
+    // The previous Document stays open in its own Tab; the new file is Active.
+    expect(document.tabs).toHaveLength(2);
+    expect(document.activeIndex).toBe(1);
     expect(document.content).toBe("# New file");
     expect(document.canonicalPath).toBe("C:\\notes\\new.md");
     expect(document.filename).toBe("new.md");
     expect(document.title).toBe("new.md — Markdown-Magic");
     expect(document.dirty).toBe(false);
+    expect(document.tabs[0].content).toBe("# Old");
   });
 
   it("remembers the directory of an opened path", async () => {
@@ -222,12 +226,12 @@ describe("document store", () => {
     });
     const ui = useUiStore();
 
-    await document.openDocument("C:\\notes\\drafts\\b.md");
+    await document.openPathInTab("C:\\notes\\drafts\\b.md");
 
     expect(ui.lastDirectory).toBe("C:/notes/drafts");
   });
 
-  it("keeps the current Document and shows a toast when the read fails", async () => {
+  it("keeps the Tab list unchanged and shows a toast when the read fails", async () => {
     const document = useDocumentStore();
     document.canonicalPath = "C:\\notes\\a.md";
     document.mirrorContent("# Safe");
@@ -239,9 +243,11 @@ describe("document store", () => {
     });
     const ui = useUiStore();
 
-    const opened = await document.openDocument("C:\\notes\\missing.md");
+    const result = await document.openPathInTab("C:\\notes\\missing.md");
 
-    expect(opened).toBe(false);
+    expect(result).toBeNull();
+    expect(document.tabs).toHaveLength(1);
+    expect(document.activeIndex).toBe(0);
     expect(document.content).toBe("# Safe");
     expect(document.canonicalPath).toBe("C:\\notes\\a.md");
     expect(ui.toast).toContain("not found");
@@ -256,7 +262,7 @@ describe("document store", () => {
       return Promise.resolve(undefined);
     });
 
-    await document.openDocument("C:\\notes\\new.md");
+    await document.openPathInTab("C:\\notes\\new.md");
 
     expect(invokeMock).toHaveBeenCalledWith("set_asset_root", {
       documentPath: "C:\\notes\\new.md",
@@ -276,29 +282,32 @@ describe("document store", () => {
     });
   });
 
-  it("clears the asset scope for a fresh Untitled Document", () => {
+  it("clears the asset scope for a fresh Untitled Tab", () => {
     const document = useDocumentStore();
     document.canonicalPath = "C:\\notes\\a.md";
     invokeMock.mockClear();
 
-    document.newDocument();
+    document.newTab();
 
     expect(invokeMock).toHaveBeenCalledWith("set_asset_root", {
       documentPath: null,
     });
   });
 
-  it("creates a fresh Untitled Document, discarding the current one", () => {
+  it("creates a fresh Untitled Tab without discarding the current one", () => {
     const document = useDocumentStore();
     document.canonicalPath = "C:\\notes\\a.md";
     document.mirrorContent("# Hello");
 
-    document.newDocument();
+    document.newTab();
 
+    expect(document.tabs).toHaveLength(2);
+    expect(document.activeIndex).toBe(1);
     expect(document.content).toBe("");
     expect(document.canonicalPath).toBeNull();
-    expect(document.filename).toBe("Untitled.md");
+    expect(document.filename).toBe("Untitled 2.md");
     expect(document.dirty).toBe(false);
+    expect(document.tabs[0].content).toBe("# Hello");
   });
 
   async function seedOpenedDocument(
@@ -313,7 +322,7 @@ describe("document store", () => {
       }
       return Promise.resolve(undefined);
     });
-    await document.openDocument("C:\\notes\\a.md");
+    await document.openPathInTab("C:\\notes\\a.md");
   }
 
   it("does nothing for an Untitled Document on window focus", async () => {

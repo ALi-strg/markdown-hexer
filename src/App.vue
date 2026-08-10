@@ -6,6 +6,12 @@
     :data-text-size="settings.textSize"
     data-testid="app"
   >
+    <TabBar
+      :tabs="document.tabs"
+      :active-index="document.activeIndex"
+      @activate="onTabActivate"
+      @new="runNewDocument"
+    />
     <Toolbar
       :layout-mode="ui.layoutMode"
       :theme="settings.theme"
@@ -91,6 +97,7 @@ import EditorPane from "./components/EditorPane.vue";
 import FindReplacePanel from "./components/FindReplacePanel.vue";
 import PreviewPane from "./components/PreviewPane.vue";
 import ShortcutsReference from "./components/ShortcutsReference.vue";
+import TabBar from "./components/TabBar.vue";
 import Toolbar from "./components/Toolbar.vue";
 import { confirmDiscard } from "./lib/confirmDiscard";
 import { applyFormatting } from "./lib/editorFormatting";
@@ -398,34 +405,35 @@ function closeShortcuts() {
   shortcutsOpen.value = false;
 }
 
-async function runNewDocument() {
-  const decision = await confirmDiscard(document);
-  if (decision === "cancel") {
-    return;
-  }
-  document.newDocument();
+/// Creates a New Untitled Tab and makes it Active. New never runs the
+/// Confirm-Discard Guard: it adds a Tab instead of replacing a Document, so
+/// nothing is discarded.
+function runNewDocument() {
+  document.newTab();
   ui.findOverlayOpen = false;
   editorPane.value?.replaceContent(document.content);
   ui.applyDocumentLoadMode(true);
 }
 
-/// Swaps the current Document for the file at `path` and applies the
-/// auto-chosen Layout Mode (Preview Only for an opened file). Shared by the
-/// native Open dialog and drag-and-drop so both use one code path.
+/// Opens the file at `path` in a Tab: a new Tab is added and made Active, or —
+/// when the path is already open — the existing Tab is focused instead (one Tab
+/// per path). The auto-chosen Layout Mode (Preview Only) applies only when a
+/// new Tab is created; focusing an already-open Tab leaves the window's mode
+/// untouched. Shared by the native Open dialog, drag-and-drop, and OS file-open
+/// so all use one code path. Never runs the Confirm-Discard Guard.
 async function openPath(path: string) {
-  const opened = await document.openDocument(path);
-  if (opened) {
-    ui.findOverlayOpen = false;
-    editorPane.value?.replaceContent(document.content);
+  const result = await document.openPathInTab(path);
+  if (result === null) {
+    return;
+  }
+  ui.findOverlayOpen = false;
+  editorPane.value?.replaceContent(document.content);
+  if (result === "opened") {
     ui.applyDocumentLoadMode(false);
   }
 }
 
 async function runOpenDocument() {
-  const decision = await confirmDiscard(document);
-  if (decision === "cancel") {
-    return;
-  }
   const path = await pickOpenPath({
     defaultPath: document.canonicalPath ?? ui.lastDirectory ?? undefined,
   });
@@ -435,21 +443,17 @@ async function runOpenDocument() {
   await openPath(path);
 }
 
-/// Opens a file dropped onto the window through the same Open flow as the
-/// native dialog: the Confirm-Discard Guard runs first when the current
-/// Document is Dirty, then the Document is swapped.
-async function runGuardedOpen(path: string) {
-  const decision = await confirmDiscard(document);
-  if (decision === "cancel") {
+/// Activates the Tab at `index` (from the Tab Bar): the editor loads the Active
+/// Tab's content, the preview and window title follow through their reactive
+/// bindings, and the store re-points the `asset://` scope at the Active
+/// Document. A rebuild of the editor is acceptable here; preserving the Tab's
+/// cursor, scroll, and undo history is ticket 03.
+function onTabActivate(index: number) {
+  if (!document.switchTab(index)) {
     return;
   }
-  await openPath(path);
-}
-
-/// Opens a file the OS asked us to open (launched with a file argument, or a
-/// path forwarded by a second instance). Shares the guarded Open flow.
-async function runLaunchFileOpen(path: string) {
-  await runGuardedOpen(path);
+  ui.findOverlayOpen = false;
+  editorPane.value?.replaceContent(document.content);
 }
 
 const appWindow = getCurrentWindow();
@@ -499,17 +503,17 @@ onMounted(async () => {
   });
   unlistenDragDrop = await appWindow.onDragDropEvent((event) => {
     if (event.payload.type === "drop" && event.payload.paths.length > 0) {
-      runGuardedOpen(event.payload.paths[0]);
+      void openPath(event.payload.paths[0]);
     }
   });
   unlistenFileOpen = await listen<string>("file-open-requested", (event) => {
-    runLaunchFileOpen(event.payload);
+    void openPath(event.payload);
   });
   // Register the listener before pulling the pending path so a forward that
   // arrives mid-startup is not lost: either the listener or the pull opens it.
   const pendingFile = await invoke<string | null>("get_pending_file");
   if (typeof pendingFile === "string") {
-    await runLaunchFileOpen(pendingFile);
+    await openPath(pendingFile);
   }
   if (import.meta.env.VITE_E2E === "1") {
     (globalThis as Record<string, unknown>).__triggerWindowClose = () =>
@@ -517,10 +521,10 @@ onMounted(async () => {
     (globalThis as Record<string, unknown>).__triggerExternalCheck = () =>
       onWindowFocused();
     (globalThis as Record<string, unknown>).__triggerDrop = (path: string) =>
-      runGuardedOpen(path);
+      void openPath(path);
     (globalThis as Record<string, unknown>).__triggerFileOpen = (
       path: string,
-    ) => runLaunchFileOpen(path);
+    ) => void openPath(path);
   }
 });
 onBeforeUnmount(() => {

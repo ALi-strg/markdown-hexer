@@ -5,6 +5,8 @@ import fs from "node:fs";
 // The native Open dialog cannot be driven by WebdriverIO, so the E2E seeds the
 // app's test seam (enabled by VITE_E2E in the E2E build) with a real temp path
 // via localStorage. The read still runs through the real open_document command.
+// New and Open add Tabs: they never replace a Document and never run the
+// Confirm-Discard Guard.
 describe("Markdown-Magic New & Open flows", () => {
   const openPath = path.join(os.tmpdir(), `markdownmagic-e2e-open-${Date.now()}.md`);
   const openFilename = path.basename(openPath);
@@ -27,12 +29,6 @@ describe("Markdown-Magic New & Open flows", () => {
     }, openPath);
   }
 
-  async function stubGuardChoice(choice: string) {
-    await browser.execute((c) => {
-      localStorage.setItem("markdownmagic:e2e:guard-choice", c);
-    }, choice);
-  }
-
   async function typeText(text: string) {
     const editorContent = await $(
       '[data-testid="editor-pane"] .cm-content',
@@ -42,7 +38,7 @@ describe("Markdown-Magic New & Open flows", () => {
     await editorContent.addValue(text);
   }
 
-  it("creates an Untitled Document in Split View on Cmd/Ctrl+N", async () => {
+  it("adds a numbered Untitled Tab in Split View on Cmd/Ctrl+N", async () => {
     await browser.pause(1000);
     await typeText("# Draft");
     await browser.waitUntil(
@@ -51,13 +47,13 @@ describe("Markdown-Magic New & Open flows", () => {
       { timeout: 10000, timeoutMsg: "asterisk did not appear after typing" },
     );
 
-    await stubGuardChoice("dont-save");
+    // New adds a Tab; it never discards the Dirty launch Document.
     await browser.keys(["Control", "n"]);
 
     await browser.waitUntil(
       async () =>
-        (await browser.getTitle()) === "Untitled.md — Markdown-Magic",
-      { timeout: 10000, timeoutMsg: "New did not return to Untitled" },
+        (await browser.getTitle()) === "Untitled 2.md — Markdown-Magic",
+      { timeout: 10000, timeoutMsg: "New did not create Untitled 2.md" },
     );
 
     const editorPane = await $('[data-testid="editor-pane"]');
@@ -69,9 +65,13 @@ describe("Markdown-Magic New & Open flows", () => {
       '[data-testid="editor-pane"] .cm-content',
     );
     expect(await editorContent.getText()).not.toContain("# Draft");
+
+    const tabs = await $$('[data-testid="tab"]');
+    expect(tabs.length).toBe(2);
+    expect(await tabs[1].getText()).toContain("Untitled 2.md");
   });
 
-  it("opens a file into the Document in Preview Only on Cmd/Ctrl+O", async () => {
+  it("opens a file into a new Tab in Preview Only on Cmd/Ctrl+O", async () => {
     await stubOpenDialog();
     await browser.keys(["Control", "o"]);
 
@@ -98,5 +98,9 @@ describe("Markdown-Magic New & Open flows", () => {
         timeoutMsg: "Preview Pane did not render the opened content",
       },
     );
+
+    const tabs = await $$('[data-testid="tab"]');
+    expect(tabs.length).toBe(3);
+    expect(await tabs[2].getText()).toContain(openFilename);
   });
 });

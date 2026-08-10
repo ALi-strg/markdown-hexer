@@ -4,9 +4,9 @@ import fs from "node:fs";
 import { typeInEditor } from "../helpers/editor";
 
 // The Document Controls group (New, Open, Save, Save As, Find & Replace) and
-// Undo/Redo are driven through the same guarded flows as the shortcuts. Native
-// dialogs are stubbed via the VITE_E2E localStorage seam; the writes/reads still
-// run through the real save_document/open_document commands.
+// Undo/Redo are driven through the same flows as the shortcuts. Native dialogs
+// are stubbed via the VITE_E2E localStorage seam; the writes/reads still run
+// through the real save_document/open_document commands.
 describe("Markdown-Magic Document Controls & Undo/Redo", () => {
   const savePath = path.join(
     os.tmpdir(),
@@ -48,12 +48,6 @@ describe("Markdown-Magic Document Controls & Undo/Redo", () => {
     }, openPath);
   }
 
-  async function stubGuardChoice(choice: string) {
-    await browser.execute((c) => {
-      localStorage.setItem("markdownmagic:e2e:guard-choice", c);
-    }, choice);
-  }
-
   async function editorText() {
     return browser.execute(
       () =>
@@ -75,28 +69,30 @@ describe("Markdown-Magic Document Controls & Undo/Redo", () => {
     );
   }
 
-  it("starts from a fresh Document via the New button", async () => {
+  it("starts from a fresh numbered Untitled Tab via the New button", async () => {
     await browser.pause(1000);
-    await stubGuardChoice("dont-save");
     await (await $('[data-testid="toolbar-new"]')).click();
     await browser.waitUntil(
       async () =>
-        (await browser.getTitle()) === "Untitled.md — Markdown-Magic",
+        (await browser.getTitle()) === "Untitled 2.md — Markdown-Magic",
       {
         timeout: 10000,
-        timeoutMsg: "New button did not create an Untitled Document",
+        timeoutMsg: "New button did not create an Untitled Tab",
       },
     );
     expect(await (await $('[data-testid="editor-pane"]')).isDisplayed()).toBe(
       true,
     );
+    // The launch Tab stays open alongside the new one.
+    const tabs = await $$('[data-testid="tab"]');
+    expect(tabs.length).toBe(2);
   });
 
   it("saves an Untitled Document through the Save button as Save As", async () => {
     await typeInEditor("# Saved via button");
     await browser.waitUntil(
       async () =>
-        (await browser.getTitle()) === "Untitled.md * — Markdown-Magic",
+        (await browser.getTitle()) === "Untitled 2.md * — Markdown-Magic",
       { timeout: 10000, timeoutMsg: "asterisk did not appear after typing" },
     );
 

@@ -64,7 +64,7 @@ describe("EditorPane", () => {
 
     view.dispatch({ changes: { from: 0, insert: "# Draft" } });
     const document = useDocumentStore();
-    document.newDocument();
+    document.newTab();
 
     (wrapper.vm as unknown as { replaceContent: (text: string) => void }).replaceContent(
       document.content,
