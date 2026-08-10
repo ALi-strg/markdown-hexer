@@ -307,7 +307,11 @@ export const useDocumentStore = defineStore("document", () => {
     return true;
   }
 
-  /// Detects an Externally-Modified file on window focus.
+  /// Detects an Externally-Modified file for the Active Tab.
+  ///
+  /// The check runs on window focus and whenever a Tab becomes Active, so a
+  /// background Tab is only ever checked the moment it becomes Active — never
+  /// while it sits hidden.
   ///
   /// Compares the on-disk content against the state seen at load/save time. A
   /// clean Document reloads silently; a Dirty Document asks the user for
@@ -319,22 +323,35 @@ export const useDocumentStore = defineStore("document", () => {
     if (tab.canonicalPath === null) {
       return false;
     }
-    let state: { content: string };
+    let state: { content: string } | null | undefined;
     try {
-      state = await invoke<{ content: string }>("inspect_document", {
-        path: tab.canonicalPath,
-      });
+      state = await invoke<{ content: string } | null | undefined>(
+        "inspect_document",
+        {
+          path: tab.canonicalPath,
+        },
+      );
     } catch {
+      return false;
+    }
+    // An inspect that yields no content is treated like an unreadable file:
+    // no external change is detected. (The Rust command always returns the
+    // state or rejects, so this is defensive.)
+    if (state === null || state === undefined) {
       return false;
     }
     if (state.content === tab.diskContent) {
       return false;
     }
-    if (!dirty.value) {
+    // The check targets the captured Tab for its whole duration — the Dirty
+    // flag, the dialog's filename, and the reload/overwrite all use `tab`, so
+    // a Tab that becomes Active mid-check is judged by its own state, never by
+    // whichever Tab is Active when the dialog resolves.
+    if (!isTabDirty(tab)) {
       reloadFrom(state.content, tab);
       return true;
     }
-    const choice = await pickExternalModificationChoice(filename.value);
+    const choice = await pickExternalModificationChoice(tabDisplayName(tab));
     if (choice === "reload") {
       reloadFrom(state.content, tab);
       return true;

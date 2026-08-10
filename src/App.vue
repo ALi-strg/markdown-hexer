@@ -442,7 +442,11 @@ async function openPath(path: string) {
   if (result === "opened") {
     editorPane.value?.replaceContent(document.content);
   } else {
+    // The path was already open: its background Tab became Active again, so it
+    // is checked for external changes now. A freshly opened Tab is skipped — its
+    // content was just read from disk, so an immediate check could never differ.
     editorPane.value?.restoreActiveTabState();
+    void checkActiveTabExternalModification();
   }
 }
 
@@ -461,7 +465,9 @@ async function runOpenDocument() {
 /// and the editor restores the incoming Tab's preserved state — cursor and
 /// undo history travel with the EditorState — plus its scroll offset. The
 /// preview and window title follow through their reactive bindings, and the
-/// store re-points the `asset://` scope at the Active Document.
+/// store re-points the `asset://` scope at the Active Document. The now-Active
+/// Tab is then checked for external changes (a background Tab is only ever
+/// checked the moment it becomes Active).
 function onTabActivate(index: number) {
   editorPane.value?.captureActiveTabState();
   if (!document.switchTab(index)) {
@@ -469,6 +475,7 @@ function onTabActivate(index: number) {
   }
   ui.findOverlayOpen = false;
   editorPane.value?.restoreActiveTabState();
+  void checkActiveTabExternalModification();
 }
 
 /// Closes the Tab at `index` (from the Tab Bar's close control). A Dirty Tab
@@ -494,8 +501,11 @@ async function onTabClose(index: number) {
   const wasActive = index === document.activeIndex;
   document.closeTab(index);
   if (wasActive) {
+    // A neighbour Tab became Active in the closed Tab's place; it is checked
+    // for external changes now, like any Tab that becomes Active.
     ui.findOverlayOpen = false;
     editorPane.value?.restoreActiveTabState();
+    void checkActiveTabExternalModification();
   }
 }
 
@@ -531,16 +541,28 @@ async function destroyAppWindow() {
   }
 }
 
-/// Detects an Externally-Modified file when the window regains focus.
+/// Runs the Externally-Modified check for the Active Tab and pushes a silent or
+/// chosen reload into the editor (the authoritative source of edits). Shared by
+/// window focus and Tab activation, so a background Tab is only ever checked
+/// the moment it becomes Active.
 ///
-/// A silent reload or a chosen Reload replaces the Document, so the editor (the
-/// authoritative source of edits) is pushed the new content explicitly.
-async function onWindowFocused() {
+/// The store reloads the Tab it captured when the check started; the reload is
+/// pushed into the editor only while that Tab is still Active, so a check that
+/// overlaps a Tab switch never writes a background Tab's content into the
+/// editor. (The reloaded Tab's preserved editor state was already cleared, so
+/// switching back to it rebuilds from the on-disk content — nothing is lost.)
+async function checkActiveTabExternalModification() {
+  const activeIndex = document.activeIndex;
   const replaced = await document.checkExternalModification();
-  if (replaced) {
+  if (replaced && document.activeIndex === activeIndex) {
     ui.findOverlayOpen = false;
     editorPane.value?.replaceContent(document.content);
   }
+}
+
+/// Detects an Externally-Modified file when the window regains focus.
+async function onWindowFocused() {
+  await checkActiveTabExternalModification();
 }
 
 onMounted(async () => {

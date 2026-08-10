@@ -15,7 +15,7 @@ vi.mock("../../lib/externalDialog", () => ({
   pickExternalModificationChoice: vi.fn(),
 }));
 
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, type InvokeArgs } from "@tauri-apps/api/core";
 import { pickSavePath } from "../../lib/saveDialog";
 import { pickExternalModificationChoice } from "../../lib/externalDialog";
 
@@ -502,6 +502,44 @@ describe("document store", () => {
     expect(replaced).toBe(false);
     expect(document.content).toBe("# My edits");
     expect(document.dirty).toBe(true);
+    expect(pickExternalChoiceMock).not.toHaveBeenCalled();
+  });
+
+  it("inspects only the Active Tab, leaving background Tabs unchecked", async () => {
+    const document = useDocumentStore();
+    invokeMock.mockImplementation((command: string, args?: InvokeArgs) => {
+      const path =
+        typeof args === "object" && args !== null && "path" in args
+          ? args.path
+          : null;
+      if (command === "open_document") {
+        return Promise.resolve(`# ${path}`);
+      }
+      if (command === "inspect_document") {
+        // a.md changed on disk; b.md still matches what was loaded.
+        return Promise.resolve({
+          content:
+            path === "C:\\notes\\a.md" ? "# A changed" : "# C:\\notes\\b.md",
+          mtime_ms: 3,
+        });
+      }
+      return Promise.resolve(undefined);
+    });
+    await document.openPathInTab("C:\\notes\\a.md");
+    await document.openPathInTab("C:\\notes\\b.md");
+    invokeMock.mockClear();
+
+    // b.md is Active. A background a.md changed on disk, but a check inspects
+    // only the Active Tab, so a.md is neither inspected nor reloaded.
+    const replaced = await document.checkExternalModification();
+
+    expect(replaced).toBe(false);
+    expect(invokeMock).toHaveBeenCalledTimes(1);
+    expect(invokeMock).toHaveBeenCalledWith("inspect_document", {
+      path: "C:\\notes\\b.md",
+    });
+    expect(document.tabs[1].content).toBe("# C:\\notes\\a.md");
+    expect(document.tabs[1].diskContent).toBe("# C:\\notes\\a.md");
     expect(pickExternalChoiceMock).not.toHaveBeenCalled();
   });
 });

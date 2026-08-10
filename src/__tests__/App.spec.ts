@@ -763,6 +763,208 @@ describe("App shell", () => {
     expect(document.dirty).toBe(true);
   });
 
+  it("checks a background Tab for external changes only when it becomes Active", async () => {
+    const win = mockWindow();
+    const wrapper = mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    invokeMock.mockImplementation((command: string, args?: InvokeArgs) => {
+      const path =
+        typeof args === "object" && args !== null && "path" in args
+          ? args.path
+          : null;
+      if (command === "open_document") {
+        return Promise.resolve(`# ${path}`);
+      }
+      if (command === "inspect_document") {
+        // a.md changed on disk; b.md still matches what was loaded.
+        return Promise.resolve({
+          content:
+            path === "C:\\notes\\a.md" ? "# A changed" : "# C:\\notes\\b.md",
+          mtime_ms: 3,
+        });
+      }
+      return Promise.resolve(undefined);
+    });
+    pickOpenPathMock.mockResolvedValue("C:\\notes\\a.md");
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "o", ctrlKey: true }),
+    );
+    await flushPromises();
+    pickOpenPathMock.mockResolvedValue("C:\\notes\\b.md");
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "o", ctrlKey: true }),
+    );
+    await flushPromises();
+
+    // b.md is Active; a background a.md changed on disk.
+    expect(document.activeIndex).toBe(2);
+
+    // Window focus checks only the Active Tab (b.md): the background a.md is
+    // neither inspected nor reloaded.
+    invokeMock.mockClear();
+    win.getFocusHandler()({ payload: true });
+    await flushPromises();
+    expect(invokeMock).toHaveBeenCalledWith("inspect_document", {
+      path: "C:\\notes\\b.md",
+    });
+    expect(invokeMock).not.toHaveBeenCalledWith("inspect_document", {
+      path: "C:\\notes\\a.md",
+    });
+    expect(document.tabs[1].content).toBe("# C:\\notes\\a.md");
+
+    // The moment a.md becomes Active it is checked, and its clean Document
+    // reloads silently from disk.
+    await wrapper.findAll('[data-testid="tab"]')[1].trigger("click");
+    await flushPromises();
+    await nextTick();
+
+    expect(invokeMock).toHaveBeenCalledWith("inspect_document", {
+      path: "C:\\notes\\a.md",
+    });
+    expect(document.content).toBe("# A changed");
+    expect(document.dirty).toBe(false);
+    expect(pickExternalChoiceMock).not.toHaveBeenCalled();
+    const editorContent = wrapper.find(
+      '[data-testid="editor-pane"] .cm-content',
+    );
+    expect(editorContent.text()).toBe("# A changed");
+  });
+
+  it("shows the Externally-Modified dialog when a Dirty Tab is activated", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "open_document") {
+        return Promise.resolve("# Original");
+      }
+      if (command === "inspect_document") {
+        return Promise.resolve({ content: "# External", mtime_ms: 3 });
+      }
+      return Promise.resolve(undefined);
+    });
+    pickOpenPathMock.mockResolvedValue("C:\\notes\\a.md");
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "o", ctrlKey: true }),
+    );
+    await flushPromises();
+    pickOpenPathMock.mockResolvedValue("C:\\notes\\b.md");
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "o", ctrlKey: true }),
+    );
+    await flushPromises();
+
+    // a.md is a background Dirty Tab: edited locally, changed on disk.
+    document.tabs[1].content = "# My edits";
+    pickExternalChoiceMock.mockResolvedValue("reload");
+
+    // Activating it checks it and, because it is Dirty, asks the user.
+    await wrapper.findAll('[data-testid="tab"]')[1].trigger("click");
+    await flushPromises();
+    await nextTick();
+
+    expect(pickExternalChoiceMock).toHaveBeenCalledWith("a.md");
+    expect(document.content).toBe("# External");
+    expect(document.dirty).toBe(false);
+    const editorContent = wrapper.find(
+      '[data-testid="editor-pane"] .cm-content',
+    );
+    expect(editorContent.text()).toBe("# External");
+  });
+
+  it("checks the background Tab that becomes Active when the Active Tab closes", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    invokeMock.mockImplementation((command: string, args?: InvokeArgs) => {
+      const path =
+        typeof args === "object" && args !== null && "path" in args
+          ? args.path
+          : null;
+      if (command === "open_document") {
+        return Promise.resolve(`# ${path}`);
+      }
+      if (command === "inspect_document") {
+        // a.md changed on disk; b.md still matches what was loaded.
+        return Promise.resolve({
+          content:
+            path === "C:\\notes\\a.md" ? "# A changed" : "# C:\\notes\\b.md",
+          mtime_ms: 3,
+        });
+      }
+      return Promise.resolve(undefined);
+    });
+    pickOpenPathMock.mockResolvedValue("C:\\notes\\a.md");
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "o", ctrlKey: true }),
+    );
+    await flushPromises();
+    pickOpenPathMock.mockResolvedValue("C:\\notes\\b.md");
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "o", ctrlKey: true }),
+    );
+    await flushPromises();
+
+    // b.md Active; closing it makes the background a.md Active, which is then
+    // checked and reloads silently.
+    expect(document.activeIndex).toBe(2);
+    await wrapper.findAll('[data-testid="tab-close"]')[2].trigger("click");
+    await flushPromises();
+    await nextTick();
+
+    expect(document.activeIndex).toBe(1);
+    expect(document.filename).toBe("a.md");
+    expect(document.content).toBe("# A changed");
+    expect(document.dirty).toBe(false);
+  });
+
+  it("checks an already-open Tab that is re-focused through Open", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    invokeMock.mockImplementation((command: string, args?: InvokeArgs) => {
+      const path =
+        typeof args === "object" && args !== null && "path" in args
+          ? args.path
+          : null;
+      if (command === "open_document") {
+        return Promise.resolve(`# ${path}`);
+      }
+      if (command === "inspect_document") {
+        return Promise.resolve({ content: "# Changed", mtime_ms: 3 });
+      }
+      return Promise.resolve(undefined);
+    });
+    pickOpenPathMock.mockResolvedValue("C:\\notes\\a.md");
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "o", ctrlKey: true }),
+    );
+    await flushPromises();
+    pickOpenPathMock.mockResolvedValue("C:\\notes\\b.md");
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "o", ctrlKey: true }),
+    );
+    await flushPromises();
+
+    // Re-opening an already-open path focuses its background Tab — which
+    // becomes Active, so it is checked and its clean Document reloads silently.
+    pickOpenPathMock.mockResolvedValue("C:\\notes\\a.md");
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "o", ctrlKey: true }),
+    );
+    await flushPromises();
+    await nextTick();
+
+    expect(document.activeIndex).toBe(1);
+    expect(document.content).toBe("# Changed");
+    expect(document.dirty).toBe(false);
+    const editorContent = wrapper.find(
+      '[data-testid="editor-pane"] .cm-content',
+    );
+    expect(editorContent.text()).toBe("# Changed");
+  });
+
   it("opens a dropped file into a new Tab in Preview Only", async () => {
     const window = mockWindow();
     const wrapper = mount(App);
