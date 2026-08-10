@@ -135,6 +135,10 @@ export const useDocumentStore = defineStore("document", () => {
       return false;
     }
     tab.canonicalPath = path;
+    // A Document with a canonical path is no longer Untitled; drop the session
+    // number so the field's contract ("null once the Document has a canonical
+    // path") holds for every Tab, not just ones created by openPathInTab.
+    tab.untitledNumber = null;
     tab.savedContent = tab.content;
     tab.diskContent = tab.content;
     syncAssetRoot();
@@ -201,6 +205,16 @@ export const useDocumentStore = defineStore("document", () => {
           : OPEN_FAILED_MESSAGE,
       );
       return null;
+    }
+    // The duplicate check above ran before the read, so two opens of the same
+    // path can race it (a startup forward arriving while the pending-file
+    // pull's open is in flight, a drop racing a forward): re-check now that
+    // the read is done and focus the Tab that appeared, never inserting a
+    // second Tab for the same path.
+    const appeared = tabs.value.findIndex((tab) => tab.canonicalPath === path);
+    if (appeared !== -1) {
+      switchTab(appeared);
+      return "focused";
     }
     const tab: Tab = {
       content: text,

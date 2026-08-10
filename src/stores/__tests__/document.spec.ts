@@ -110,6 +110,10 @@ describe("document store", () => {
     expect(document.canonicalPath).toBe("C:\\notes\\b.md");
     expect(document.filename).toBe("b.md");
     expect(document.dirty).toBe(false);
+    // The Tab's session number is dropped: a titled Document is no longer
+    // Untitled, so the field's contract ("null once the Document has a
+    // canonical path") holds after Save As too.
+    expect(document.tabs[0].untitledNumber).toBeNull();
   });
 
   it("keeps an Untitled Document untouched when Save As is cancelled", async () => {

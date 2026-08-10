@@ -4,10 +4,14 @@
 
 **Blocked by:** None — can start immediately
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] The store owns an ordered list of Tab records and an Active index; each record holds content, canonical path, saved/disk baselines, Layout Mode, and Find & Replace state
-- [ ] Every existing Document operation (New, Open, Save, Save As, Externally-Modified check, content mirror) behaves exactly as today, scoped to the Active Tab
-- [ ] Launch still presents exactly one Untitled Tab in Split View; no visible behavior change anywhere
-- [ ] Existing unit and app-integration tests pass unchanged
-- [ ] Store tests cover the new invariants: exactly one Active index, an ordered list, and Active-index bounds on switch
+- [x] The store owns an ordered list of Tab records and an Active index; each record holds content, canonical path, saved/disk baselines, Layout Mode, and Find & Replace state
+- [x] Every existing Document operation (New, Open, Save, Save As, Externally-Modified check, content mirror) behaves exactly as today, scoped to the Active Tab
+- [x] Launch still presents exactly one Untitled Tab in Split View; no visible behavior change anywhere
+- [x] Existing unit and app-integration tests pass unchanged
+- [x] Store tests cover the new invariants: exactly one Active index, an ordered list, and Active-index bounds on switch
+
+## Comments
+
+Implemented in `7aa5080`: `useDocumentStore` becomes a workspace holding `tabs: Tab[]` plus `activeIndex`, with the Document-shaped surface (content, canonicalPath, dirty, filename, title, save/open/new/external-modification) kept as computeds/actions over the Active Tab so existing consumers and tests were untouched. New-model coverage lives in `src/stores/__tests__/workspace.spec.ts` (Active-index bounds, ordered list, per-record session state). Verified by the full suite green at ticket 02's close (`npm test`, `vue-tsc`, `cargo test`, `test:e2e`).

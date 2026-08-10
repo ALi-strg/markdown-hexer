@@ -225,6 +225,32 @@ describe("workspace store model", () => {
     );
   });
 
+  it("adds a single Tab when the same path is opened concurrently", async () => {
+    const document = useDocumentStore();
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "open_document") {
+        return Promise.resolve("# Same");
+      }
+      return Promise.resolve(undefined);
+    });
+
+    // Two opens of a not-yet-open path can overlap (a startup forward racing
+    // the pending-file pull, a drop racing a forward): each passes the
+    // pre-read duplicate check, so the read must re-check and focus the Tab
+    // the other open inserted — one Tab per path even under the race.
+    const [first, second] = await Promise.all([
+      document.openPathInTab("C:\\notes\\race.md"),
+      document.openPathInTab("C:\\notes\\race.md"),
+    ]);
+
+    expect([first, second].sort()).toEqual(["focused", "opened"]);
+    expect(document.tabs).toHaveLength(2);
+    expect(
+      document.tabs.filter((tab) => tab.canonicalPath === "C:\\notes\\race.md"),
+    ).toHaveLength(1);
+    expect(document.activeIndex).toBe(1);
+  });
+
   it("shows a toast and adds no Tab when the read fails", async () => {
     const document = useDocumentStore();
     invokeMock.mockImplementation((command: string) => {
