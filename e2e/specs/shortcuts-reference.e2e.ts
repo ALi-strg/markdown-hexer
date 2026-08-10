@@ -33,6 +33,7 @@ describe("Markdown-Magic Shortcuts Reference", () => {
       "shortcut-group-edit",
       "shortcut-group-format",
       "shortcut-group-view",
+      "shortcut-group-tab",
       "shortcut-group-help",
     ]) {
       expect(await (await $(`[data-testid="${groupId}"]`)).isDisplayed()).toBe(
@@ -42,6 +43,16 @@ describe("Markdown-Magic Shortcuts Reference", () => {
     expect(text).toContain("Save As");
     expect(text).toContain("Ctrl/Cmd+Shift+P");
     expect(text).toContain("Ctrl/Cmd+/");
+    // The Tab shortcuts live in their own group of the reference.
+    for (const [label, combo] of [
+      ["New Tab", "Ctrl/Cmd+T"],
+      ["Close Tab", "Ctrl/Cmd+W"],
+      ["Next Tab", "Ctrl+Tab"],
+      ["Previous Tab", "Ctrl+Shift+Tab"],
+    ]) {
+      expect(text).toContain(label);
+      expect(text).toContain(combo);
+    }
 
     await browser.keys(["Escape"]);
     await browser.waitUntil(

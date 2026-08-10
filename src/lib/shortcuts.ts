@@ -5,6 +5,10 @@ export interface KeyCombo {
   key: string;
   ctrlCmd: boolean;
   shift: boolean;
+  /// True when the combo matches Ctrl only rather than Ctrl/Cmd — the Tab
+  /// cycle shortcuts. Cmd+Tab is the macOS app switcher and never reaches the
+  /// app, so Tab cycling is bound to Ctrl on every platform.
+  ctrlOnly?: boolean;
 }
 
 export interface ShortcutEntry {
@@ -16,13 +20,19 @@ export interface ShortcutEntry {
 export function comboLabel(combo: KeyCombo): string {
   const parts: string[] = [];
   if (combo.ctrlCmd) {
-    parts.push("Ctrl/Cmd");
+    parts.push(combo.ctrlOnly === true ? "Ctrl" : "Ctrl/Cmd");
   }
   if (combo.shift) {
     parts.push("Shift");
   }
-  parts.push(combo.key.toUpperCase());
+  parts.push(keyLabel(combo.key));
   return parts.join("+");
+}
+
+/// The display label of a keyboard key: named keys ("Tab") keep their name,
+/// single-character keys are uppercased.
+function keyLabel(key: string): string {
+  return key.length === 1 ? key.toUpperCase() : key;
 }
 
 /// The tooltip text for a control: `Name (Ctrl/Cmd+X)` when it has a shortcut,
@@ -42,8 +52,11 @@ export function tooltipWithCombo(label: string, combo: KeyCombo): string {
 /// True when a keydown event carries this combo's modifiers and key. A combo
 /// that needs Shift requires it; a combo that doesn't (Bold, Italic, Link)
 /// also fires when Shift is held, matching the app's long-standing behaviour.
+/// A Ctrl-only combo (the Tab cycle) requires the physical Ctrl key; the
+/// Ctrl/Cmd combos accept either.
 export function matchesCombo(event: KeyboardEvent, combo: KeyCombo): boolean {
-  const modifier = event.ctrlKey || event.metaKey;
+  const modifier =
+    combo.ctrlOnly === true ? event.ctrlKey : event.ctrlKey || event.metaKey;
   return (
     modifier === combo.ctrlCmd &&
     (!combo.shift || event.shiftKey) &&
@@ -167,6 +180,38 @@ export const HELP_SHORTCUT: ShortcutEntry = {
   combo: { key: "/", ctrlCmd: true, shift: false },
 };
 
+export type TabControlOperation =
+  | "newTab"
+  | "closeTab"
+  | "nextTab"
+  | "previousTab";
+
+/// The Tab Controls — New Tab, Close Tab, and the forward/back Tab cycle. The
+/// Shortcuts Reference draws from this registry, and the keydown dispatch
+/// matches these combos, so the two can never drift. `Ctrl/Cmd+T` and
+/// `Ctrl/Cmd+W` bring the Tab Bar's mouse actions to the keyboard; the
+/// `Ctrl+Tab` / `Ctrl+Shift+Tab` pair hops between Tabs without the mouse.
+/// The cycle combos are Ctrl-only — Cmd+Tab is the macOS app switcher and
+/// never reaches the app, so Tab cycling is bound to Ctrl on every platform.
+export const TAB_SHORTCUTS: Record<TabControlOperation, ShortcutEntry> = {
+  newTab: {
+    label: "New Tab",
+    combo: { key: "t", ctrlCmd: true, shift: false },
+  },
+  closeTab: {
+    label: "Close Tab",
+    combo: { key: "w", ctrlCmd: true, shift: false },
+  },
+  nextTab: {
+    label: "Next Tab",
+    combo: { key: "Tab", ctrlCmd: true, shift: false, ctrlOnly: true },
+  },
+  previousTab: {
+    label: "Previous Tab",
+    combo: { key: "Tab", ctrlCmd: true, shift: true, ctrlOnly: true },
+  },
+};
+
 export interface ShortcutGroup {
   label: string;
   entries: ShortcutEntry[];
@@ -203,6 +248,15 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
   {
     label: "View",
     entries: [CYCLE_LAYOUT_SHORTCUT],
+  },
+  {
+    label: "Tab",
+    entries: [
+      TAB_SHORTCUTS.newTab,
+      TAB_SHORTCUTS.closeTab,
+      TAB_SHORTCUTS.nextTab,
+      TAB_SHORTCUTS.previousTab,
+    ],
   },
   {
     label: "Help",

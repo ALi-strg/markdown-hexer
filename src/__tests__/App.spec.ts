@@ -511,6 +511,159 @@ describe("App shell", () => {
     expect(document.tabs[0].content).toBe("# Draft");
   });
 
+  it("creates a numbered Untitled Tab on Cmd/Ctrl+T, without the Guard", async () => {
+    mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    const ui = useUiStore();
+    document.canonicalPath = "C:\\notes\\a.md";
+    document.mirrorContent("# Hello");
+    await document.save();
+    expect(document.dirty).toBe(false);
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "t", ctrlKey: true }),
+    );
+    await flushPromises();
+
+    expect(pickGuardChoiceMock).not.toHaveBeenCalled();
+    expect(document.tabs).toHaveLength(2);
+    expect(document.activeIndex).toBe(1);
+    expect(document.content).toBe("");
+    expect(document.dirty).toBe(false);
+    expect(document.filename).toBe("Untitled 2.md");
+    expect(ui.layoutMode).toBe("split");
+  });
+
+  it("closes the Active Tab on Cmd/Ctrl+W without the Guard when clean", async () => {
+    mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    await openSecondTab("C:\\notes\\b.md");
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "w", ctrlKey: true }),
+    );
+    await flushPromises();
+
+    expect(pickGuardChoiceMock).not.toHaveBeenCalled();
+    expect(document.tabs).toHaveLength(1);
+    expect(document.activeIndex).toBe(0);
+    expect(document.filename).toBe("Untitled.md");
+  });
+
+  it("runs the Confirm-Discard Guard for a Dirty Active Tab on Cmd/Ctrl+W", async () => {
+    mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    await openSecondTab("C:\\notes\\b.md");
+    document.mirrorContent("# B edits");
+    pickGuardChoiceMock.mockResolvedValue("cancel");
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "w", ctrlKey: true }),
+    );
+    await flushPromises();
+
+    expect(pickGuardChoiceMock).toHaveBeenCalledWith("b.md");
+    expect(document.tabs).toHaveLength(2);
+    expect(document.activeIndex).toBe(1);
+    expect(document.tabs[1].content).toBe("# B edits");
+  });
+
+  it("closes the window on Cmd/Ctrl+W when the last Tab is Active", async () => {
+    const win = mockWindow();
+    mount(App);
+    await flushPromises();
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "w", ctrlKey: true }),
+    );
+    await flushPromises();
+
+    expect(pickGuardChoiceMock).not.toHaveBeenCalled();
+    expect(win.destroy).toHaveBeenCalled();
+  });
+
+  it("cycles to the next Tab on Ctrl+Tab, swapping content and title", async () => {
+    vi.useFakeTimers();
+    const wrapper = mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    pickOpenPathMock.mockResolvedValue("C:\\notes\\b.md");
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "open_document") {
+        return Promise.resolve("# File B");
+      }
+      return Promise.resolve(undefined);
+    });
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "o", ctrlKey: true }),
+    );
+    await flushPromises();
+    await nextTick();
+    vi.advanceTimersByTime(200);
+    // b.md is Active.
+    expect(document.activeIndex).toBe(1);
+    expect(document.filename).toBe("b.md");
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Tab", ctrlKey: true }),
+    );
+    await nextTick();
+    vi.advanceTimersByTime(200);
+
+    // Forward cycles to the launch Tab: content, title, and editor swap.
+    expect(document.activeIndex).toBe(0);
+    expect(document.filename).toBe("Untitled.md");
+    const editorContent = wrapper.find(
+      '[data-testid="editor-pane"] .cm-content',
+    );
+    expect(editorContent.text()).toBe("");
+  });
+
+  it("cycles to the previous Tab on Ctrl+Shift+Tab", async () => {
+    mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    await openSecondTab("C:\\notes\\b.md");
+    document.switchTab(0);
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "Tab",
+        ctrlKey: true,
+        shiftKey: true,
+      }),
+    );
+    await flushPromises();
+
+    expect(document.activeIndex).toBe(1);
+    expect(document.filename).toBe("b.md");
+  });
+
+  it("leaves a single Tab alone when Ctrl+Tab or Ctrl+Shift+Tab is pressed", async () => {
+    mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Tab", ctrlKey: true }),
+    );
+    await flushPromises();
+    expect(document.activeIndex).toBe(0);
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "Tab",
+        ctrlKey: true,
+        shiftKey: true,
+      }),
+    );
+    await flushPromises();
+    expect(document.activeIndex).toBe(0);
+  });
+
   it("loads the opened file into the Editor Pane on Cmd/Ctrl+O", async () => {
     const wrapper = mount(App);
     await flushPromises();
@@ -3030,6 +3183,29 @@ describe("App shell", () => {
     ];
     const text = modal.text();
     for (const [label, combo] of expectations) {
+      expect(text).toContain(label);
+      expect(text).toContain(combo);
+    }
+  });
+
+  it("lists the Tab shortcuts in the Shortcuts Reference", async () => {
+    const wrapper = mount(App);
+    await wrapper.find('[data-testid="toolbar-help"]').trigger("click");
+    await nextTick();
+
+    const modal = wrapper.find('[data-testid="shortcuts-modal"]');
+    expect(modal.exists()).toBe(true);
+    expect(wrapper.find('[data-testid="shortcut-group-tab"]').exists()).toBe(
+      true,
+    );
+
+    const text = modal.text();
+    for (const [label, combo] of [
+      ["New Tab", "Ctrl/Cmd+T"],
+      ["Close Tab", "Ctrl/Cmd+W"],
+      ["Next Tab", "Ctrl+Tab"],
+      ["Previous Tab", "Ctrl+Shift+Tab"],
+    ]) {
       expect(text).toContain(label);
       expect(text).toContain(combo);
     }

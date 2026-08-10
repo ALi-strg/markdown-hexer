@@ -396,11 +396,24 @@ export const useDocumentStore = defineStore("document", () => {
     return true;
   }
 
+  /// Cycles the Active Tab by `delta` steps through the Tab list, wrapping at
+  /// both ends. A single-Tab workspace stays put. Returns whether the Active
+  /// Tab changed, mirroring `switchTab`; the `asset://` scope follows the
+  /// Document that becomes Active.
+  function cycleTab(delta: number): boolean {
+    if (tabs.value.length <= 1) {
+      return false;
+    }
+    const count = tabs.value.length;
+    return switchTab((activeIndex.value + delta + count) % count);
+  }
+
   return {
     tabs,
     activeIndex,
     activeTab,
     switchTab,
+    cycleTab,
     closeTab,
     guardDocumentFor,
     content,

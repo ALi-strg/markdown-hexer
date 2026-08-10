@@ -542,4 +542,64 @@ describe("document store", () => {
     expect(document.tabs[1].diskContent).toBe("# C:\\notes\\a.md");
     expect(pickExternalChoiceMock).not.toHaveBeenCalled();
   });
+
+  it("cycles the Active Tab forward, wrapping from the last Tab to the first", () => {
+    const document = useDocumentStore();
+    document.newTab();
+    document.newTab();
+    document.switchTab(0);
+    // [Untitled.md, Untitled 2.md, Untitled 3.md], Untitled.md Active.
+    expect(document.activeIndex).toBe(0);
+
+    expect(document.cycleTab(1)).toBe(true);
+    expect(document.activeIndex).toBe(1);
+    expect(document.cycleTab(1)).toBe(true);
+    expect(document.activeIndex).toBe(2);
+    expect(document.cycleTab(1)).toBe(true);
+    expect(document.activeIndex).toBe(0);
+  });
+
+  it("cycles the Active Tab backward, wrapping from the first Tab to the last", () => {
+    const document = useDocumentStore();
+    document.newTab();
+    document.newTab();
+    // Untitled 3.md Active; cycling back wraps through Untitled 2.md and
+    // Untitled.md to the last Tab.
+    expect(document.activeIndex).toBe(2);
+
+    expect(document.cycleTab(-1)).toBe(true);
+    expect(document.activeIndex).toBe(1);
+    expect(document.cycleTab(-1)).toBe(true);
+    expect(document.activeIndex).toBe(0);
+    expect(document.cycleTab(-1)).toBe(true);
+    expect(document.activeIndex).toBe(2);
+  });
+
+  it("leaves a single-Tab workspace alone when cycling", () => {
+    const document = useDocumentStore();
+
+    expect(document.cycleTab(1)).toBe(false);
+    expect(document.activeIndex).toBe(0);
+    expect(document.cycleTab(-1)).toBe(false);
+    expect(document.activeIndex).toBe(0);
+  });
+
+  it("re-scopes the asset protocol to the Document that becomes Active on a cycle", async () => {
+    const document = useDocumentStore();
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "open_document") {
+        return Promise.resolve("# On disk");
+      }
+      return Promise.resolve(undefined);
+    });
+    await document.openPathInTab("C:\\notes\\a.md");
+    invokeMock.mockClear();
+    document.switchTab(0);
+
+    document.cycleTab(1);
+
+    expect(invokeMock).toHaveBeenCalledWith("set_asset_root", {
+      documentPath: "C:\\notes\\a.md",
+    });
+  });
 });

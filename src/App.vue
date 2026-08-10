@@ -110,7 +110,9 @@ import {
   FORMAT_SHORTCUTS,
   HELP_SHORTCUT,
   matchesCombo,
+  TAB_SHORTCUTS,
   type DocumentControlOperation,
+  type TabControlOperation,
 } from "./lib/shortcuts";
 import { useSyncedScrolling } from "./lib/useSyncedScrolling";
 import { isTabDirty, useDocumentStore } from "./stores/document";
@@ -269,6 +271,33 @@ async function runDocumentControl(operation: DocumentControlOperation) {
   }
 }
 
+/// Tab Controls dispatch order. `previousTab` must be matched before `nextTab`:
+/// Next Tab's combo (Ctrl+Tab) also fires when Shift is held, so the more
+/// specific Previous Tab combo wins when both would match.
+const TAB_SHORTCUT_ORDER: TabControlOperation[] = [
+  "previousTab",
+  "newTab",
+  "closeTab",
+  "nextTab",
+];
+
+async function runTabControl(operation: TabControlOperation) {
+  switch (operation) {
+    case "newTab":
+      runNewDocument();
+      break;
+    case "closeTab":
+      await onTabClose(document.activeIndex);
+      break;
+    case "nextTab":
+      onTabCycle(1);
+      break;
+    case "previousTab":
+      onTabCycle(-1);
+      break;
+  }
+}
+
 async function onKeydown(event: KeyboardEvent) {
   if (shortcutsOpen.value && event.key === "Escape") {
     event.preventDefault();
@@ -286,6 +315,14 @@ async function onKeydown(event: KeyboardEvent) {
     if (combo !== null && matchesCombo(event, combo)) {
       event.preventDefault();
       await runDocumentControl(operation);
+      return;
+    }
+  }
+  for (const operation of TAB_SHORTCUT_ORDER) {
+    const combo = TAB_SHORTCUTS[operation].combo;
+    if (combo !== null && matchesCombo(event, combo)) {
+      event.preventDefault();
+      await runTabControl(operation);
       return;
     }
   }
@@ -460,6 +497,20 @@ async function runOpenDocument() {
   await openPath(path);
 }
 
+/// The shared Tab-switch core: captures the outgoing Tab's editor state, swaps
+/// the Active Tab, restores the incoming Tab's state, and checks it for
+/// external changes. `performSwitch` runs the store-level swap (by index or by
+/// cycle step) and reports whether the Active Tab changed.
+function onTabSwitch(performSwitch: () => boolean) {
+  editorPane.value?.captureActiveTabState();
+  if (!performSwitch()) {
+    return;
+  }
+  ui.findOverlayOpen = false;
+  editorPane.value?.restoreActiveTabState();
+  void checkActiveTabExternalModification();
+}
+
 /// Activates the Tab at `index` (from the Tab Bar): the outgoing Tab's editor
 /// state is captured into its record, the workspace switches the Active Tab,
 /// and the editor restores the incoming Tab's preserved state — cursor and
@@ -469,13 +520,14 @@ async function runOpenDocument() {
 /// Tab is then checked for external changes (a background Tab is only ever
 /// checked the moment it becomes Active).
 function onTabActivate(index: number) {
-  editorPane.value?.captureActiveTabState();
-  if (!document.switchTab(index)) {
-    return;
-  }
-  ui.findOverlayOpen = false;
-  editorPane.value?.restoreActiveTabState();
-  void checkActiveTabExternalModification();
+  onTabSwitch(() => document.switchTab(index));
+}
+
+/// Activates the Tab `delta` steps through the Tab list (wrapping at both
+/// ends) via the same path as clicking a Tab. A single-Tab workspace stays
+/// put.
+function onTabCycle(delta: number) {
+  onTabSwitch(() => document.cycleTab(delta));
 }
 
 /// Closes the Tab at `index` (from the Tab Bar's close control). A Dirty Tab
