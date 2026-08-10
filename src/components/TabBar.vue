@@ -13,6 +13,7 @@
         data-testid="tab"
         role="tab"
         :aria-selected="index === activeIndex"
+        :aria-label="tabLabel(tab)"
         @click="emit('activate', index)"
       >
         <span class="tab-label">{{ tabLabel(tab) }}</span>

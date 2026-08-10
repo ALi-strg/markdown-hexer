@@ -79,7 +79,9 @@ describe("Markdown-Magic drag-and-drop open", () => {
 
     const tabs = await $$('[data-testid="tab"]');
     expect(tabs.length).toBe(2);
-    expect(await tabs[1].getText()).toContain(dropAFilename);
+    // WebKitGTK's getElementText drops the ellipsized tab label, so read the
+    // accessible label (the same text the visible label renders) instead.
+    expect(await tabs[1].getAttribute("aria-label")).toContain(dropAFilename);
   });
 
   it("opens a drop onto a Dirty Document without the Confirm-Discard Guard", async () => {

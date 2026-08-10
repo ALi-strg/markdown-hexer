@@ -39,7 +39,9 @@ describe("Markdown-Magic Tab Bar", () => {
     await browser.pause(1000);
     const tabs = await $$('[data-testid="tab"]');
     expect(tabs.length).toBe(1);
-    expect(await tabs[0].getText()).toContain("Untitled.md");
+    // Read the accessible label rather than getText(): WebKitGTK's getElementText
+    // excludes the ellipsized .tab-label span, so getText() comes back empty.
+    expect(await tabs[0].getAttribute("aria-label")).toContain("Untitled.md");
 
     await $('[data-testid="tab-new"]').click();
 
@@ -51,7 +53,7 @@ describe("Markdown-Magic Tab Bar", () => {
 
     const after = await $$('[data-testid="tab"]');
     expect(after.length).toBe(2);
-    expect(await after[1].getText()).toContain("Untitled 2.md");
+    expect(await after[1].getAttribute("aria-label")).toContain("Untitled 2.md");
   });
 
   it("opens a file into a new Tab via OS file-open", async () => {

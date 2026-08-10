@@ -68,7 +68,9 @@ describe("Markdown-Magic New & Open flows", () => {
 
     const tabs = await $$('[data-testid="tab"]');
     expect(tabs.length).toBe(2);
-    expect(await tabs[1].getText()).toContain("Untitled 2.md");
+    // WebKitGTK's getElementText drops the ellipsized tab label, so read the
+    // accessible label (the same text the visible label renders) instead.
+    expect(await tabs[1].getAttribute("aria-label")).toContain("Untitled 2.md");
   });
 
   it("opens a file into a new Tab in Preview Only on Cmd/Ctrl+O", async () => {
@@ -101,6 +103,6 @@ describe("Markdown-Magic New & Open flows", () => {
 
     const tabs = await $$('[data-testid="tab"]');
     expect(tabs.length).toBe(3);
-    expect(await tabs[2].getText()).toContain(openFilename);
+    expect(await tabs[2].getAttribute("aria-label")).toContain(openFilename);
   });
 });
