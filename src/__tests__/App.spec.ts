@@ -2468,6 +2468,66 @@ describe("App shell", () => {
     expect(document.filename).toBe("new.md");
   });
 
+  it("refuses Save As onto a path open in another Tab, showing a toast", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    const ui = useUiStore();
+    await openSecondTab("C:\\notes\\b.md");
+    // Return to the Untitled launch Tab before Save As.
+    await wrapper.findAll('[data-testid="tab"]')[0].trigger("click");
+    await nextTick();
+
+    pickSavePathMock.mockResolvedValue("C:\\notes\\b.md");
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "S",
+        ctrlKey: true,
+        shiftKey: true,
+      }),
+    );
+    await flushPromises();
+
+    expect(document.tabs[0].canonicalPath).toBeNull();
+    expect(document.filename).toBe("Untitled.md");
+    expect(invokeMock).not.toHaveBeenCalledWith(
+      "save_document",
+      expect.anything(),
+    );
+    expect(ui.toast).toContain("already open");
+    expect(wrapper.find('[data-testid="toast"]').exists()).toBe(true);
+  });
+
+  it("saves the Active Tab to an unused path and updates its Tab label and title", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    await openSecondTab("C:\\notes\\b.md");
+    await wrapper.findAll('[data-testid="tab"]')[0].trigger("click");
+    await nextTick();
+
+    pickSavePathMock.mockResolvedValue("C:\\notes\\free.md");
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "S",
+        ctrlKey: true,
+        shiftKey: true,
+      }),
+    );
+    await flushPromises();
+
+    expect(invokeMock).toHaveBeenCalledWith("save_document", {
+      path: "C:\\notes\\free.md",
+      content: "",
+    });
+    expect(document.tabs[0].canonicalPath).toBe("C:\\notes\\free.md");
+    expect(document.filename).toBe("free.md");
+    expect(invokeMock).toHaveBeenCalledWith("set_document_title", {
+      filename: "free.md",
+      dirty: false,
+    });
+  });
+
   it("adds an Untitled Tab via the New button without the Confirm-Discard Guard", async () => {
     const wrapper = mount(App);
     await flushPromises();

@@ -12,6 +12,8 @@ const UNTITLED_FILENAME = "Untitled.md";
 const APP_TITLE_SUFFIX = " — Markdown-Magic";
 const SAVE_FAILED_MESSAGE = "Save failed — your changes are not on disk";
 const OPEN_FAILED_MESSAGE = "Open failed — the file could not be read";
+const SAVE_AS_COLLISION_MESSAGE =
+  "Save As refused — that file is already open in another Tab";
 
 /// One open Document's full session state. The workspace owns an ordered list
 /// of these plus an Active index; the Active-Document surface the app already
@@ -64,6 +66,24 @@ function createUntitledTab(number: number): Tab {
     currentMatch: null,
     untitledNumber: number,
   };
+}
+
+/// The index of the Tab holding `path`, or -1 when no Tab holds it. The
+/// one-Tab-per-path invariant's matching rule has a single home here: Open
+/// focuses the existing Tab, and Save As refuses the path, both by this exact
+/// equality.
+function findTabByPath(tabs: Tab[], path: string): number {
+  return tabs.findIndex((tab) => tab.canonicalPath === path);
+}
+
+/// Whether `path` is already open in a Tab other than `tab`. The one-Tab-per-
+/// path invariant forbids Save As onto such a path, exactly as it forbids
+/// opening it, so both checks share `findTabByPath`. The Tab doing the Save As
+/// is excluded: re-selecting its own canonical path is a normal write, not a
+/// collision.
+function isOpenInAnotherTab(tabs: Tab[], tab: Tab, path: string): boolean {
+  const index = findTabByPath(tabs, path);
+  return index !== -1 && tabs[index] !== tab;
 }
 
 /// The store was a single Document; it is now a workspace of Tabs. The store
@@ -172,6 +192,10 @@ export const useDocumentStore = defineStore("document", () => {
     if (path === null) {
       return false;
     }
+    if (isOpenInAnotherTab(tabs.value, tab, path)) {
+      ui.showToast(SAVE_AS_COLLISION_MESSAGE);
+      return false;
+    }
     return writeToPath(path, tab);
   }
 
@@ -211,7 +235,7 @@ export const useDocumentStore = defineStore("document", () => {
   /// Guard. Returns "opened" for a new Tab, "focused" for an already-open path,
   /// or null when the read failed (a toast is shown and no Tab changes).
   async function openPathInTab(path: string): Promise<"opened" | "focused" | null> {
-    const existing = tabs.value.findIndex((tab) => tab.canonicalPath === path);
+    const existing = findTabByPath(tabs.value, path);
     if (existing !== -1) {
       switchTab(existing);
       return "focused";
@@ -233,7 +257,7 @@ export const useDocumentStore = defineStore("document", () => {
     // pull's open is in flight, a drop racing a forward): re-check now that
     // the read is done and focus the Tab that appeared, never inserting a
     // second Tab for the same path.
-    const appeared = tabs.value.findIndex((tab) => tab.canonicalPath === path);
+    const appeared = findTabByPath(tabs.value, path);
     if (appeared !== -1) {
       switchTab(appeared);
       return "focused";

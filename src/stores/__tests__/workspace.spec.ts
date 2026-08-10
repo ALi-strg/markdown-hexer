@@ -421,4 +421,85 @@ describe("workspace store model", () => {
     expect(untitled.canonicalPath).toBe("C:\\notes\\saved.md");
     expect(untitled.savedContent).toBe("# untitled edits");
   });
+
+  it("refuses Save As to a path already open in another Tab and keeps the Tab pathless", async () => {
+    const document = useDocumentStore();
+    const ui = useUiStore();
+    document.mirrorContent("# launch edits");
+    pushTab(document, "C:\\notes\\taken.md");
+    pickSavePathMock.mockResolvedValue("C:\\notes\\taken.md");
+
+    const saved = await document.saveAs();
+
+    expect(saved).toBe(false);
+    expect(invokeMock).not.toHaveBeenCalledWith(
+      "save_document",
+      expect.anything(),
+    );
+    expect(document.tabs[0].canonicalPath).toBeNull();
+    expect(document.filename).toBe("Untitled.md");
+    expect(document.dirty).toBe(true);
+    expect(ui.toast).toContain("already open");
+  });
+
+  it("allows Save As re-selecting the Document's own canonical path", async () => {
+    const document = useDocumentStore();
+    document.canonicalPath = "C:\\notes\\a.md";
+    document.mirrorContent("# v1");
+    // A sibling Tab holds a different path: only the self-exclusion (the Tab
+    // doing the Save As is not "another Tab") lets the write through.
+    pushTab(document, "C:\\notes\\b.md");
+    pickSavePathMock.mockResolvedValue("C:\\notes\\a.md");
+
+    const saved = await document.saveAs();
+
+    expect(saved).toBe(true);
+    expect(invokeMock).toHaveBeenCalledWith("save_document", {
+      path: "C:\\notes\\a.md",
+      content: "# v1",
+    });
+    expect(document.tabs[0].canonicalPath).toBe("C:\\notes\\a.md");
+  });
+
+  it("saves to an unused path and updates the Tab label and window title", async () => {
+    const document = useDocumentStore();
+    document.mirrorContent("# Hello");
+    pushTab(document, "C:\\notes\\b.md");
+    pickSavePathMock.mockResolvedValue("C:\\notes\\free.md");
+
+    const saved = await document.saveAs();
+
+    expect(saved).toBe(true);
+    expect(invokeMock).toHaveBeenCalledWith("save_document", {
+      path: "C:\\notes\\free.md",
+      content: "# Hello",
+    });
+    expect(document.tabs[0].canonicalPath).toBe("C:\\notes\\free.md");
+    expect(document.filename).toBe("free.md");
+    expect(document.title).toBe("free.md — Markdown-Magic");
+    expect(document.tabs[0].untitledNumber).toBeNull();
+  });
+
+  it("refuses a background Untitled Tab's Guard Save As onto an open path", async () => {
+    const document = useDocumentStore();
+    const ui = useUiStore();
+    document.mirrorContent("# launch edits");
+    pushTab(document, "C:\\notes\\taken.md");
+    const untitled = document.newTab();
+    untitled.content = "# untitled edits";
+    document.switchTab(0);
+    pickSavePathMock.mockResolvedValue("C:\\notes\\taken.md");
+
+    const guard = document.guardDocumentFor(untitled);
+    const saved = await guard.save();
+
+    expect(saved).toBe(false);
+    expect(invokeMock).not.toHaveBeenCalledWith(
+      "save_document",
+      expect.anything(),
+    );
+    expect(untitled.canonicalPath).toBeNull();
+    expect(untitled.untitledNumber).not.toBeNull();
+    expect(ui.toast).toContain("already open");
+  });
 });
