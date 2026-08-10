@@ -4,6 +4,7 @@ import { createPinia, setActivePinia } from "pinia";
 import { nextTick } from "vue";
 import { EditorView } from "@codemirror/view";
 import { Transaction } from "@codemirror/state";
+import { undo as undoCommand, undoDepth } from "@codemirror/commands";
 import App from "../App.vue";
 import { useUiStore } from "../stores/ui";
 import { useDocumentStore } from "../stores/document";
@@ -46,7 +47,7 @@ vi.mock("../lib/externalDialog", () => ({
   pickExternalModificationChoice: vi.fn(),
 }));
 
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, type InvokeArgs } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen, type Event } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -442,7 +443,7 @@ describe("App shell", () => {
     expect(document.dirty).toBe(true);
   });
 
-  it("creates an Untitled Document in Split View on Cmd/Ctrl+N", async () => {
+  it("adds a numbered Untitled Tab in Split View on Cmd/Ctrl+N, without the Guard", async () => {
     mount(App);
     await flushPromises();
     const document = useDocumentStore();
@@ -457,50 +458,38 @@ describe("App shell", () => {
     );
     await flushPromises();
 
+    expect(document.tabs).toHaveLength(2);
+    expect(document.activeIndex).toBe(1);
     expect(document.canonicalPath).toBeNull();
-    expect(document.filename).toBe("Untitled.md");
+    expect(document.filename).toBe("Untitled 2.md");
     expect(document.dirty).toBe(false);
     expect(ui.layoutMode).toBe("split");
     expect(pickGuardChoiceMock).not.toHaveBeenCalled();
   });
 
-  it("keeps the current Dirty Document when the guard is cancelled on Cmd/Ctrl+N", async () => {
+  it("adds an Untitled Tab on Cmd/Ctrl+N over a Dirty Document without the Guard", async () => {
     mount(App);
     await flushPromises();
     const document = useDocumentStore();
     document.mirrorContent("# Hello");
-    pickGuardChoiceMock.mockResolvedValue("cancel");
 
     window.dispatchEvent(
       new KeyboardEvent("keydown", { key: "n", ctrlKey: true }),
     );
     await flushPromises();
 
-    expect(document.content).toBe("# Hello");
-    expect(document.dirty).toBe(true);
-    expect(document.canonicalPath).toBeNull();
-  });
-
-  it("discards a Dirty Document and creates an Untitled one in Split View on Cmd/Ctrl+N", async () => {
-    mount(App);
-    await flushPromises();
-    const document = useDocumentStore();
-    const ui = useUiStore();
-    document.mirrorContent("# Hello");
-    pickGuardChoiceMock.mockResolvedValue("dont-save");
-
-    window.dispatchEvent(
-      new KeyboardEvent("keydown", { key: "n", ctrlKey: true }),
-    );
-    await flushPromises();
-
+    // The Dirty Document stays open in its own Tab; the new Tab is Active.
+    expect(pickGuardChoiceMock).not.toHaveBeenCalled();
+    expect(document.tabs).toHaveLength(2);
+    expect(document.activeIndex).toBe(1);
     expect(document.content).toBe("");
     expect(document.dirty).toBe(false);
-    expect(document.filename).toBe("Untitled.md");
-    expect(ui.layoutMode).toBe("split");
+    expect(document.filename).toBe("Untitled 2.md");
+    expect(document.tabs[0].content).toBe("# Hello");
+    expect(document.tabs[0].content).not.toBe(document.tabs[0].savedContent);
   });
 
-  it("clears the Editor Pane when Cmd/Ctrl+N swaps to a new Document", async () => {
+  it("loads the new Untitled Tab's empty content into the Editor Pane on Cmd/Ctrl+N", async () => {
     const wrapper = mount(App);
     await flushPromises();
     const document = useDocumentStore();
@@ -508,7 +497,6 @@ describe("App shell", () => {
     const view = (pane.vm as unknown as { getView: () => EditorView }).getView();
     view.dispatch({ changes: { from: 0, insert: "# Draft" } });
     expect(document.content).toBe("# Draft");
-    pickGuardChoiceMock.mockResolvedValue("dont-save");
 
     window.dispatchEvent(
       new KeyboardEvent("keydown", { key: "n", ctrlKey: true }),
@@ -520,6 +508,160 @@ describe("App shell", () => {
       '[data-testid="editor-pane"] .cm-content',
     );
     expect(editorContent.text()).toBe("");
+    expect(document.tabs[0].content).toBe("# Draft");
+  });
+
+  it("creates a numbered Untitled Tab on Cmd/Ctrl+T, without the Guard", async () => {
+    mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    const ui = useUiStore();
+    document.canonicalPath = "C:\\notes\\a.md";
+    document.mirrorContent("# Hello");
+    await document.save();
+    expect(document.dirty).toBe(false);
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "t", ctrlKey: true }),
+    );
+    await flushPromises();
+
+    expect(pickGuardChoiceMock).not.toHaveBeenCalled();
+    expect(document.tabs).toHaveLength(2);
+    expect(document.activeIndex).toBe(1);
+    expect(document.content).toBe("");
+    expect(document.dirty).toBe(false);
+    expect(document.filename).toBe("Untitled 2.md");
+    expect(ui.layoutMode).toBe("split");
+  });
+
+  it("closes the Active Tab on Cmd/Ctrl+W without the Guard when clean", async () => {
+    mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    await openSecondTab("C:\\notes\\b.md");
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "w", ctrlKey: true }),
+    );
+    await flushPromises();
+
+    expect(pickGuardChoiceMock).not.toHaveBeenCalled();
+    expect(document.tabs).toHaveLength(1);
+    expect(document.activeIndex).toBe(0);
+    expect(document.filename).toBe("Untitled.md");
+  });
+
+  it("runs the Confirm-Discard Guard for a Dirty Active Tab on Cmd/Ctrl+W", async () => {
+    mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    await openSecondTab("C:\\notes\\b.md");
+    document.mirrorContent("# B edits");
+    pickGuardChoiceMock.mockResolvedValue("cancel");
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "w", ctrlKey: true }),
+    );
+    await flushPromises();
+
+    expect(pickGuardChoiceMock).toHaveBeenCalledWith("b.md");
+    expect(document.tabs).toHaveLength(2);
+    expect(document.activeIndex).toBe(1);
+    expect(document.tabs[1].content).toBe("# B edits");
+  });
+
+  it("closes the window on Cmd/Ctrl+W when the last Tab is Active", async () => {
+    const win = mockWindow();
+    mount(App);
+    await flushPromises();
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "w", ctrlKey: true }),
+    );
+    await flushPromises();
+
+    expect(pickGuardChoiceMock).not.toHaveBeenCalled();
+    expect(win.destroy).toHaveBeenCalled();
+  });
+
+  it("cycles to the next Tab on Ctrl+Tab, swapping content and title", async () => {
+    vi.useFakeTimers();
+    const wrapper = mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    pickOpenPathMock.mockResolvedValue("C:\\notes\\b.md");
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "open_document") {
+        return Promise.resolve("# File B");
+      }
+      return Promise.resolve(undefined);
+    });
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "o", ctrlKey: true }),
+    );
+    await flushPromises();
+    await nextTick();
+    vi.advanceTimersByTime(200);
+    // b.md is Active.
+    expect(document.activeIndex).toBe(1);
+    expect(document.filename).toBe("b.md");
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Tab", ctrlKey: true }),
+    );
+    await nextTick();
+    vi.advanceTimersByTime(200);
+
+    // Forward cycles to the launch Tab: content, title, and editor swap.
+    expect(document.activeIndex).toBe(0);
+    expect(document.filename).toBe("Untitled.md");
+    const editorContent = wrapper.find(
+      '[data-testid="editor-pane"] .cm-content',
+    );
+    expect(editorContent.text()).toBe("");
+  });
+
+  it("cycles to the previous Tab on Ctrl+Shift+Tab", async () => {
+    mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    await openSecondTab("C:\\notes\\b.md");
+    document.switchTab(0);
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "Tab",
+        ctrlKey: true,
+        shiftKey: true,
+      }),
+    );
+    await flushPromises();
+
+    expect(document.activeIndex).toBe(1);
+    expect(document.filename).toBe("b.md");
+  });
+
+  it("leaves a single Tab alone when Ctrl+Tab or Ctrl+Shift+Tab is pressed", async () => {
+    mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Tab", ctrlKey: true }),
+    );
+    await flushPromises();
+    expect(document.activeIndex).toBe(0);
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "Tab",
+        ctrlKey: true,
+        shiftKey: true,
+      }),
+    );
+    await flushPromises();
+    expect(document.activeIndex).toBe(0);
   });
 
   it("loads the opened file into the Editor Pane on Cmd/Ctrl+O", async () => {
@@ -545,7 +687,7 @@ describe("App shell", () => {
     expect(editorContent.text()).toBe("# Loaded");
   });
 
-  it("opens a picked file into the Document in Preview Only on Cmd/Ctrl+O", async () => {
+  it("opens a picked file into a new Tab in Preview Only on Cmd/Ctrl+O", async () => {
     mount(App);
     await flushPromises();
     const document = useDocumentStore();
@@ -564,6 +706,10 @@ describe("App shell", () => {
     await flushPromises();
 
     expect(pickOpenPathMock).toHaveBeenCalled();
+    expect(pickGuardChoiceMock).not.toHaveBeenCalled();
+    // The launch Tab stays open; the picked file lands in a new Active Tab.
+    expect(document.tabs).toHaveLength(2);
+    expect(document.activeIndex).toBe(1);
     expect(document.content).toBe("# Loaded");
     expect(document.canonicalPath).toBe("C:\\notes\\b.md");
     expect(document.filename).toBe("b.md");
@@ -571,30 +717,11 @@ describe("App shell", () => {
     expect(ui.layoutMode).toBe("preview");
   });
 
-  it("aborts Open without showing the dialog when the guard is cancelled", async () => {
+  it("opens onto a Dirty Document without running the Confirm-Discard Guard", async () => {
     mount(App);
     await flushPromises();
     const document = useDocumentStore();
     document.mirrorContent("# Hello");
-    pickGuardChoiceMock.mockResolvedValue("cancel");
-
-    window.dispatchEvent(
-      new KeyboardEvent("keydown", { key: "o", ctrlKey: true }),
-    );
-    await flushPromises();
-
-    expect(pickOpenPathMock).not.toHaveBeenCalled();
-    expect(document.content).toBe("# Hello");
-    expect(document.dirty).toBe(true);
-  });
-
-  it("saves a Dirty Document before opening when the guard chooses Save", async () => {
-    mount(App);
-    await flushPromises();
-    const document = useDocumentStore();
-    document.mirrorContent("# Hello");
-    pickGuardChoiceMock.mockResolvedValue("save");
-    pickSavePathMock.mockResolvedValue("C:\\notes\\saved.md");
     pickOpenPathMock.mockResolvedValue("C:\\notes\\b.md");
     invokeMock.mockImplementation((command: string) => {
       if (command === "open_document") {
@@ -602,25 +729,55 @@ describe("App shell", () => {
       }
       return Promise.resolve(undefined);
     });
-    invokeMock.mockClear();
 
     window.dispatchEvent(
       new KeyboardEvent("keydown", { key: "o", ctrlKey: true }),
     );
     await flushPromises();
 
-    expect(invokeMock).toHaveBeenCalledWith("save_document", {
-      path: "C:\\notes\\saved.md",
-      content: "# Hello",
-    });
-    expect(invokeMock).toHaveBeenCalledWith("open_document", {
-      path: "C:\\notes\\b.md",
-    });
-    expect(document.canonicalPath).toBe("C:\\notes\\b.md");
-    expect(document.dirty).toBe(false);
+    expect(pickGuardChoiceMock).not.toHaveBeenCalled();
+    // The Dirty Document is untouched in its own Tab.
+    expect(document.tabs).toHaveLength(2);
+    expect(document.activeIndex).toBe(1);
+    expect(document.tabs[0].content).toBe("# Hello");
+    expect(document.tabs[0].content).not.toBe(document.tabs[0].savedContent);
+    expect(document.content).toBe("# Loaded");
   });
 
-  it("shows a toast and keeps the Document when Open fails", async () => {
+  it("focuses the existing Tab when an already-open path is picked again", async () => {
+    mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    pickOpenPathMock.mockResolvedValue("C:\\notes\\b.md");
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "open_document") {
+        return Promise.resolve("# Loaded");
+      }
+      return Promise.resolve(undefined);
+    });
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "o", ctrlKey: true }),
+    );
+    await flushPromises();
+    invokeMock.mockClear();
+    document.mirrorContent("# Edited in b");
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "o", ctrlKey: true }),
+    );
+    await flushPromises();
+
+    expect(invokeMock).not.toHaveBeenCalledWith(
+      "open_document",
+      expect.anything(),
+    );
+    expect(document.tabs).toHaveLength(2);
+    expect(document.activeIndex).toBe(1);
+    expect(document.content).toBe("# Edited in b");
+  });
+
+  it("shows a toast and adds no Tab when Open fails", async () => {
     mount(App);
     await flushPromises();
     const document = useDocumentStore();
@@ -638,6 +795,8 @@ describe("App shell", () => {
     );
     await flushPromises();
 
+    expect(document.tabs).toHaveLength(1);
+    expect(document.activeIndex).toBe(0);
     expect(document.content).toBe("");
     expect(document.dirty).toBe(false);
     expect(ui.toast).toContain("permission denied");
@@ -657,7 +816,7 @@ describe("App shell", () => {
       }
       return Promise.resolve(undefined);
     });
-    await document.openDocument("C:\\notes\\a.md");
+    await document.openPathInTab("C:\\notes\\a.md");
     expect(document.dirty).toBe(false);
 
     window.getFocusHandler()({ payload: true });
@@ -687,7 +846,7 @@ describe("App shell", () => {
       }
       return Promise.resolve(undefined);
     });
-    await document.openDocument("C:\\notes\\a.md");
+    await document.openPathInTab("C:\\notes\\a.md");
     document.mirrorContent("# My edits");
     pickExternalChoiceMock.mockResolvedValue("cancel");
 
@@ -716,7 +875,7 @@ describe("App shell", () => {
       }
       return Promise.resolve(undefined);
     });
-    await document.openDocument("C:\\notes\\a.md");
+    await document.openPathInTab("C:\\notes\\a.md");
     document.mirrorContent("# My edits");
     pickExternalChoiceMock.mockResolvedValue("reload");
 
@@ -742,7 +901,7 @@ describe("App shell", () => {
       }
       return Promise.resolve(undefined);
     });
-    await document.openDocument("C:\\notes\\a.md");
+    await document.openPathInTab("C:\\notes\\a.md");
     document.mirrorContent("# My edits");
     pickExternalChoiceMock.mockResolvedValue("overwrite");
 
@@ -757,7 +916,209 @@ describe("App shell", () => {
     expect(document.dirty).toBe(true);
   });
 
-  it("opens a dropped file into the Document in Preview Only", async () => {
+  it("checks a background Tab for external changes only when it becomes Active", async () => {
+    const win = mockWindow();
+    const wrapper = mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    invokeMock.mockImplementation((command: string, args?: InvokeArgs) => {
+      const path =
+        typeof args === "object" && args !== null && "path" in args
+          ? args.path
+          : null;
+      if (command === "open_document") {
+        return Promise.resolve(`# ${path}`);
+      }
+      if (command === "inspect_document") {
+        // a.md changed on disk; b.md still matches what was loaded.
+        return Promise.resolve({
+          content:
+            path === "C:\\notes\\a.md" ? "# A changed" : "# C:\\notes\\b.md",
+          mtime_ms: 3,
+        });
+      }
+      return Promise.resolve(undefined);
+    });
+    pickOpenPathMock.mockResolvedValue("C:\\notes\\a.md");
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "o", ctrlKey: true }),
+    );
+    await flushPromises();
+    pickOpenPathMock.mockResolvedValue("C:\\notes\\b.md");
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "o", ctrlKey: true }),
+    );
+    await flushPromises();
+
+    // b.md is Active; a background a.md changed on disk.
+    expect(document.activeIndex).toBe(2);
+
+    // Window focus checks only the Active Tab (b.md): the background a.md is
+    // neither inspected nor reloaded.
+    invokeMock.mockClear();
+    win.getFocusHandler()({ payload: true });
+    await flushPromises();
+    expect(invokeMock).toHaveBeenCalledWith("inspect_document", {
+      path: "C:\\notes\\b.md",
+    });
+    expect(invokeMock).not.toHaveBeenCalledWith("inspect_document", {
+      path: "C:\\notes\\a.md",
+    });
+    expect(document.tabs[1].content).toBe("# C:\\notes\\a.md");
+
+    // The moment a.md becomes Active it is checked, and its clean Document
+    // reloads silently from disk.
+    await wrapper.findAll('[data-testid="tab"]')[1].trigger("click");
+    await flushPromises();
+    await nextTick();
+
+    expect(invokeMock).toHaveBeenCalledWith("inspect_document", {
+      path: "C:\\notes\\a.md",
+    });
+    expect(document.content).toBe("# A changed");
+    expect(document.dirty).toBe(false);
+    expect(pickExternalChoiceMock).not.toHaveBeenCalled();
+    const editorContent = wrapper.find(
+      '[data-testid="editor-pane"] .cm-content',
+    );
+    expect(editorContent.text()).toBe("# A changed");
+  });
+
+  it("shows the Externally-Modified dialog when a Dirty Tab is activated", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "open_document") {
+        return Promise.resolve("# Original");
+      }
+      if (command === "inspect_document") {
+        return Promise.resolve({ content: "# External", mtime_ms: 3 });
+      }
+      return Promise.resolve(undefined);
+    });
+    pickOpenPathMock.mockResolvedValue("C:\\notes\\a.md");
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "o", ctrlKey: true }),
+    );
+    await flushPromises();
+    pickOpenPathMock.mockResolvedValue("C:\\notes\\b.md");
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "o", ctrlKey: true }),
+    );
+    await flushPromises();
+
+    // a.md is a background Dirty Tab: edited locally, changed on disk.
+    document.tabs[1].content = "# My edits";
+    pickExternalChoiceMock.mockResolvedValue("reload");
+
+    // Activating it checks it and, because it is Dirty, asks the user.
+    await wrapper.findAll('[data-testid="tab"]')[1].trigger("click");
+    await flushPromises();
+    await nextTick();
+
+    expect(pickExternalChoiceMock).toHaveBeenCalledWith("a.md");
+    expect(document.content).toBe("# External");
+    expect(document.dirty).toBe(false);
+    const editorContent = wrapper.find(
+      '[data-testid="editor-pane"] .cm-content',
+    );
+    expect(editorContent.text()).toBe("# External");
+  });
+
+  it("checks the background Tab that becomes Active when the Active Tab closes", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    invokeMock.mockImplementation((command: string, args?: InvokeArgs) => {
+      const path =
+        typeof args === "object" && args !== null && "path" in args
+          ? args.path
+          : null;
+      if (command === "open_document") {
+        return Promise.resolve(`# ${path}`);
+      }
+      if (command === "inspect_document") {
+        // a.md changed on disk; b.md still matches what was loaded.
+        return Promise.resolve({
+          content:
+            path === "C:\\notes\\a.md" ? "# A changed" : "# C:\\notes\\b.md",
+          mtime_ms: 3,
+        });
+      }
+      return Promise.resolve(undefined);
+    });
+    pickOpenPathMock.mockResolvedValue("C:\\notes\\a.md");
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "o", ctrlKey: true }),
+    );
+    await flushPromises();
+    pickOpenPathMock.mockResolvedValue("C:\\notes\\b.md");
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "o", ctrlKey: true }),
+    );
+    await flushPromises();
+
+    // b.md Active; closing it makes the background a.md Active, which is then
+    // checked and reloads silently.
+    expect(document.activeIndex).toBe(2);
+    await wrapper.findAll('[data-testid="tab-close"]')[2].trigger("click");
+    await flushPromises();
+    await nextTick();
+
+    expect(document.activeIndex).toBe(1);
+    expect(document.filename).toBe("a.md");
+    expect(document.content).toBe("# A changed");
+    expect(document.dirty).toBe(false);
+  });
+
+  it("checks an already-open Tab that is re-focused through Open", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    invokeMock.mockImplementation((command: string, args?: InvokeArgs) => {
+      const path =
+        typeof args === "object" && args !== null && "path" in args
+          ? args.path
+          : null;
+      if (command === "open_document") {
+        return Promise.resolve(`# ${path}`);
+      }
+      if (command === "inspect_document") {
+        return Promise.resolve({ content: "# Changed", mtime_ms: 3 });
+      }
+      return Promise.resolve(undefined);
+    });
+    pickOpenPathMock.mockResolvedValue("C:\\notes\\a.md");
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "o", ctrlKey: true }),
+    );
+    await flushPromises();
+    pickOpenPathMock.mockResolvedValue("C:\\notes\\b.md");
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "o", ctrlKey: true }),
+    );
+    await flushPromises();
+
+    // Re-opening an already-open path focuses its background Tab — which
+    // becomes Active, so it is checked and its clean Document reloads silently.
+    pickOpenPathMock.mockResolvedValue("C:\\notes\\a.md");
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "o", ctrlKey: true }),
+    );
+    await flushPromises();
+    await nextTick();
+
+    expect(document.activeIndex).toBe(1);
+    expect(document.content).toBe("# Changed");
+    expect(document.dirty).toBe(false);
+    const editorContent = wrapper.find(
+      '[data-testid="editor-pane"] .cm-content',
+    );
+    expect(editorContent.text()).toBe("# Changed");
+  });
+
+  it("opens a dropped file into a new Tab in Preview Only", async () => {
     const window = mockWindow();
     const wrapper = mount(App);
     await flushPromises();
@@ -775,6 +1136,9 @@ describe("App shell", () => {
     });
     await flushPromises();
 
+    expect(pickGuardChoiceMock).not.toHaveBeenCalled();
+    expect(document.tabs).toHaveLength(2);
+    expect(document.activeIndex).toBe(1);
     expect(document.content).toBe("# Dropped");
     expect(document.canonicalPath).toBe("C:\\notes\\d.md");
     expect(document.filename).toBe("d.md");
@@ -811,13 +1175,12 @@ describe("App shell", () => {
     );
   });
 
-  it("keeps the Dirty Document when the Confirm-Discard Guard is cancelled on a drop", async () => {
+  it("opens a drop onto a Dirty Document without the Confirm-Discard Guard", async () => {
     const window = mockWindow();
     mount(App);
     await flushPromises();
     const document = useDocumentStore();
     document.mirrorContent("# My edits");
-    pickGuardChoiceMock.mockResolvedValue("cancel");
     invokeMock.mockImplementation((command: string) => {
       if (command === "open_document") {
         return Promise.resolve("# Dropped");
@@ -830,38 +1193,46 @@ describe("App shell", () => {
     });
     await flushPromises();
 
-    expect(document.content).toBe("# My edits");
-    expect(document.dirty).toBe(true);
-    expect(document.canonicalPath).toBeNull();
+    expect(pickGuardChoiceMock).not.toHaveBeenCalled();
+    // The Dirty Document stays open in its own Tab.
+    expect(document.tabs).toHaveLength(2);
+    expect(document.activeIndex).toBe(1);
+    expect(document.tabs[0].content).toBe("# My edits");
+    expect(document.tabs[0].content).not.toBe(document.tabs[0].savedContent);
+    expect(document.content).toBe("# Dropped");
+  });
+
+  it("focuses the existing Tab when the same path is dropped again", async () => {
+    const window = mockWindow();
+    mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "open_document") {
+        return Promise.resolve("# Dropped");
+      }
+      return Promise.resolve(undefined);
+    });
+    window.getDropHandler()({
+      payload: { type: "drop", paths: ["C:\\notes\\d.md"] },
+    });
+    await flushPromises();
+    invokeMock.mockClear();
+    document.mirrorContent("# Edited");
+    document.switchTab(0);
+
+    window.getDropHandler()({
+      payload: { type: "drop", paths: ["C:\\notes\\d.md"] },
+    });
+    await flushPromises();
+
     expect(invokeMock).not.toHaveBeenCalledWith(
       "open_document",
       expect.anything(),
     );
-  });
-
-  it("swaps a Dirty Document on a drop when the guard is dismissed", async () => {
-    const window = mockWindow();
-    mount(App);
-    await flushPromises();
-    const document = useDocumentStore();
-    document.mirrorContent("# My edits");
-    pickGuardChoiceMock.mockResolvedValue("dont-save");
-    invokeMock.mockImplementation((command: string) => {
-      if (command === "open_document") {
-        return Promise.resolve("# Dropped");
-      }
-      return Promise.resolve(undefined);
-    });
-
-    window.getDropHandler()({
-      payload: { type: "drop", paths: ["C:\\notes\\d.md"] },
-    });
-    await flushPromises();
-
-    expect(pickGuardChoiceMock).toHaveBeenCalled();
-    expect(document.content).toBe("# Dropped");
-    expect(document.canonicalPath).toBe("C:\\notes\\d.md");
-    expect(document.dirty).toBe(false);
+    expect(document.tabs).toHaveLength(2);
+    expect(document.activeIndex).toBe(1);
+    expect(document.content).toBe("# Edited");
   });
 
   it("opens a file the app was launched with through the Open flow", async () => {
@@ -880,6 +1251,9 @@ describe("App shell", () => {
     await flushPromises();
     await nextTick();
 
+    // The launch Tab stays open; the launched file lands in a new Active Tab.
+    expect(document.tabs).toHaveLength(2);
+    expect(document.activeIndex).toBe(1);
     expect(document.content).toBe("# Launched");
     expect(document.canonicalPath).toBe("C:\\notes\\start.md");
     expect(document.filename).toBe("start.md");
@@ -909,18 +1283,19 @@ describe("App shell", () => {
     window.getFileOpenHandler()({ payload: "C:\\notes\\fwd.md" });
     await flushPromises();
 
+    expect(document.tabs).toHaveLength(2);
+    expect(document.activeIndex).toBe(1);
     expect(document.content).toBe("# Forwarded");
     expect(document.canonicalPath).toBe("C:\\notes\\fwd.md");
     expect(document.dirty).toBe(false);
   });
 
-  it("runs the Confirm-Discard Guard when a second instance opens onto a Dirty Document", async () => {
+  it("opens a second-instance file onto a Dirty Document without the Guard", async () => {
     const window = mockWindow();
     mount(App);
     await flushPromises();
     const document = useDocumentStore();
     document.mirrorContent("# My edits");
-    pickGuardChoiceMock.mockResolvedValue("cancel");
     invokeMock.mockImplementation((command: string) => {
       if (command === "get_pending_file") {
         return Promise.resolve(null);
@@ -934,14 +1309,618 @@ describe("App shell", () => {
     window.getFileOpenHandler()({ payload: "C:\\notes\\fwd.md" });
     await flushPromises();
 
-    expect(pickGuardChoiceMock).toHaveBeenCalled();
-    expect(document.content).toBe("# My edits");
-    expect(document.dirty).toBe(true);
-    expect(document.canonicalPath).toBeNull();
-    expect(invokeMock).not.toHaveBeenCalledWith(
-      "open_document",
-      expect.anything(),
+    expect(pickGuardChoiceMock).not.toHaveBeenCalled();
+    expect(document.tabs).toHaveLength(2);
+    expect(document.activeIndex).toBe(1);
+    expect(document.tabs[0].content).toBe("# My edits");
+    expect(document.tabs[0].content).not.toBe(document.tabs[0].savedContent);
+    expect(document.content).toBe("# Forwarded");
+  });
+
+  it("renders a Tab Bar above the toolbar with the Document's filename and a + affordance", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+
+    const tabBar = wrapper.find('[data-testid="tab-bar"]');
+    expect(tabBar.exists()).toBe(true);
+    const tabs = wrapper.findAll('[data-testid="tab"]');
+    expect(tabs).toHaveLength(1);
+    expect(tabs[0].text()).toContain("Untitled.md");
+    expect(tabs[0].attributes("aria-selected")).toBe("true");
+    expect(wrapper.find('[data-testid="tab-dirty"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="tab-new"]').exists()).toBe(true);
+    // The Tab Bar sits above the toolbar, at the very top of the window.
+    const app = wrapper.find('[data-testid="app"]');
+    expect(app.element.firstElementChild).toBe(tabBar.element);
+  });
+
+  it("shows the Tab Bar in every Layout Mode", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const ui = useUiStore();
+    const tabBar = () => wrapper.find('[data-testid="tab-bar"]');
+
+    expect(tabBar().isVisible()).toBe(true);
+
+    ui.cycleLayoutMode();
+    await nextTick();
+    expect(tabBar().isVisible()).toBe(true);
+
+    ui.cycleLayoutMode();
+    await nextTick();
+    expect(tabBar().isVisible()).toBe(true);
+  });
+
+  it("marks a Dirty Document with an asterisk in its Tab", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+
+    document.mirrorContent("# Hello");
+    await nextTick();
+    expect(wrapper.find('[data-testid="tab-dirty"]').exists()).toBe(true);
+
+    document.mirrorContent("");
+    await nextTick();
+    expect(wrapper.find('[data-testid="tab-dirty"]').exists()).toBe(false);
+  });
+
+  it("adds a numbered Untitled Tab via the + affordance, making it Active", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    const ui = useUiStore();
+
+    await wrapper.find('[data-testid="tab-new"]').trigger("click");
+    await flushPromises();
+
+    expect(pickGuardChoiceMock).not.toHaveBeenCalled();
+    expect(document.tabs).toHaveLength(2);
+    expect(document.activeIndex).toBe(1);
+    expect(document.filename).toBe("Untitled 2.md");
+    expect(ui.layoutMode).toBe("split");
+    const tabs = wrapper.findAll('[data-testid="tab"]');
+    expect(tabs[0].text()).toContain("Untitled.md");
+    expect(tabs[1].text()).toContain("Untitled 2.md");
+    expect(tabs[1].attributes("aria-selected")).toBe("true");
+  });
+
+  it("shows every open Tab's filename in the Tab Bar", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    pickOpenPathMock.mockResolvedValue("C:\\notes\\b.md");
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "open_document") {
+        return Promise.resolve("# Loaded");
+      }
+      return Promise.resolve(undefined);
+    });
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "o", ctrlKey: true }),
     );
+    await flushPromises();
+
+    const tabs = wrapper.findAll('[data-testid="tab"]');
+    expect(tabs).toHaveLength(2);
+    expect(tabs[1].text()).toContain("b.md");
+  });
+
+  it("appends the parent folder when two open Documents share a basename", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "open_document") {
+        return Promise.resolve("# Same");
+      }
+      return Promise.resolve(undefined);
+    });
+
+    pickOpenPathMock.mockResolvedValue("C:\\notes\\a.md");
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "o", ctrlKey: true }),
+    );
+    await flushPromises();
+    pickOpenPathMock.mockResolvedValue("C:\\docs\\a.md");
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "o", ctrlKey: true }),
+    );
+    await flushPromises();
+
+    expect(document.tabs).toHaveLength(3);
+    const labels = wrapper.findAll('[data-testid="tab"]').map((tab) => tab.text());
+    expect(labels[1]).toContain("a.md — notes");
+    expect(labels[2]).toContain("a.md — docs");
+  });
+
+  it("activates a Tab on click, swapping the editor, preview, and window title", async () => {
+    vi.useFakeTimers();
+    const wrapper = mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    const ui = useUiStore();
+    pickOpenPathMock.mockResolvedValue("C:\\notes\\b.md");
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "open_document") {
+        return Promise.resolve("# File B");
+      }
+      return Promise.resolve(undefined);
+    });
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "o", ctrlKey: true }),
+    );
+    await flushPromises();
+    await nextTick();
+    vi.advanceTimersByTime(200);
+    invokeMock.mockClear();
+    document.mirrorContent("# B edited");
+    await nextTick();
+
+    // b.md is Active and Dirty, so its Tab shows the asterisk.
+    expect(document.activeIndex).toBe(1);
+    expect(ui.layoutMode).toBe("preview");
+    expect(
+      wrapper
+        .findAll('[data-testid="tab"]')[1]
+        .find('[data-testid="tab-dirty"]')
+        .exists(),
+    ).toBe(true);
+
+    await wrapper.findAll('[data-testid="tab"]')[0].trigger("click");
+    await nextTick();
+    vi.advanceTimersByTime(200);
+
+    expect(document.activeIndex).toBe(0);
+    expect(document.filename).toBe("Untitled.md");
+    const editorContent = wrapper.find(
+      '[data-testid="editor-pane"] .cm-content',
+    );
+    expect(editorContent.text()).toBe("");
+    const preview = wrapper.find('[data-testid="preview-pane"] .preview-host');
+    expect(preview.text()).not.toContain("B edited");
+    expect(invokeMock).toHaveBeenCalledWith("set_document_title", {
+      filename: "Untitled.md",
+      dirty: false,
+    });
+  });
+
+  it("switches the editor and preview to the clicked Tab's content", async () => {
+    vi.useFakeTimers();
+    const wrapper = mount(App);
+    await flushPromises();
+    const pane = wrapper.findComponent({ ref: "editorPane" });
+    const view = (pane.vm as unknown as { getView: () => EditorView }).getView();
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "open_document") {
+        return Promise.resolve("# File B");
+      }
+      return Promise.resolve(undefined);
+    });
+    pickOpenPathMock.mockResolvedValue("C:\\notes\\b.md");
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "o", ctrlKey: true }),
+    );
+    await flushPromises();
+    await nextTick();
+    vi.advanceTimersByTime(200);
+    // Edit through the editor (the authoritative source) so the store mirror
+    // and the preserved editor state stay in sync.
+    view.dispatch({
+      changes: { from: 0, to: view.state.doc.length, insert: "# B edited" },
+    });
+    await nextTick();
+
+    // Switch to the launch Tab and back; each switch re-renders that Tab's
+    // content in the Editor and Preview Panes.
+    await wrapper.findAll('[data-testid="tab"]')[0].trigger("click");
+    await nextTick();
+    await wrapper.findAll('[data-testid="tab"]')[1].trigger("click");
+    await nextTick();
+    vi.advanceTimersByTime(200);
+
+    const editorContent = wrapper.find(
+      '[data-testid="editor-pane"] .cm-content',
+    );
+    expect(editorContent.text()).toBe("# B edited");
+    const preview = wrapper.find('[data-testid="preview-pane"] .preview-host');
+    expect(preview.text()).toContain("B edited");
+  });
+
+  it("keeps each Tab's Layout Mode independent of the others", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    const ui = useUiStore();
+    pickOpenPathMock.mockResolvedValue("C:\\notes\\b.md");
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "open_document") {
+        return Promise.resolve("# File B");
+      }
+      return Promise.resolve(undefined);
+    });
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "o", ctrlKey: true }),
+    );
+    await flushPromises();
+
+    // b.md opened in Preview Only.
+    expect(ui.layoutMode).toBe("preview");
+
+    // The Layout Switcher changes only the Active Document (b.md): the launch
+    // Tab's record keeps its own mode.
+    await wrapper.find('[data-testid="layout-split"]').trigger("click");
+    await nextTick();
+    expect(ui.layoutMode).toBe("split");
+    expect(document.tabs[0].layoutMode).toBe("split");
+
+    // Switching to the launch Tab shows its own mode; changing it there never
+    // leaks into b.md (whose record keeps the Split set above).
+    await wrapper.findAll('[data-testid="tab"]')[0].trigger("click");
+    await nextTick();
+    expect(ui.layoutMode).toBe("split");
+    await wrapper.find('[data-testid="layout-focus"]').trigger("click");
+    await nextTick();
+    expect(ui.layoutMode).toBe("focus");
+    expect(document.tabs[1].layoutMode).toBe("split");
+
+    // Back to b.md: the window renders b.md's Split mode, not the launch
+    // Tab's Focus.
+    await wrapper.findAll('[data-testid="tab"]')[1].trigger("click");
+    await nextTick();
+    expect(ui.layoutMode).toBe("split");
+  });
+
+  it("cycles only the Active Document's mode on Cmd/Ctrl+Shift+P", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    const ui = useUiStore();
+    pickOpenPathMock.mockResolvedValue("C:\\notes\\b.md");
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "open_document") {
+        return Promise.resolve("# File B");
+      }
+      return Promise.resolve(undefined);
+    });
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "o", ctrlKey: true }),
+    );
+    await flushPromises();
+
+    // b.md (Preview Only) cycles to Focus; the launch Tab's record is
+    // untouched.
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "P",
+        ctrlKey: true,
+        shiftKey: true,
+      }),
+    );
+    await nextTick();
+    expect(ui.layoutMode).toBe("focus");
+    expect(document.tabs[0].layoutMode).toBe("split");
+
+    // The launch Tab's own cycle moves only its record: b.md's Focus survives.
+    await wrapper.findAll('[data-testid="tab"]')[0].trigger("click");
+    await nextTick();
+    expect(ui.layoutMode).toBe("split");
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "P",
+        ctrlKey: true,
+        shiftKey: true,
+      }),
+    );
+    await nextTick();
+    expect(ui.layoutMode).toBe("preview");
+    expect(document.tabs[1].layoutMode).toBe("focus");
+
+    // Back to b.md: still Focus.
+    await wrapper.findAll('[data-testid="tab"]')[1].trigger("click");
+    await nextTick();
+    expect(ui.layoutMode).toBe("focus");
+  });
+
+  it("renders the Active Tab's Layout Mode in the panes on switch", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    pickOpenPathMock.mockResolvedValue("C:\\notes\\b.md");
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "open_document") {
+        return Promise.resolve("# File B");
+      }
+      return Promise.resolve(undefined);
+    });
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "o", ctrlKey: true }),
+    );
+    await flushPromises();
+    await nextTick();
+
+    const editor = wrapper.find('[data-testid="editor-pane"]')
+      .element as HTMLElement;
+    const preview = wrapper.find('[data-testid="preview-pane"]')
+      .element as HTMLElement;
+
+    // b.md opened in Preview Only: the Editor Pane is hidden.
+    expect(editor.style.display).toBe("none");
+    expect(preview.style.display).not.toBe("none");
+
+    // The launch Tab is Split View: both panes are visible again.
+    await wrapper.findAll('[data-testid="tab"]')[0].trigger("click");
+    await nextTick();
+    expect(editor.style.display).not.toBe("none");
+    expect(preview.style.display).not.toBe("none");
+
+    // Back to b.md: Preview Only hides the Editor Pane again.
+    await wrapper.findAll('[data-testid="tab"]')[1].trigger("click");
+    await nextTick();
+    expect(editor.style.display).toBe("none");
+    expect(preview.style.display).not.toBe("none");
+  });
+
+  it("keeps the divider position app-wide across Tabs", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const ui = useUiStore();
+    ui.dividerPosition = 0.7;
+    pickOpenPathMock.mockResolvedValue("C:\\notes\\b.md");
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "open_document") {
+        return Promise.resolve("# File B");
+      }
+      return Promise.resolve(undefined);
+    });
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "o", ctrlKey: true }),
+    );
+    await flushPromises();
+
+    // The Split launch Tab renders the app-wide balance.
+    await wrapper.findAll('[data-testid="tab"]')[0].trigger("click");
+    await nextTick();
+    const editor = wrapper.find('[data-testid="editor-pane"]')
+      .element as HTMLElement;
+    expect(editor.style.flexBasis).toBe("70%");
+
+    // b.md (Preview Only) renders no basis; the stored position is unchanged.
+    await wrapper.findAll('[data-testid="tab"]')[1].trigger("click");
+    await nextTick();
+    expect(ui.dividerPosition).toBe(0.7);
+
+    // Back to the Split Tab: the same app-wide position applies.
+    await wrapper.findAll('[data-testid="tab"]')[0].trigger("click");
+    await nextTick();
+    expect(editor.style.flexBasis).toBe("70%");
+  });
+
+  it("restores a Tab's cursor and undo history after a switch round trip", async () => {
+    vi.useFakeTimers();
+    const wrapper = mount(App);
+    await flushPromises();
+    const pane = wrapper.findComponent({ ref: "editorPane" });
+    const view = (pane.vm as unknown as { getView: () => EditorView }).getView();
+    pickOpenPathMock.mockResolvedValue("C:\\notes\\b.md");
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "open_document") {
+        return Promise.resolve("# File B");
+      }
+      return Promise.resolve(undefined);
+    });
+
+    // Type into the launch Tab and move the cursor off the end of the insert.
+    view.dispatch({ changes: { from: 0, insert: "# Draft\n\nBody" } });
+    view.dispatch({ selection: { anchor: 8 } });
+    await nextTick();
+    expect(view.state.selection.main.head).toBe(8);
+
+    // Open a second file, then click back to the launch Tab.
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "o", ctrlKey: true }),
+    );
+    await flushPromises();
+    await nextTick();
+    await wrapper.findAll('[data-testid="tab"]')[0].trigger("click");
+    await nextTick();
+
+    // Cursor position and undo history survived the round trip.
+    expect(view.state.doc.toString()).toBe("# Draft\n\nBody");
+    expect(view.state.selection.main.head).toBe(8);
+    expect(undoDepth(view.state)).toBe(1);
+
+    // The preserved history is live: undoing reverts the insert.
+    undoCommand(view);
+    expect(view.state.doc.toString()).toBe("");
+  });
+
+  it("restores a Tab's scroll offset after a switch round trip", async () => {
+    vi.useFakeTimers();
+    const wrapper = mount(App);
+    await flushPromises();
+    const pane = wrapper.findComponent({ ref: "editorPane" });
+    const view = (pane.vm as unknown as { getView: () => EditorView }).getView();
+    pickOpenPathMock.mockResolvedValue("C:\\notes\\b.md");
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "open_document") {
+        return Promise.resolve("# File B");
+      }
+      return Promise.resolve(undefined);
+    });
+
+    view.scrollDOM.scrollTop = 240;
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "o", ctrlKey: true }),
+    );
+    await flushPromises();
+    await nextTick();
+
+    // Back to the launch Tab: its captured offset is restored.
+    await wrapper.findAll('[data-testid="tab"]')[0].trigger("click");
+    await nextTick();
+    await nextTick();
+
+    expect(view.scrollDOM.scrollTop).toBe(240);
+  });
+
+  it("defers a restored scroll offset until the pane becomes visible", async () => {
+    vi.useFakeTimers();
+    const wrapper = mount(App);
+    await flushPromises();
+    const pane = wrapper.findComponent({ ref: "editorPane" });
+    const view = (pane.vm as unknown as { getView: () => EditorView }).getView();
+    const ui = useUiStore();
+    pickOpenPathMock.mockResolvedValue("C:\\notes\\b.md");
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "open_document") {
+        return Promise.resolve("# File B");
+      }
+      return Promise.resolve(undefined);
+    });
+
+    view.scrollDOM.scrollTop = 240;
+    // Open b.md (Preview Only) and return to the launch Tab: its restore runs
+    // while the pane is still hidden by b.md's Preview Only, so the offset is
+    // deferred, not dropped. The switch lands in the launch Tab's Split View,
+    // which makes the pane visible and applies the deferred offset.
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "o", ctrlKey: true }),
+    );
+    await flushPromises();
+    await nextTick();
+    await wrapper.findAll('[data-testid="tab"]')[0].trigger("click");
+    await nextTick();
+    await nextTick();
+    expect(view.scrollDOM.scrollTop).toBe(240);
+
+    // A Preview-Only round trip keeps the offset: send the launch Tab to
+    // Preview Only, leave and return while the pane is hidden, then bring it
+    // back to Split View. (jsdom keeps the scroller's property even under
+    // display:none, so zero it after the round trip, proving the deferred
+    // apply — not the stale property — restores it.)
+    ui.setLayoutMode("preview");
+    await nextTick();
+    await wrapper.findAll('[data-testid="tab"]')[1].trigger("click");
+    await nextTick();
+    await wrapper.findAll('[data-testid="tab"]')[0].trigger("click");
+    await nextTick();
+    await nextTick();
+    view.scrollDOM.scrollTop = 0;
+    ui.setLayoutMode("split");
+    await nextTick();
+    await nextTick();
+    expect(view.scrollDOM.scrollTop).toBe(240);
+
+    // The restored offset then survives the next switch away and back.
+    await wrapper.findAll('[data-testid="tab"]')[1].trigger("click");
+    await nextTick();
+    await wrapper.findAll('[data-testid="tab"]')[0].trigger("click");
+    await nextTick();
+    await nextTick();
+    expect(view.scrollDOM.scrollTop).toBe(240);
+  });
+
+  it("starts an opened Tab with cleared undo history", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const pane = wrapper.findComponent({ ref: "editorPane" });
+    const view = (pane.vm as unknown as { getView: () => EditorView }).getView();
+
+    view.dispatch({ changes: { from: 0, insert: "# Draft" } });
+    await nextTick();
+    expect(undoDepth(view.state)).toBe(1);
+
+    pickOpenPathMock.mockResolvedValue("C:\\notes\\b.md");
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "open_document") {
+        return Promise.resolve("# File B");
+      }
+      return Promise.resolve(undefined);
+    });
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "o", ctrlKey: true }),
+    );
+    await flushPromises();
+    await nextTick();
+
+    // The opened file starts fresh: content loaded, no undo history, exactly
+    // as today's destructive rebuild.
+    expect(view.state.doc.toString()).toBe("# File B");
+    expect(undoDepth(view.state)).toBe(0);
+  });
+
+  it("clears the preserved editor state when the Active Tab is externally reloaded", async () => {
+    const mockWin = mockWindow();
+    const wrapper = mount(App);
+    await flushPromises();
+    const pane = wrapper.findComponent({ ref: "editorPane" });
+    const view = (pane.vm as unknown as { getView: () => EditorView }).getView();
+    pickOpenPathMock.mockResolvedValue("C:\\notes\\a.md");
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "open_document") {
+        return Promise.resolve("# A content");
+      }
+      if (command === "inspect_document") {
+        return Promise.resolve({ content: "# A changed", mtime_ms: 3 });
+      }
+      return Promise.resolve(undefined);
+    });
+
+    // Open a.md, edit it (building undo history), and round-trip through
+    // another Tab so the editor state is preserved for it.
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "o", ctrlKey: true }),
+    );
+    await flushPromises();
+    view.dispatch({ changes: { from: 0, insert: "# A edited" } });
+    await nextTick();
+    expect(undoDepth(view.state)).toBe(1);
+    await wrapper.findAll('[data-testid="tab"]')[0].trigger("click");
+    await nextTick();
+    await wrapper.findAll('[data-testid="tab"]')[1].trigger("click");
+    await nextTick();
+    expect(undoDepth(view.state)).toBe(1);
+
+    // The file changed on disk; Reload replaces the Document and the editor
+    // rebuilds, so the undo history no longer reaches into the old content.
+    pickExternalChoiceMock.mockResolvedValue("reload");
+    mockWin.getFocusHandler()({ payload: true });
+    await flushPromises();
+    await nextTick();
+
+    expect(view.state.doc.toString()).toBe("# A changed");
+    expect(undoDepth(view.state)).toBe(0);
+  });
+
+  it("resolves relative images against the Active Document's directory after a switch", async () => {
+    vi.useFakeTimers();
+    const wrapper = mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "open_document") {
+        return Promise.resolve("![pic](img.png)");
+      }
+      return Promise.resolve(undefined);
+    });
+
+    pickOpenPathMock.mockResolvedValue("C:\\notes\\b.md");
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "o", ctrlKey: true }),
+    );
+    await flushPromises();
+    await nextTick();
+    vi.advanceTimersByTime(200);
+    expect(
+      wrapper.find('[data-testid="preview-pane"] img').attributes("src"),
+    ).toBe("asset://localhost/C%3A%5Cnotes%5Cimg.png");
+
+    // Switching back to the pathless launch Tab stops image rewriting.
+    await wrapper.findAll('[data-testid="tab"]')[0].trigger("click");
+    await nextTick();
+    vi.advanceTimersByTime(200);
+    expect(wrapper.find('[data-testid="preview-pane"] img').exists()).toBe(false);
+    expect(document.activeIndex).toBe(0);
   });
 
   it("renders the formatting toolbar enabled in source-visible modes", () => {
@@ -1281,6 +2260,116 @@ describe("App shell", () => {
     expect(wrapper.find('[data-testid="match-count"]').text()).toBe("1 / 2");
     const selection = view.state.selection.main;
     expect(view.state.sliceDoc(selection.from, selection.to)).toBe("alpha");
+  });
+
+  it("remembers each Tab's own Find query and current match across switches", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const pane = wrapper.findComponent({ ref: "editorPane" });
+    const view = (pane.vm as unknown as { getView: () => EditorView }).getView();
+    view.dispatch({ changes: { from: 0, insert: "alpha beta alpha" } });
+    await nextTick();
+
+    // Find "alpha" in the launch Tab and advance to the second match.
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "f", ctrlKey: true }),
+    );
+    await nextTick();
+    await wrapper.find('[data-testid="find-input"]').setValue("alpha");
+    await nextTick();
+    expect(wrapper.find('[data-testid="match-count"]').text()).toBe("1 / 2");
+    await wrapper.find('[data-testid="find-next"]').trigger("click");
+    await nextTick();
+    expect(wrapper.find('[data-testid="match-count"]').text()).toBe("2 / 2");
+
+    // A second file opens into its own Tab with its own (empty) Find state.
+    pickOpenPathMock.mockResolvedValue("C:\\notes\\b.md");
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "open_document") {
+        return Promise.resolve("# File B");
+      }
+      return Promise.resolve(undefined);
+    });
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "o", ctrlKey: true }),
+    );
+    await flushPromises();
+    await nextTick();
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "f", ctrlKey: true }),
+    );
+    await nextTick();
+    expect(
+      (wrapper.find('[data-testid="find-input"]').element as HTMLInputElement)
+        .value,
+    ).toBe("");
+    expect(wrapper.find('[data-testid="match-count"]').exists()).toBe(false);
+
+    // Back to the launch Tab: its query and current match are restored — the
+    // launch Tab's Find state was not clobbered by b.md's.
+    await wrapper.findAll('[data-testid="tab"]')[0].trigger("click");
+    await nextTick();
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "f", ctrlKey: true }),
+    );
+    await nextTick();
+    expect(
+      (wrapper.find('[data-testid="find-input"]').element as HTMLInputElement)
+        .value,
+    ).toBe("alpha");
+    expect(wrapper.find('[data-testid="match-count"]').text()).toBe("2 / 2");
+    // The panel's match count reads the restored current match (index 2 of 2),
+    // so the remembered match — not just the query — came back.
+    const restoredSelection = view.state.selection.main;
+    expect(view.state.sliceDoc(restoredSelection.from, restoredSelection.to)).toBe(
+      "alpha",
+    );
+  });
+
+  it("switches only the Active Document to Split View when replacing in Preview Only", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    const ui = useUiStore();
+    // The launch Tab keeps its own mode while a Preview-Only Tab replaces.
+    ui.cycleLayoutMode();
+    ui.cycleLayoutMode();
+    await nextTick();
+    expect(ui.layoutMode).toBe("focus");
+    pickOpenPathMock.mockResolvedValue("C:\\notes\\b.md");
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "open_document") {
+        return Promise.resolve("alpha beta alpha");
+      }
+      return Promise.resolve(undefined);
+    });
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "o", ctrlKey: true }),
+    );
+    await flushPromises();
+
+    // b.md is Active in Preview Only.
+    expect(ui.layoutMode).toBe("preview");
+    expect(document.tabs[1].layoutMode).toBe("preview");
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "f", ctrlKey: true }),
+    );
+    await nextTick();
+    await wrapper.find('[data-testid="find-input"]').setValue("alpha");
+    await wrapper.find('[data-testid="replace-input"]').setValue("ALPHA");
+    await wrapper.find('[data-testid="replace-next"]').trigger("click");
+    await nextTick();
+
+    // Only b.md switches to Split View; the launch Tab keeps its Focus mode.
+    expect(document.tabs[1].layoutMode).toBe("split");
+    expect(document.tabs[0].layoutMode).toBe("focus");
+    expect(document.content).toBe("ALPHA beta alpha");
+
+    await wrapper.findAll('[data-testid="tab"]')[0].trigger("click");
+    await nextTick();
+    expect(ui.layoutMode).toBe("focus");
   });
 
   it("switches to Split View and replaces when replacing in Preview Only", async () => {
@@ -1844,22 +2933,84 @@ describe("App shell", () => {
     expect(document.filename).toBe("new.md");
   });
 
-  it("runs the Confirm-Discard Guard and creates a new Document via the New button", async () => {
+  it("refuses Save As onto a path open in another Tab, showing a toast", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    const ui = useUiStore();
+    await openSecondTab("C:\\notes\\b.md");
+    // Return to the Untitled launch Tab before Save As.
+    await wrapper.findAll('[data-testid="tab"]')[0].trigger("click");
+    await nextTick();
+
+    pickSavePathMock.mockResolvedValue("C:\\notes\\b.md");
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "S",
+        ctrlKey: true,
+        shiftKey: true,
+      }),
+    );
+    await flushPromises();
+
+    expect(document.tabs[0].canonicalPath).toBeNull();
+    expect(document.filename).toBe("Untitled.md");
+    expect(invokeMock).not.toHaveBeenCalledWith(
+      "save_document",
+      expect.anything(),
+    );
+    expect(ui.toast).toContain("already open");
+    expect(wrapper.find('[data-testid="toast"]').exists()).toBe(true);
+  });
+
+  it("saves the Active Tab to an unused path and updates its Tab label and title", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    await openSecondTab("C:\\notes\\b.md");
+    await wrapper.findAll('[data-testid="tab"]')[0].trigger("click");
+    await nextTick();
+
+    pickSavePathMock.mockResolvedValue("C:\\notes\\free.md");
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "S",
+        ctrlKey: true,
+        shiftKey: true,
+      }),
+    );
+    await flushPromises();
+
+    expect(invokeMock).toHaveBeenCalledWith("save_document", {
+      path: "C:\\notes\\free.md",
+      content: "",
+    });
+    expect(document.tabs[0].canonicalPath).toBe("C:\\notes\\free.md");
+    expect(document.filename).toBe("free.md");
+    expect(invokeMock).toHaveBeenCalledWith("set_document_title", {
+      filename: "free.md",
+      dirty: false,
+    });
+  });
+
+  it("adds an Untitled Tab via the New button without the Confirm-Discard Guard", async () => {
     const wrapper = mount(App);
     await flushPromises();
     const document = useDocumentStore();
     const ui = useUiStore();
     document.mirrorContent("# Hello");
-    pickGuardChoiceMock.mockResolvedValue("dont-save");
 
     await wrapper.find('[data-testid="toolbar-new"]').trigger("click");
     await flushPromises();
 
-    expect(pickGuardChoiceMock).toHaveBeenCalled();
+    expect(pickGuardChoiceMock).not.toHaveBeenCalled();
+    expect(document.tabs).toHaveLength(2);
+    expect(document.activeIndex).toBe(1);
     expect(document.content).toBe("");
     expect(document.dirty).toBe(false);
-    expect(document.filename).toBe("Untitled.md");
+    expect(document.filename).toBe("Untitled 2.md");
     expect(ui.layoutMode).toBe("split");
+    expect(document.tabs[0].content).toBe("# Hello");
   });
 
   it("opens a picked file through the Open button, landing in Preview Only", async () => {
@@ -2037,6 +3188,29 @@ describe("App shell", () => {
     }
   });
 
+  it("lists the Tab shortcuts in the Shortcuts Reference", async () => {
+    const wrapper = mount(App);
+    await wrapper.find('[data-testid="toolbar-help"]').trigger("click");
+    await nextTick();
+
+    const modal = wrapper.find('[data-testid="shortcuts-modal"]');
+    expect(modal.exists()).toBe(true);
+    expect(wrapper.find('[data-testid="shortcut-group-tab"]').exists()).toBe(
+      true,
+    );
+
+    const text = modal.text();
+    for (const [label, combo] of [
+      ["New Tab", "Ctrl/Cmd+T"],
+      ["Close Tab", "Ctrl/Cmd+W"],
+      ["Next Tab", "Ctrl+Tab"],
+      ["Previous Tab", "Ctrl+Shift+Tab"],
+    ]) {
+      expect(text).toContain(label);
+      expect(text).toContain(combo);
+    }
+  });
+
   it("lists the reference entries within their category groups", async () => {
     const wrapper = mount(App);
     await wrapper.find('[data-testid="toolbar-help"]').trigger("click");
@@ -2170,5 +3344,314 @@ describe("App shell", () => {
       (wrapper.find('[data-testid="toolbar-redo"]').element as HTMLButtonElement)
         .disabled,
     ).toBe(true);
+  });
+
+  /// Opens `path` into a new Tab via the Ctrl/Cmd+O shortcut. Shared by the
+  /// close-control tests: the Guard's per-Tab Save needs a real second Tab to
+  /// act on.
+  async function openSecondTab(path: string) {
+    pickOpenPathMock.mockResolvedValue(path);
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "open_document") {
+        return Promise.resolve(`# ${path}`);
+      }
+      return Promise.resolve(undefined);
+    });
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "o", ctrlKey: true }),
+    );
+    await flushPromises();
+    invokeMock.mockClear();
+  }
+
+  it("closes a clean Tab via its close control without the Guard", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    await openSecondTab("C:\\notes\\b.md");
+
+    await wrapper.findAll('[data-testid="tab-close"]')[1].trigger("click");
+    await flushPromises();
+
+    expect(pickGuardChoiceMock).not.toHaveBeenCalled();
+    expect(document.tabs).toHaveLength(1);
+    expect(document.activeIndex).toBe(0);
+    expect(document.filename).toBe("Untitled.md");
+  });
+
+  it("keeps a Dirty Tab open when its close Guard is cancelled", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    await openSecondTab("C:\\notes\\b.md");
+    document.mirrorContent("# B edits");
+    pickGuardChoiceMock.mockResolvedValue("cancel");
+
+    await wrapper.findAll('[data-testid="tab-close"]')[1].trigger("click");
+    await flushPromises();
+
+    expect(pickGuardChoiceMock).toHaveBeenCalledWith("b.md");
+    expect(document.tabs).toHaveLength(2);
+    expect(document.activeIndex).toBe(1);
+    expect(document.tabs[1].content).toBe("# B edits");
+  });
+
+  it("closes a Dirty Tab without writing when Don't Save is chosen", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    await openSecondTab("C:\\notes\\b.md");
+    document.mirrorContent("# B edits");
+    pickGuardChoiceMock.mockResolvedValue("dont-save");
+
+    await wrapper.findAll('[data-testid="tab-close"]')[1].trigger("click");
+    await flushPromises();
+
+    expect(document.tabs).toHaveLength(1);
+    expect(document.activeIndex).toBe(0);
+    expect(invokeMock).not.toHaveBeenCalledWith(
+      "save_document",
+      expect.anything(),
+    );
+  });
+
+  it("saves a Dirty Tab and closes it when the close Guard chooses Save", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    await openSecondTab("C:\\notes\\b.md");
+    document.mirrorContent("# B edits");
+    pickGuardChoiceMock.mockResolvedValue("save");
+
+    await wrapper.findAll('[data-testid="tab-close"]')[1].trigger("click");
+    await flushPromises();
+
+    expect(pickGuardChoiceMock).toHaveBeenCalledWith("b.md");
+    expect(invokeMock).toHaveBeenCalledWith("save_document", {
+      path: "C:\\notes\\b.md",
+      content: "# B edits",
+    });
+    expect(document.tabs).toHaveLength(1);
+    expect(document.activeIndex).toBe(0);
+  });
+
+  it("activates the Tab to the right when the Active Tab closes", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    pickOpenPathMock
+      .mockResolvedValueOnce("C:\\notes\\b.md")
+      .mockResolvedValueOnce("C:\\notes\\c.md");
+    // Distinct contents per path, so the editor assertion below proves the
+    // editor actually swapped to the right neighbor's Document.
+    invokeMock.mockImplementation((command: string, args?: InvokeArgs) => {
+      if (command === "open_document") {
+        const isB =
+          typeof args === "object" &&
+          args !== null &&
+          "path" in args &&
+          args.path === "C:\\notes\\b.md";
+        return Promise.resolve(isB ? "# B file" : "# C file");
+      }
+      return Promise.resolve(undefined);
+    });
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "o", ctrlKey: true }),
+    );
+    await flushPromises();
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "o", ctrlKey: true }),
+    );
+    await flushPromises();
+    invokeMock.mockClear();
+    // b.md Active; close it — c.md takes its place.
+    await wrapper.findAll('[data-testid="tab"]')[1].trigger("click");
+    await nextTick();
+
+    await wrapper.findAll('[data-testid="tab-close"]')[1].trigger("click");
+    await nextTick();
+
+    expect(document.tabs).toHaveLength(2);
+    expect(document.activeIndex).toBe(1);
+    expect(document.filename).toBe("c.md");
+    const editorContent = wrapper.find(
+      '[data-testid="editor-pane"] .cm-content',
+    );
+    expect(editorContent.text()).toBe("# C file");
+  });
+
+  it("activates the new last Tab when the last Tab closes", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    await openSecondTab("C:\\notes\\b.md");
+    document.switchTab(1);
+
+    await wrapper.findAll('[data-testid="tab-close"]')[1].trigger("click");
+    await flushPromises();
+
+    expect(document.tabs).toHaveLength(1);
+    expect(document.activeIndex).toBe(0);
+    expect(document.filename).toBe("Untitled.md");
+  });
+
+  it("closes the window when the last Tab closes", async () => {
+    const window = mockWindow();
+    const wrapper = mount(App);
+    await flushPromises();
+
+    await wrapper.find('[data-testid="tab-close"]').trigger("click");
+    await flushPromises();
+
+    expect(pickGuardChoiceMock).not.toHaveBeenCalled();
+    expect(window.destroy).toHaveBeenCalled();
+  });
+
+  it("saves a Dirty last Tab via the Guard, then closes the window", async () => {
+    const win = mockWindow();
+    const wrapper = mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    document.mirrorContent("# launch edits");
+    pickGuardChoiceMock.mockResolvedValue("save");
+    pickSavePathMock.mockResolvedValue("C:\\notes\\launch.md");
+    invokeMock.mockClear();
+
+    await wrapper.find('[data-testid="tab-close"]').trigger("click");
+    await flushPromises();
+
+    expect(pickGuardChoiceMock).toHaveBeenCalledWith("Untitled.md");
+    expect(invokeMock).toHaveBeenCalledWith("save_document", {
+      path: "C:\\notes\\launch.md",
+      content: "# launch edits",
+    });
+    // The Tab is not removed — the store keeps the last Tab — the window is.
+    expect(document.tabs).toHaveLength(1);
+    expect(win.destroy).toHaveBeenCalled();
+  });
+
+  it("closing a background Tab does not activate it", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    await openSecondTab("C:\\notes\\b.md");
+    await wrapper.findAll('[data-testid="tab"]')[0].trigger("click");
+    await nextTick();
+
+    await wrapper.findAll('[data-testid="tab-close"]')[1].trigger("click");
+    await flushPromises();
+
+    expect(document.tabs).toHaveLength(1);
+    expect(document.activeIndex).toBe(0);
+    const editorContent = wrapper.find(
+      '[data-testid="editor-pane"] .cm-content',
+    );
+    expect(editorContent.text()).toBe("");
+  });
+
+  it("runs the Guard once per Dirty Tab on window close, aborting when any cancels", async () => {
+    const win = mockWindow();
+    mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    document.mirrorContent("# launch edits");
+    pickOpenPathMock.mockResolvedValue("C:\\notes\\b.md");
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "open_document") {
+        return Promise.resolve("# File B");
+      }
+      return Promise.resolve(undefined);
+    });
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "o", ctrlKey: true }),
+    );
+    await flushPromises();
+    document.mirrorContent("# B edits");
+    pickGuardChoiceMock
+      .mockResolvedValueOnce("save")
+      .mockResolvedValueOnce("cancel");
+    pickSavePathMock.mockResolvedValue("C:\\notes\\launch.md");
+    invokeMock.mockClear();
+    const event = { preventDefault: vi.fn() };
+
+    await win.getCloseHandler()(event);
+    await flushPromises();
+
+    expect(event.preventDefault).toHaveBeenCalled();
+    expect(pickGuardChoiceMock).toHaveBeenCalledTimes(2);
+    expect(pickGuardChoiceMock).toHaveBeenNthCalledWith(1, "Untitled.md");
+    expect(pickGuardChoiceMock).toHaveBeenNthCalledWith(2, "b.md");
+    expect(win.destroy).not.toHaveBeenCalled();
+    // The first Tab was saved before the second's Cancel aborted the close;
+    // both stay open.
+    expect(invokeMock).toHaveBeenCalledWith("save_document", {
+      path: "C:\\notes\\launch.md",
+      content: "# launch edits",
+    });
+    expect(document.tabs).toHaveLength(2);
+    expect(document.tabs[0].content).toBe(document.tabs[0].savedContent);
+    expect(document.tabs[1].content).toBe("# B edits");
+  });
+
+  it("closes the window after saving every Dirty Tab when none cancels", async () => {
+    const win = mockWindow();
+    mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    document.mirrorContent("# launch edits");
+    pickOpenPathMock.mockResolvedValue("C:\\notes\\b.md");
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "open_document") {
+        return Promise.resolve("# File B");
+      }
+      return Promise.resolve(undefined);
+    });
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "o", ctrlKey: true }),
+    );
+    await flushPromises();
+    document.mirrorContent("# B edits");
+    pickGuardChoiceMock.mockResolvedValue("save");
+    pickSavePathMock.mockResolvedValue("C:\\notes\\launch.md");
+    invokeMock.mockClear();
+    const event = { preventDefault: vi.fn() };
+
+    await win.getCloseHandler()(event);
+    await flushPromises();
+
+    expect(pickGuardChoiceMock).toHaveBeenCalledTimes(2);
+    expect(win.destroy).toHaveBeenCalled();
+    expect(invokeMock).toHaveBeenCalledWith("save_document", {
+      path: "C:\\notes\\b.md",
+      content: "# B edits",
+    });
+  });
+
+  it("prompts only for Dirty Tabs on window close", async () => {
+    const win = mockWindow();
+    mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    pickOpenPathMock.mockResolvedValue("C:\\notes\\b.md");
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "open_document") {
+        return Promise.resolve("# File B");
+      }
+      return Promise.resolve(undefined);
+    });
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "o", ctrlKey: true }),
+    );
+    await flushPromises();
+    document.mirrorContent("# B edits");
+    pickGuardChoiceMock.mockResolvedValue("save");
+    const event = { preventDefault: vi.fn() };
+
+    await win.getCloseHandler()(event);
+    await flushPromises();
+
+    expect(pickGuardChoiceMock).toHaveBeenCalledTimes(1);
+    expect(pickGuardChoiceMock).toHaveBeenCalledWith("b.md");
+    expect(win.destroy).toHaveBeenCalled();
   });
 });

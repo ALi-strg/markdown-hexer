@@ -15,7 +15,7 @@ vi.mock("../../lib/externalDialog", () => ({
   pickExternalModificationChoice: vi.fn(),
 }));
 
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, type InvokeArgs } from "@tauri-apps/api/core";
 import { pickSavePath } from "../../lib/saveDialog";
 import { pickExternalModificationChoice } from "../../lib/externalDialog";
 
@@ -110,6 +110,10 @@ describe("document store", () => {
     expect(document.canonicalPath).toBe("C:\\notes\\b.md");
     expect(document.filename).toBe("b.md");
     expect(document.dirty).toBe(false);
+    // The Tab's session number is dropped: a titled Document is no longer
+    // Untitled, so the field's contract ("null once the Document has a
+    // canonical path") holds after Save As too.
+    expect(document.tabs[0].untitledNumber).toBeNull();
   });
 
   it("keeps an Untitled Document untouched when Save As is cancelled", async () => {
@@ -191,7 +195,7 @@ describe("document store", () => {
     });
   });
 
-  it("opens a file into the Document, updating the title and clearing Dirty", async () => {
+  it("opens a file into a new Tab, updating the title and clearing Dirty", async () => {
     const document = useDocumentStore();
     document.canonicalPath = "C:\\notes\\old.md";
     document.mirrorContent("# Old");
@@ -202,14 +206,18 @@ describe("document store", () => {
       return Promise.resolve(undefined);
     });
 
-    const opened = await document.openDocument("C:\\notes\\new.md");
+    const result = await document.openPathInTab("C:\\notes\\new.md");
 
-    expect(opened).toBe(true);
+    expect(result).toBe("opened");
+    // The previous Document stays open in its own Tab; the new file is Active.
+    expect(document.tabs).toHaveLength(2);
+    expect(document.activeIndex).toBe(1);
     expect(document.content).toBe("# New file");
     expect(document.canonicalPath).toBe("C:\\notes\\new.md");
     expect(document.filename).toBe("new.md");
     expect(document.title).toBe("new.md — Markdown-Magic");
     expect(document.dirty).toBe(false);
+    expect(document.tabs[0].content).toBe("# Old");
   });
 
   it("remembers the directory of an opened path", async () => {
@@ -222,12 +230,12 @@ describe("document store", () => {
     });
     const ui = useUiStore();
 
-    await document.openDocument("C:\\notes\\drafts\\b.md");
+    await document.openPathInTab("C:\\notes\\drafts\\b.md");
 
     expect(ui.lastDirectory).toBe("C:/notes/drafts");
   });
 
-  it("keeps the current Document and shows a toast when the read fails", async () => {
+  it("keeps the Tab list unchanged and shows a toast when the read fails", async () => {
     const document = useDocumentStore();
     document.canonicalPath = "C:\\notes\\a.md";
     document.mirrorContent("# Safe");
@@ -239,9 +247,11 @@ describe("document store", () => {
     });
     const ui = useUiStore();
 
-    const opened = await document.openDocument("C:\\notes\\missing.md");
+    const result = await document.openPathInTab("C:\\notes\\missing.md");
 
-    expect(opened).toBe(false);
+    expect(result).toBeNull();
+    expect(document.tabs).toHaveLength(1);
+    expect(document.activeIndex).toBe(0);
     expect(document.content).toBe("# Safe");
     expect(document.canonicalPath).toBe("C:\\notes\\a.md");
     expect(ui.toast).toContain("not found");
@@ -256,7 +266,7 @@ describe("document store", () => {
       return Promise.resolve(undefined);
     });
 
-    await document.openDocument("C:\\notes\\new.md");
+    await document.openPathInTab("C:\\notes\\new.md");
 
     expect(invokeMock).toHaveBeenCalledWith("set_asset_root", {
       documentPath: "C:\\notes\\new.md",
@@ -276,29 +286,32 @@ describe("document store", () => {
     });
   });
 
-  it("clears the asset scope for a fresh Untitled Document", () => {
+  it("clears the asset scope for a fresh Untitled Tab", () => {
     const document = useDocumentStore();
     document.canonicalPath = "C:\\notes\\a.md";
     invokeMock.mockClear();
 
-    document.newDocument();
+    document.newTab();
 
     expect(invokeMock).toHaveBeenCalledWith("set_asset_root", {
       documentPath: null,
     });
   });
 
-  it("creates a fresh Untitled Document, discarding the current one", () => {
+  it("creates a fresh Untitled Tab without discarding the current one", () => {
     const document = useDocumentStore();
     document.canonicalPath = "C:\\notes\\a.md";
     document.mirrorContent("# Hello");
 
-    document.newDocument();
+    document.newTab();
 
+    expect(document.tabs).toHaveLength(2);
+    expect(document.activeIndex).toBe(1);
     expect(document.content).toBe("");
     expect(document.canonicalPath).toBeNull();
-    expect(document.filename).toBe("Untitled.md");
+    expect(document.filename).toBe("Untitled 2.md");
     expect(document.dirty).toBe(false);
+    expect(document.tabs[0].content).toBe("# Hello");
   });
 
   async function seedOpenedDocument(
@@ -313,7 +326,7 @@ describe("document store", () => {
       }
       return Promise.resolve(undefined);
     });
-    await document.openDocument("C:\\notes\\a.md");
+    await document.openPathInTab("C:\\notes\\a.md");
   }
 
   it("does nothing for an Untitled Document on window focus", async () => {
@@ -490,5 +503,103 @@ describe("document store", () => {
     expect(document.content).toBe("# My edits");
     expect(document.dirty).toBe(true);
     expect(pickExternalChoiceMock).not.toHaveBeenCalled();
+  });
+
+  it("inspects only the Active Tab, leaving background Tabs unchecked", async () => {
+    const document = useDocumentStore();
+    invokeMock.mockImplementation((command: string, args?: InvokeArgs) => {
+      const path =
+        typeof args === "object" && args !== null && "path" in args
+          ? args.path
+          : null;
+      if (command === "open_document") {
+        return Promise.resolve(`# ${path}`);
+      }
+      if (command === "inspect_document") {
+        // a.md changed on disk; b.md still matches what was loaded.
+        return Promise.resolve({
+          content:
+            path === "C:\\notes\\a.md" ? "# A changed" : "# C:\\notes\\b.md",
+          mtime_ms: 3,
+        });
+      }
+      return Promise.resolve(undefined);
+    });
+    await document.openPathInTab("C:\\notes\\a.md");
+    await document.openPathInTab("C:\\notes\\b.md");
+    invokeMock.mockClear();
+
+    // b.md is Active. A background a.md changed on disk, but a check inspects
+    // only the Active Tab, so a.md is neither inspected nor reloaded.
+    const replaced = await document.checkExternalModification();
+
+    expect(replaced).toBe(false);
+    expect(invokeMock).toHaveBeenCalledTimes(1);
+    expect(invokeMock).toHaveBeenCalledWith("inspect_document", {
+      path: "C:\\notes\\b.md",
+    });
+    expect(document.tabs[1].content).toBe("# C:\\notes\\a.md");
+    expect(document.tabs[1].diskContent).toBe("# C:\\notes\\a.md");
+    expect(pickExternalChoiceMock).not.toHaveBeenCalled();
+  });
+
+  it("cycles the Active Tab forward, wrapping from the last Tab to the first", () => {
+    const document = useDocumentStore();
+    document.newTab();
+    document.newTab();
+    document.switchTab(0);
+    // [Untitled.md, Untitled 2.md, Untitled 3.md], Untitled.md Active.
+    expect(document.activeIndex).toBe(0);
+
+    expect(document.cycleTab(1)).toBe(true);
+    expect(document.activeIndex).toBe(1);
+    expect(document.cycleTab(1)).toBe(true);
+    expect(document.activeIndex).toBe(2);
+    expect(document.cycleTab(1)).toBe(true);
+    expect(document.activeIndex).toBe(0);
+  });
+
+  it("cycles the Active Tab backward, wrapping from the first Tab to the last", () => {
+    const document = useDocumentStore();
+    document.newTab();
+    document.newTab();
+    // Untitled 3.md Active; cycling back wraps through Untitled 2.md and
+    // Untitled.md to the last Tab.
+    expect(document.activeIndex).toBe(2);
+
+    expect(document.cycleTab(-1)).toBe(true);
+    expect(document.activeIndex).toBe(1);
+    expect(document.cycleTab(-1)).toBe(true);
+    expect(document.activeIndex).toBe(0);
+    expect(document.cycleTab(-1)).toBe(true);
+    expect(document.activeIndex).toBe(2);
+  });
+
+  it("leaves a single-Tab workspace alone when cycling", () => {
+    const document = useDocumentStore();
+
+    expect(document.cycleTab(1)).toBe(false);
+    expect(document.activeIndex).toBe(0);
+    expect(document.cycleTab(-1)).toBe(false);
+    expect(document.activeIndex).toBe(0);
+  });
+
+  it("re-scopes the asset protocol to the Document that becomes Active on a cycle", async () => {
+    const document = useDocumentStore();
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "open_document") {
+        return Promise.resolve("# On disk");
+      }
+      return Promise.resolve(undefined);
+    });
+    await document.openPathInTab("C:\\notes\\a.md");
+    invokeMock.mockClear();
+    document.switchTab(0);
+
+    document.cycleTab(1);
+
+    expect(invokeMock).toHaveBeenCalledWith("set_asset_root", {
+      documentPath: "C:\\notes\\a.md",
+    });
   });
 });

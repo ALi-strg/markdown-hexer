@@ -1,10 +1,38 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { createPinia, setActivePinia } from "pinia";
 import { useUiStore } from "../ui";
+import { useDocumentStore, type Tab } from "../document";
+
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: vi.fn(),
+}));
+
+import { invoke } from "@tauri-apps/api/core";
+
+const invokeMock = vi.mocked(invoke);
+
+/// Seeds a second, non-Untitled Tab (Preview Only) so switch behaviour can be
+/// exercised against a Tab whose mode differs from the launch Tab's Split.
+function pushTab(path: string): Tab {
+  const tab: Tab = {
+    content: `# ${path}`,
+    canonicalPath: path,
+    savedContent: `# ${path}`,
+    diskContent: `# ${path}`,
+    layoutMode: "preview",
+    findQuery: "",
+    currentMatch: null,
+    untitledNumber: null,
+  };
+  useDocumentStore().tabs.push(tab);
+  return tab;
+}
 
 describe("ui store", () => {
   beforeEach(() => {
     setActivePinia(createPinia());
+    invokeMock.mockReset();
+    invokeMock.mockResolvedValue(undefined);
   });
 
   it("defaults to Split View", () => {
@@ -28,6 +56,22 @@ describe("ui store", () => {
     expect(ui.dividerPosition).toBe(0.7);
   });
 
+  it("keeps the divider position app-wide across Tabs", () => {
+    const ui = useUiStore();
+    const document = useDocumentStore();
+    ui.dividerPosition = 0.7;
+    pushTab("C:\\notes\\a.md");
+
+    document.switchTab(1);
+    expect(ui.dividerPosition).toBe(0.7);
+
+    document.switchTab(0);
+    expect(ui.dividerPosition).toBe(0.7);
+
+    ui.cycleLayoutMode();
+    expect(ui.dividerPosition).toBe(0.7);
+  });
+
   it("resets the divider position on launch", () => {
     const ui = useUiStore();
     ui.dividerPosition = 0.7;
@@ -42,56 +86,75 @@ describe("ui store", () => {
     expect(ui.findOverlayOpen).toBe(false);
   });
 
-  it("cycles Split View → Preview Only → Focus Mode → Split View", () => {
+  it("cycles the Active Document's modes Split → Preview → Focus → Split", () => {
     const ui = useUiStore();
-    ui.cycleLayoutMode();
-    expect(ui.layoutMode).toBe("preview");
+    const document = useDocumentStore();
+    pushTab("C:\\notes\\a.md");
+    document.switchTab(1);
+    expect(ui.layoutMode).toBe("preview"); // the pushed Tab's own mode
+
     ui.cycleLayoutMode();
     expect(ui.layoutMode).toBe("focus");
     ui.cycleLayoutMode();
     expect(ui.layoutMode).toBe("split");
+    ui.cycleLayoutMode();
+    expect(ui.layoutMode).toBe("preview");
+
+    // Only the Active Tab's record moved; the launch Tab is untouched.
+    expect(document.tabs[0].layoutMode).toBe("split");
   });
 
-  it("sets a Layout Mode directly and treats it as a manual override", () => {
+  it("sets a Layout Mode directly on the Active Document only", () => {
     const ui = useUiStore();
+    const document = useDocumentStore();
     ui.setLayoutMode("preview");
     expect(ui.layoutMode).toBe("preview");
-
-    ui.applyDocumentLoadMode(false);
-    expect(ui.layoutMode).toBe("preview");
+    expect(document.activeTab().layoutMode).toBe("preview");
+    expect(document.tabs[0].layoutMode).toBe("preview");
   });
 
   it("is a no-op when selecting the current Layout Mode", () => {
     const ui = useUiStore();
     ui.setLayoutMode("split");
     expect(ui.layoutMode).toBe("split");
-    expect(ui.manualOverrideActive).toBe(false);
   });
 
-  it("auto-chooses Split View for New and Preview Only for Open when no override", () => {
+  it("renders the switched Tab's own mode on switch", () => {
     const ui = useUiStore();
-    ui.applyDocumentLoadMode(true);
+    const document = useDocumentStore();
+    pushTab("C:\\notes\\a.md"); // Preview Only
+
+    document.switchTab(1);
+    expect(ui.layoutMode).toBe("preview");
+
+    document.switchTab(0);
     expect(ui.layoutMode).toBe("split");
-    ui.applyDocumentLoadMode(false);
+
+    document.switchTab(1);
     expect(ui.layoutMode).toBe("preview");
   });
 
-  it("lets a manual override win until the next Document load", () => {
+  it("keeps a Tab's chosen mode across switches away and back", () => {
     const ui = useUiStore();
-    ui.cycleLayoutMode();
-    ui.cycleLayoutMode();
+    const document = useDocumentStore();
+    pushTab("C:\\notes\\a.md");
+    document.switchTab(1);
+
+    ui.cycleLayoutMode(); // a.md: Preview → Focus
     expect(ui.layoutMode).toBe("focus");
 
-    ui.applyDocumentLoadMode(false);
-    expect(ui.layoutMode).toBe("focus");
+    document.switchTab(0);
+    expect(ui.layoutMode).toBe("split"); // launch Tab keeps Split
 
-    ui.applyDocumentLoadMode(true);
-    expect(ui.layoutMode).toBe("split");
+    document.switchTab(1);
+    expect(ui.layoutMode).toBe("focus"); // a.md keeps Focus
   });
 
   it("switches Preview Only to Split View for a replace", () => {
     const ui = useUiStore();
-    ui.cycleLayoutMode();
+    const document = useDocumentStore();
+    pushTab("C:\\notes\\a.md");
+    document.switchTab(1);
     expect(ui.layoutMode).toBe("preview");
     ui.showSourceForReplace();
     expect(ui.layoutMode).toBe("split");
@@ -99,9 +162,10 @@ describe("ui store", () => {
 
   it("leaves a source-visible mode unchanged for a replace", () => {
     const ui = useUiStore();
-    ui.cycleLayoutMode();
-    ui.cycleLayoutMode();
-    expect(ui.layoutMode).toBe("focus");
+    const document = useDocumentStore();
+    pushTab("C:\\notes\\a.md");
+    document.switchTab(1);
+    ui.cycleLayoutMode(); // a.md: Preview → Focus
     ui.showSourceForReplace();
     expect(ui.layoutMode).toBe("focus");
   });

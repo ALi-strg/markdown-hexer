@@ -73,7 +73,7 @@
 </template>
 
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { EditorView } from "@codemirror/view";
 import { EditorSelection } from "@codemirror/state";
 import {
@@ -100,14 +100,31 @@ const ui = useUiStore();
 const document = useDocumentStore();
 
 const queryInput = ref<HTMLInputElement | null>(null);
-const query = ref("");
 const replace = ref("");
 const matchInfo = ref<MatchInfo | null>(null);
 
-/// The match the overlay currently points at. In Preview Only the Editor Pane
-/// is hidden, so the selection is tracked here instead of driving the editor;
-/// a source-visible mode mirrors it into the editor's selection.
-const currentMatch = ref<MatchRange | null>(null);
+/// The query lives on the Active Tab's record: Find & Replace operates on the
+/// Active Document only, and each Tab remembers its own query, so switching
+/// Tabs swaps the panel to that Tab's state. Typing writes the record and
+/// dispatches to the editor (`dispatchQuery`); opening the panel reconciles
+/// the record from the editor's preserved search state (`syncFromView`).
+const query = computed<string>({
+  get: () => document.activeTab().findQuery,
+  set: (value) => {
+    document.activeTab().findQuery = value;
+  },
+});
+
+/// The match the overlay currently points at, also on the Active Tab's record
+/// so each Tab remembers where its search left off. In Preview Only the Editor
+/// Pane is hidden, so the selection is tracked here instead of driving the
+/// editor; a source-visible mode mirrors it into the editor's selection.
+const currentMatch = computed<MatchRange | null>({
+  get: () => document.activeTab().currentMatch,
+  set: (match) => {
+    document.activeTab().currentMatch = match;
+  },
+});
 
 /// Tracks the search string last sent to the editor so a change to the replace
 /// field alone never re-navigates the selection.
@@ -173,6 +190,24 @@ function updateMatchInfo() {
   matchInfo.value = view ? computeMatchInfo(view.state, currentMatch.value) : null;
 }
 
+/// Restores the Active Tab's remembered current match when the panel opens, so
+/// reopening Find on a Tab returns to the match the user left. A stored match
+/// that no longer points at a match of the query (the Document changed, or the
+/// query no longer matches it) falls back to the first match, clearing a stale
+/// record.
+function restoreCurrentMatch(view: EditorView) {
+  const stored = document.activeTab().currentMatch;
+  const match =
+    stored !== null && computeMatchInfo(view.state, stored) !== null
+      ? stored
+      : nextMatchAfter(view.state, 0);
+  if (match === null) {
+    document.activeTab().currentMatch = null;
+    return;
+  }
+  setCurrentMatch(view, match);
+}
+
 function syncFromView() {
   const view = props.getView();
   if (!view) {
@@ -182,7 +217,7 @@ function syncFromView() {
   query.value = current.search;
   replace.value = current.replace;
   lastDispatchedSearch = current.search;
-  currentMatch.value = nextMatchAfter(view.state, 0);
+  restoreCurrentMatch(view);
   updateMatchInfo();
 }
 

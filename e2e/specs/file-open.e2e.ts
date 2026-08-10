@@ -6,14 +6,14 @@ import { spawnSync } from "node:child_process";
 // The OS file-manager double-click (file association) cannot be driven by
 // WebdriverIO, so the E2E triggers the app's file-open seam (enabled by
 // VITE_E2E in the E2E build) with a real temp path. That seam runs the same
-// runLaunchFileOpen → runGuardedOpen code path a file association (or a
-// single-instance forwarded path) uses. On Linux the forwarded open is driven
-// through that seam too: a real second WebKitGTK process cannot be spawned
-// headlessly (without a session bus the single-instance plugin cannot forward,
-// so the second instance opens its own webview and kills the shared
-// tauri-driver, failing every remaining spec). On platforms with working
-// native single-instance forwarding, the test spawns a real second process to
-// validate the no-second-window behavior end to end.
+// openPath code path a file association (or a single-instance forwarded path)
+// uses: no Confirm-Discard Guard, an add-or-focus Tab. On Linux the forwarded
+// open is driven through that seam too: a real second WebKitGTK process cannot
+// be spawned headlessly (without a session bus the single-instance plugin
+// cannot forward, so the second instance opens its own webview and kills the
+// shared tauri-driver, failing every remaining spec). On platforms with
+// working native single-instance forwarding, the test spawns a real second
+// process to validate the no-second-window behavior end to end.
 describe("Markdown-Magic file association & single-instance open", () => {
   const firstPath = path.join(
     os.tmpdir(),
@@ -49,12 +49,6 @@ describe("Markdown-Magic file association & single-instance open", () => {
         }
       ).__triggerFileOpen(p);
     }, filePath);
-  }
-
-  async function stubGuardChoice(choice: string) {
-    await browser.execute((c) => {
-      localStorage.setItem("markdownmagic:e2e:guard-choice", c);
-    }, choice);
   }
 
   async function typeText(text: string) {
@@ -93,12 +87,8 @@ describe("Markdown-Magic file association & single-instance open", () => {
     );
   });
 
-  it("runs the Confirm-Discard Guard when opening onto a Dirty Document", async () => {
+  it("opens a forwarded file onto a Dirty Document without the Confirm-Discard Guard", async () => {
     await browser.keys(["Control", "Shift", "p"]);
-    const editorContent = await $(
-      '[data-testid="editor-pane"] .cm-content',
-    );
-    await editorContent.waitForDisplayed({ timeout: 15000 });
     await typeText("# Local edits");
     await browser.waitUntil(
       async () =>
@@ -106,20 +96,26 @@ describe("Markdown-Magic file association & single-instance open", () => {
       { timeout: 10000, timeoutMsg: "asterisk did not appear after editing" },
     );
 
-    await stubGuardChoice("cancel");
     await triggerFileOpen(secondPath);
-    await browser.pause(500);
 
-    expect(await browser.getTitle()).toBe(`${firstFilename} * — Markdown-Magic`);
+    await browser.waitUntil(
+      async () =>
+        (await browser.getTitle()) === `${secondFilename} — Markdown-Magic`,
+      { timeout: 10000, timeoutMsg: "forwarded file did not open a new Tab" },
+    );
+
+    // The Dirty Document is still open in its own Tab.
+    const tabs = await $$('[data-testid="tab"]');
+    expect(tabs.length).toBe(3);
+    expect(await tabs[1].getText()).toContain("*");
   });
 
   it("forwards a second launch to the running window without a second window", async () => {
-    await stubGuardChoice("dont-save");
-
     if (process.platform === "linux") {
       // Headless WebKitGTK cannot spawn a real second instance (see the
       // describe comment): drive the same forwarded-open handler the
-      // single-instance plugin's file-open-requested event triggers.
+      // single-instance plugin's file-open-requested event triggers. The path
+      // is already open, so the running window focuses its Tab.
       await triggerFileOpen(secondPath);
     } else {
       const binary = path.resolve(
@@ -145,9 +141,12 @@ describe("Markdown-Magic file association & single-instance open", () => {
         (await browser.getTitle()) === `${secondFilename} — Markdown-Magic`,
       {
         timeout: 15000,
-        timeoutMsg: "second launch did not open in the running window",
+        timeoutMsg: "second launch did not focus in the running window",
       },
     );
+
+    const tabs = await $$('[data-testid="tab"]');
+    expect(tabs.length).toBe(3);
 
     const preview = await $('[data-testid="preview-pane"] .preview-host');
     await browser.waitUntil(

@@ -1,5 +1,6 @@
 import { defineStore } from "pinia";
-import { ref } from "vue";
+import { computed, ref } from "vue";
+import { useDocumentStore } from "./document";
 
 export type LayoutMode = "split" | "preview" | "focus";
 
@@ -9,63 +10,59 @@ export const LAYOUT_MODES: LayoutMode[] = ["split", "preview", "focus"];
 
 const TOAST_DURATION_MS = 4000;
 
+/// Window-level UI state. The Layout Mode is not app-wide: each Tab owns its
+/// own mode (chosen when the Tab is created — New → Split View, Open →
+/// Preview Only), and the window renders the Active Tab's mode. This store
+/// only surfaces the Active Tab's mode for the window to render and lets the
+/// Layout Switcher and the cycle shortcut mutate it; the mode itself lives on
+/// the Tab record. Everything else here — divider, find overlay, toast,
+/// last-used directory — is genuinely app-wide.
 export const useUiStore = defineStore("ui", () => {
-  const layoutMode = ref<LayoutMode>("split");
+  const document = useDocumentStore();
   const dividerPosition = ref(0.5);
   const findOverlayOpen = ref(false);
-  const manualOverrideActive = ref(false);
   const lastDirectory = ref<string | null>(null);
   const toast = ref<string | null>(null);
 
-  let toastTimer: ReturnType<typeof setTimeout> | null = null;
+  let toastTimer: ReturnType<typeof setTimeout> | undefined;
 
-  /// Applies a manually chosen Layout Mode and marks it as an override,
-  /// authoritative until the next Document load.
-  function applyManualMode(next: LayoutMode) {
-    layoutMode.value = next;
-    manualOverrideActive.value = true;
-  }
+  /// The Layout Mode the window renders: the Active Document's mode. The mode
+  /// lives on the Active Tab's record, so switching Tabs changes what this
+  /// reads and a mode set on one Tab never leaks into another.
+  const layoutMode = computed<LayoutMode>(() => document.activeTab().layoutMode);
 
+  /// Cycles the Active Document's Layout Mode through the canonical order.
+  /// Only the Active Tab's record changes; every other Tab keeps its own mode.
   function cycleLayoutMode() {
     const index = LAYOUT_MODES.indexOf(layoutMode.value);
-    applyManualMode(LAYOUT_MODES[(index + 1) % LAYOUT_MODES.length]);
+    document.activeTab().layoutMode =
+      LAYOUT_MODES[(index + 1) % LAYOUT_MODES.length];
   }
 
-  /// Sets the Layout Mode directly from the Layout Switcher. Selecting the
-  /// current mode changes nothing; any real selection is a manual override,
-  /// authoritative until the next Document load.
+  /// Sets the Active Document's Layout Mode directly from the Layout Switcher.
+  /// Selecting the current mode changes nothing.
   function setLayoutMode(next: LayoutMode) {
     if (next === layoutMode.value) {
       return;
     }
-    applyManualMode(next);
-  }
-
-  function applyDocumentLoadMode(isNew: boolean) {
-    if (manualOverrideActive.value) {
-      manualOverrideActive.value = false;
-      return;
-    }
-    layoutMode.value = isNew ? "split" : "preview";
+    document.activeTab().layoutMode = next;
   }
 
   /// Makes the source visible so a replace never edits hidden text: Preview
   /// Only gives way to Split View, while source-visible modes are unchanged.
-  /// The switch is a one-off accommodation, not a manual override.
+  /// The switch is a one-off accommodation on the Active Document.
   function showSourceForReplace() {
     if (layoutMode.value === "preview") {
-      layoutMode.value = "split";
+      document.activeTab().layoutMode = "split";
     }
   }
 
   function showToast(message: string) {
     toast.value = message;
-    if (toastTimer !== null) {
-      clearTimeout(toastTimer);
-    }
+    clearTimeout(toastTimer);
     toastTimer = setTimeout(() => {
       toast.value = null;
-      toastTimer = null;
+      toastTimer = undefined;
     }, TOAST_DURATION_MS);
   }
 
@@ -79,12 +76,10 @@ export const useUiStore = defineStore("ui", () => {
     layoutMode,
     dividerPosition,
     findOverlayOpen,
-    manualOverrideActive,
     lastDirectory,
     toast,
     cycleLayoutMode,
     setLayoutMode,
-    applyDocumentLoadMode,
     showSourceForReplace,
     showToast,
     setLastDirectory,

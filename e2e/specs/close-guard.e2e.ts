@@ -105,4 +105,61 @@ describe("Markdown-Magic Confirm-Discard Guard on close", () => {
       savedContent,
     );
   });
+
+  it("runs the Guard when closing a Dirty Tab, keeping it open on Cancel", async () => {
+    // A second Tab is opened so closing the Dirty one leaves the app alive;
+    // the suite returns to its prior single-Tab state at the end.
+    const otherPath = path.join(
+      os.tmpdir(),
+      `markdownmagic-e2e-guard-tab-${Date.now()}.md`,
+    );
+    const otherFilename = path.basename(otherPath);
+    fs.writeFileSync(otherPath, "# Other file");
+    try {
+      await browser.execute((p) => {
+        (
+          window as unknown as {
+            __triggerFileOpen: (path: string) => void;
+          }
+        ).__triggerFileOpen(p);
+      }, otherPath);
+      await browser.waitUntil(
+        async () => (await browser.getTitle()) === `${otherFilename} — Markdown-Magic`,
+        { timeout: 10000, timeoutMsg: "file-open did not add the second Tab" },
+      );
+
+      // An opened Tab starts in Preview Only; switch to Split so typing lands.
+      await $('[data-testid="layout-split"]').click();
+      await typeText("# Dirty close");
+      await browser.waitUntil(
+        async () =>
+          (await browser.getTitle()) === `${otherFilename} * — Markdown-Magic`,
+        { timeout: 10000, timeoutMsg: "asterisk did not appear after typing" },
+      );
+
+      await stubGuardChoice("cancel");
+      await $$('[data-testid="tab-close"]')[1].click();
+      await browser.pause(500);
+
+      // Cancel keeps the Dirty Tab open.
+      const afterCancel = await $$('[data-testid="tab"]');
+      expect(afterCancel.length).toBe(2);
+      expect(await browser.getTitle()).toBe(`${otherFilename} * — Markdown-Magic`);
+
+      // Don't Save closes the Tab; the app returns to its prior single Tab.
+      await stubGuardChoice("dont-save");
+      await $$('[data-testid="tab-close"]')[1].click();
+      await browser.pause(500);
+
+      const afterClose = await $$('[data-testid="tab"]');
+      expect(afterClose.length).toBe(1);
+      expect(await browser.getTitle()).toBe(`${saveFilename} * — Markdown-Magic`);
+    } finally {
+      try {
+        fs.unlinkSync(otherPath);
+      } catch {
+        // already removed
+      }
+    }
+  });
 });

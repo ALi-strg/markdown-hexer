@@ -45,15 +45,8 @@ describe("Markdown-Magic preview asset handling", () => {
     }, filePath);
   }
 
-  async function stubGuardChoice(choice: string) {
-    await browser.execute((c) => {
-      localStorage.setItem("markdownmagic:e2e:guard-choice", c);
-    }, choice);
-  }
-
   async function openDocumentInPreviewOnly() {
     await browser.pause(1000);
-    await stubGuardChoice("dont-save");
     await stubOpenDialog(docPath);
     await browser.keys(["Control", "o"]);
     await browser.waitUntil(

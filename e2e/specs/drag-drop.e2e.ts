@@ -4,9 +4,9 @@ import fs from "node:fs";
 
 // A real OS file drag onto the native window cannot be driven by WebdriverIO,
 // so the E2E triggers the app's drop seam (enabled by VITE_E2E in the E2E
-// build) with a real temp path. The seam runs the same runDropOpen code path a
-// real drop uses: Confirm-Discard Guard, then the real open_document read, then
-// the auto-chosen Preview Only layout.
+// build) with a real temp path. The seam runs the same openPath code path a
+// real drop uses: no Confirm-Discard Guard, an add-or-focus Tab, and the
+// auto-chosen Preview Only layout for a new Tab.
 describe("Markdown-Magic drag-and-drop open", () => {
   const dropAPath = path.join(
     os.tmpdir(),
@@ -43,12 +43,6 @@ describe("Markdown-Magic drag-and-drop open", () => {
     }, filePath);
   }
 
-  async function stubGuardChoice(choice: string) {
-    await browser.execute((c) => {
-      localStorage.setItem("markdownmagic:e2e:guard-choice", c);
-    }, choice);
-  }
-
   async function typeText(text: string) {
     const editorContent = await $(
       '[data-testid="editor-pane"] .cm-content',
@@ -58,7 +52,7 @@ describe("Markdown-Magic drag-and-drop open", () => {
     await editorContent.addValue(text);
   }
 
-  it("opens a dropped file into the Document in Preview Only", async () => {
+  it("opens a dropped file into a new Tab in Preview Only", async () => {
     await browser.pause(1000);
     await triggerDrop(dropAPath);
 
@@ -82,14 +76,16 @@ describe("Markdown-Magic drag-and-drop open", () => {
         timeoutMsg: "Preview Pane did not render the dropped content",
       },
     );
+
+    const tabs = await $$('[data-testid="tab"]');
+    expect(tabs.length).toBe(2);
+    // WebKitGTK's getElementText drops the ellipsized tab label, so read the
+    // accessible label (the same text the visible label renders) instead.
+    expect(await tabs[1].getAttribute("aria-label")).toContain(dropAFilename);
   });
 
-  it("runs the Confirm-Discard Guard and keeps the Document when a drop is cancelled", async () => {
+  it("opens a drop onto a Dirty Document without the Confirm-Discard Guard", async () => {
     await browser.keys(["Control", "Shift", "p"]);
-    const editorContent = await $(
-      '[data-testid="editor-pane"] .cm-content',
-    );
-    await editorContent.waitForDisplayed({ timeout: 15000 });
     await typeText("# Local edits");
     await browser.waitUntil(
       async () =>
@@ -97,41 +93,26 @@ describe("Markdown-Magic drag-and-drop open", () => {
       { timeout: 10000, timeoutMsg: "asterisk did not appear after editing" },
     );
 
-    await stubGuardChoice("cancel");
-    await triggerDrop(dropBPath);
-    await browser.pause(500);
-
-    expect(await browser.getTitle()).toBe(`${dropAFilename} * — Markdown-Magic`);
-  });
-
-  it("swaps the Dirty Document on a drop when the guard is dismissed", async () => {
-    await stubGuardChoice("dont-save");
     await triggerDrop(dropBPath);
 
     await browser.waitUntil(
       async () =>
         (await browser.getTitle()) === `${dropBFilename} — Markdown-Magic`,
-      { timeout: 10000, timeoutMsg: "drop did not swap after the guard" },
+      { timeout: 10000, timeoutMsg: "drop did not open a new Tab" },
     );
 
-    const editorContent = await $(
-      '[data-testid="editor-pane"] .cm-content',
-    );
-    await browser.waitUntil(
-      async () => (await editorContent.getText()).includes("Dropped B"),
-      {
-        timeout: 10000,
-        timeoutMsg: "Editor Pane did not load the dropped content",
-      },
-    );
+    // The Dirty Document is still open in its own Tab.
+    const tabs = await $$('[data-testid="tab"]');
+    expect(tabs.length).toBe(3);
+    expect(await tabs[1].getText()).toContain("*");
+  });
 
-    const preview = await $('[data-testid="preview-pane"] .preview-host');
-    await browser.waitUntil(
-      async () => (await preview.getHTML()).includes("Dropped B"),
-      {
-        timeout: 10000,
-        timeoutMsg: "Preview Pane did not render the swapped content",
-      },
-    );
+  it("focuses the existing Tab when the same path is dropped again", async () => {
+    await triggerDrop(dropBPath);
+    await browser.pause(500);
+
+    const tabs = await $$('[data-testid="tab"]');
+    expect(tabs.length).toBe(3);
+    expect(await browser.getTitle()).toBe(`${dropBFilename} — Markdown-Magic`);
   });
 });

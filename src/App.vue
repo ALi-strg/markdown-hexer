@@ -6,6 +6,13 @@
     :data-text-size="settings.textSize"
     data-testid="app"
   >
+    <TabBar
+      :tabs="document.tabs"
+      :active-index="document.activeIndex"
+      @activate="onTabActivate"
+      @close="onTabClose"
+      @new="runNewDocument"
+    />
     <Toolbar
       :layout-mode="ui.layoutMode"
       :theme="settings.theme"
@@ -91,6 +98,7 @@ import EditorPane from "./components/EditorPane.vue";
 import FindReplacePanel from "./components/FindReplacePanel.vue";
 import PreviewPane from "./components/PreviewPane.vue";
 import ShortcutsReference from "./components/ShortcutsReference.vue";
+import TabBar from "./components/TabBar.vue";
 import Toolbar from "./components/Toolbar.vue";
 import { confirmDiscard } from "./lib/confirmDiscard";
 import { applyFormatting } from "./lib/editorFormatting";
@@ -102,10 +110,12 @@ import {
   FORMAT_SHORTCUTS,
   HELP_SHORTCUT,
   matchesCombo,
+  TAB_SHORTCUTS,
   type DocumentControlOperation,
+  type TabControlOperation,
 } from "./lib/shortcuts";
 import { useSyncedScrolling } from "./lib/useSyncedScrolling";
-import { useDocumentStore } from "./stores/document";
+import { isTabDirty, useDocumentStore } from "./stores/document";
 import {
   useSettingsStore,
   type Font,
@@ -121,6 +131,8 @@ const ui = useUiStore();
 const editorPane = ref<{
   getView: () => EditorView | null;
   replaceContent: (text: string) => void;
+  captureActiveTabState: () => void;
+  restoreActiveTabState: () => void;
   canUndo: boolean;
   canRedo: boolean;
 } | null>(null);
@@ -259,6 +271,33 @@ async function runDocumentControl(operation: DocumentControlOperation) {
   }
 }
 
+/// Tab Controls dispatch order. `previousTab` must be matched before `nextTab`:
+/// Next Tab's combo (Ctrl+Tab) also fires when Shift is held, so the more
+/// specific Previous Tab combo wins when both would match.
+const TAB_SHORTCUT_ORDER: TabControlOperation[] = [
+  "previousTab",
+  "newTab",
+  "closeTab",
+  "nextTab",
+];
+
+async function runTabControl(operation: TabControlOperation) {
+  switch (operation) {
+    case "newTab":
+      runNewDocument();
+      break;
+    case "closeTab":
+      await onTabClose(document.activeIndex);
+      break;
+    case "nextTab":
+      onTabCycle(1);
+      break;
+    case "previousTab":
+      onTabCycle(-1);
+      break;
+  }
+}
+
 async function onKeydown(event: KeyboardEvent) {
   if (shortcutsOpen.value && event.key === "Escape") {
     event.preventDefault();
@@ -276,6 +315,14 @@ async function onKeydown(event: KeyboardEvent) {
     if (combo !== null && matchesCombo(event, combo)) {
       event.preventDefault();
       await runDocumentControl(operation);
+      return;
+    }
+  }
+  for (const operation of TAB_SHORTCUT_ORDER) {
+    const combo = TAB_SHORTCUTS[operation].combo;
+    if (combo !== null && matchesCombo(event, combo)) {
+      event.preventDefault();
+      await runTabControl(operation);
       return;
     }
   }
@@ -381,8 +428,8 @@ function onRedo() {
   }
 }
 
-/// Sets a Layout Mode from the Layout Switcher. Direct selection overrides any
-/// auto-choice until the next Document load, same as the cycle shortcut.
+/// Sets the Active Document's Layout Mode from the Layout Switcher. Only the
+/// Active Tab's mode changes; every other Tab keeps its own.
 function onLayoutChange(mode: LayoutMode) {
   ui.setLayoutMode(mode);
 }
@@ -398,34 +445,49 @@ function closeShortcuts() {
   shortcutsOpen.value = false;
 }
 
-async function runNewDocument() {
-  const decision = await confirmDiscard(document);
-  if (decision === "cancel") {
-    return;
-  }
-  document.newDocument();
+/// Creates a New Untitled Tab and makes it Active. New never runs the
+/// Confirm-Discard Guard: it adds a Tab instead of replacing a Document, so
+/// nothing is discarded. The outgoing Tab's editor state is preserved first,
+/// so returning to it lands where the user left off; the new Tab starts with
+/// a destructive rebuild (empty content, cleared undo history) and the Split
+/// View mode its record was created with.
+function runNewDocument() {
+  editorPane.value?.captureActiveTabState();
+  document.newTab();
   ui.findOverlayOpen = false;
   editorPane.value?.replaceContent(document.content);
-  ui.applyDocumentLoadMode(true);
 }
 
-/// Swaps the current Document for the file at `path` and applies the
-/// auto-chosen Layout Mode (Preview Only for an opened file). Shared by the
-/// native Open dialog and drag-and-drop so both use one code path.
+/// Opens the file at `path` in a Tab: a new Tab is added and made Active, or —
+/// when the path is already open — the existing Tab is focused instead (one Tab
+/// per path). A new Tab carries the auto-chosen Preview Only mode on its
+/// record; focusing an already-open Tab makes the window render that Tab's own
+/// mode. Shared by the native Open dialog, drag-and-drop, and OS file-open so
+/// all use one code path. Never runs the Confirm-Discard Guard.
+///
+/// The outgoing Tab's editor state is preserved before the workspace switches;
+/// focusing an existing Tab restores its preserved state, while a newly opened
+/// Tab starts with a destructive rebuild (fresh content, cleared undo history)
+/// as today.
 async function openPath(path: string) {
-  const opened = await document.openDocument(path);
-  if (opened) {
-    ui.findOverlayOpen = false;
+  editorPane.value?.captureActiveTabState();
+  const result = await document.openPathInTab(path);
+  if (result === null) {
+    return;
+  }
+  ui.findOverlayOpen = false;
+  if (result === "opened") {
     editorPane.value?.replaceContent(document.content);
-    ui.applyDocumentLoadMode(false);
+  } else {
+    // The path was already open: its background Tab became Active again, so it
+    // is checked for external changes now. A freshly opened Tab is skipped — its
+    // content was just read from disk, so an immediate check could never differ.
+    editorPane.value?.restoreActiveTabState();
+    void checkActiveTabExternalModification();
   }
 }
 
 async function runOpenDocument() {
-  const decision = await confirmDiscard(document);
-  if (decision === "cancel") {
-    return;
-  }
   const path = await pickOpenPath({
     defaultPath: document.canonicalPath ?? ui.lastDirectory ?? undefined,
   });
@@ -435,21 +497,68 @@ async function runOpenDocument() {
   await openPath(path);
 }
 
-/// Opens a file dropped onto the window through the same Open flow as the
-/// native dialog: the Confirm-Discard Guard runs first when the current
-/// Document is Dirty, then the Document is swapped.
-async function runGuardedOpen(path: string) {
-  const decision = await confirmDiscard(document);
+/// The shared Tab-switch core: captures the outgoing Tab's editor state, swaps
+/// the Active Tab, restores the incoming Tab's state, and checks it for
+/// external changes. `performSwitch` runs the store-level swap (by index or by
+/// cycle step) and reports whether the Active Tab changed.
+function onTabSwitch(performSwitch: () => boolean) {
+  editorPane.value?.captureActiveTabState();
+  if (!performSwitch()) {
+    return;
+  }
+  ui.findOverlayOpen = false;
+  editorPane.value?.restoreActiveTabState();
+  void checkActiveTabExternalModification();
+}
+
+/// Activates the Tab at `index` (from the Tab Bar): the outgoing Tab's editor
+/// state is captured into its record, the workspace switches the Active Tab,
+/// and the editor restores the incoming Tab's preserved state — cursor and
+/// undo history travel with the EditorState — plus its scroll offset. The
+/// preview and window title follow through their reactive bindings, and the
+/// store re-points the `asset://` scope at the Active Document. The now-Active
+/// Tab is then checked for external changes (a background Tab is only ever
+/// checked the moment it becomes Active).
+function onTabActivate(index: number) {
+  onTabSwitch(() => document.switchTab(index));
+}
+
+/// Activates the Tab `delta` steps through the Tab list (wrapping at both
+/// ends) via the same path as clicking a Tab. A single-Tab workspace stays
+/// put.
+function onTabCycle(delta: number) {
+  onTabSwitch(() => document.cycleTab(delta));
+}
+
+/// Closes the Tab at `index` (from the Tab Bar's close control). A Dirty Tab
+/// runs the Confirm-Discard Guard first — Cancel keeps the Tab open,
+/// Save/Don't Save close it. Closing the Active Tab activates the Tab to its
+/// right, or the new last Tab; closing the last Tab closes the window (the
+/// Guard already ran for that Tab, so nothing remains to prompt).
+async function onTabClose(index: number) {
+  const tab = document.tabs[index];
+  if (tab === undefined) {
+    return;
+  }
+  const decision = await confirmDiscard(document.guardDocumentFor(tab));
   if (decision === "cancel") {
     return;
   }
-  await openPath(path);
-}
-
-/// Opens a file the OS asked us to open (launched with a file argument, or a
-/// path forwarded by a second instance). Shares the guarded Open flow.
-async function runLaunchFileOpen(path: string) {
-  await runGuardedOpen(path);
+  if (document.tabs.length === 1) {
+    // The last Tab closed: close the window. The store keeps the Tab — the
+    // workspace must never render empty — and the window (with it) goes away.
+    await destroyAppWindow();
+    return;
+  }
+  const wasActive = index === document.activeIndex;
+  document.closeTab(index);
+  if (wasActive) {
+    // A neighbour Tab became Active in the closed Tab's place; it is checked
+    // for external changes now, like any Tab that becomes Active.
+    ui.findOverlayOpen = false;
+    editorPane.value?.restoreActiveTabState();
+    void checkActiveTabExternalModification();
+  }
 }
 
 const appWindow = getCurrentWindow();
@@ -458,33 +567,54 @@ let unlistenFocusChanged: (() => void) | null = null;
 let unlistenDragDrop: (() => void) | null = null;
 let unlistenFileOpen: (() => void) | null = null;
 
+/// The window's close request. A window holding any Dirty Tab runs the
+/// Confirm-Discard Guard once per Dirty Tab, sequentially — Save writes that
+/// Tab, Cancel on any of them aborts the whole close.
 async function onCloseRequested(event: { preventDefault: () => void }) {
-  if (!document.dirty) {
+  if (!document.tabs.some(isTabDirty)) {
     return;
   }
   event.preventDefault();
-  const decision = await confirmDiscard(document);
-  if (decision === "cancel") {
-    return;
+  for (const tab of document.tabs) {
+    if ((await confirmDiscard(document.guardDocumentFor(tab))) === "cancel") {
+      return;
+    }
   }
-  // E2E seam: keep the window alive so the close-guard suite survives the
-  // single app instance a wdio run launches.
-  if (import.meta.env.VITE_E2E === "1") {
-    return;
-  }
-  await appWindow.destroy();
+  await destroyAppWindow();
 }
 
-/// Detects an Externally-Modified file when the window regains focus.
+/// Destroys the window unless the E2E build is running. A wdio run launches a
+/// single app instance, so the E2E build keeps the window alive after any
+/// close path — the window close request or the last Tab closing — and the
+/// suite survives to its next spec.
+async function destroyAppWindow() {
+  if (import.meta.env.VITE_E2E !== "1") {
+    await appWindow.destroy();
+  }
+}
+
+/// Runs the Externally-Modified check for the Active Tab and pushes a silent or
+/// chosen reload into the editor (the authoritative source of edits). Shared by
+/// window focus and Tab activation, so a background Tab is only ever checked
+/// the moment it becomes Active.
 ///
-/// A silent reload or a chosen Reload replaces the Document, so the editor (the
-/// authoritative source of edits) is pushed the new content explicitly.
-async function onWindowFocused() {
+/// The store reloads the Tab it captured when the check started; the reload is
+/// pushed into the editor only while that Tab is still Active, so a check that
+/// overlaps a Tab switch never writes a background Tab's content into the
+/// editor. (The reloaded Tab's preserved editor state was already cleared, so
+/// switching back to it rebuilds from the on-disk content — nothing is lost.)
+async function checkActiveTabExternalModification() {
+  const activeIndex = document.activeIndex;
   const replaced = await document.checkExternalModification();
-  if (replaced) {
+  if (replaced && document.activeIndex === activeIndex) {
     ui.findOverlayOpen = false;
     editorPane.value?.replaceContent(document.content);
   }
+}
+
+/// Detects an Externally-Modified file when the window regains focus.
+async function onWindowFocused() {
+  await checkActiveTabExternalModification();
 }
 
 onMounted(async () => {
@@ -499,17 +629,17 @@ onMounted(async () => {
   });
   unlistenDragDrop = await appWindow.onDragDropEvent((event) => {
     if (event.payload.type === "drop" && event.payload.paths.length > 0) {
-      runGuardedOpen(event.payload.paths[0]);
+      void openPath(event.payload.paths[0]);
     }
   });
   unlistenFileOpen = await listen<string>("file-open-requested", (event) => {
-    runLaunchFileOpen(event.payload);
+    void openPath(event.payload);
   });
   // Register the listener before pulling the pending path so a forward that
   // arrives mid-startup is not lost: either the listener or the pull opens it.
   const pendingFile = await invoke<string | null>("get_pending_file");
   if (typeof pendingFile === "string") {
-    await runLaunchFileOpen(pendingFile);
+    await openPath(pendingFile);
   }
   if (import.meta.env.VITE_E2E === "1") {
     (globalThis as Record<string, unknown>).__triggerWindowClose = () =>
@@ -517,10 +647,10 @@ onMounted(async () => {
     (globalThis as Record<string, unknown>).__triggerExternalCheck = () =>
       onWindowFocused();
     (globalThis as Record<string, unknown>).__triggerDrop = (path: string) =>
-      runGuardedOpen(path);
+      void openPath(path);
     (globalThis as Record<string, unknown>).__triggerFileOpen = (
       path: string,
-    ) => runLaunchFileOpen(path);
+    ) => void openPath(path);
   }
 });
 onBeforeUnmount(() => {
