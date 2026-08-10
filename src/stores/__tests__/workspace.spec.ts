@@ -160,6 +160,50 @@ describe("workspace store model", () => {
     expect(document.dirty).toBe(false);
   });
 
+  it("opens a file into a Tab that starts with empty Find & Replace state", async () => {
+    const document = useDocumentStore();
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "open_document") {
+        return Promise.resolve("# New file");
+      }
+      return Promise.resolve(undefined);
+    });
+
+    await document.openPathInTab("C:\\notes\\new.md");
+
+    expect(document.tabs[1].findQuery).toBe("");
+    expect(document.tabs[1].currentMatch).toBeNull();
+  });
+
+  it("creates a new Untitled Tab with empty Find & Replace state", () => {
+    const document = useDocumentStore();
+
+    document.newTab();
+
+    expect(document.tabs[1].findQuery).toBe("");
+    expect(document.tabs[1].currentMatch).toBeNull();
+  });
+
+  it("keeps each Tab's Find & Replace state with the Tab across switches", () => {
+    const document = useDocumentStore();
+    const launch = document.tabs[0];
+    launch.findQuery = "alpha";
+    launch.currentMatch = { from: 11, to: 16 };
+    const other = pushTab(document, "C:\\notes\\b.md");
+    other.findQuery = "beta";
+    other.currentMatch = { from: 0, to: 4 };
+
+    document.switchTab(1);
+    document.switchTab(0);
+
+    // Switching neither shares nor clobbers Find state: every Tab keeps its
+    // own query and current match for the session.
+    expect(launch.findQuery).toBe("alpha");
+    expect(launch.currentMatch).toEqual({ from: 11, to: 16 });
+    expect(other.findQuery).toBe("beta");
+    expect(other.currentMatch).toEqual({ from: 0, to: 4 });
+  });
+
   it("numbers Untitled Tabs per session, never reusing a number", () => {
     const document = useDocumentStore();
     expect(document.filename).toBe("Untitled.md");

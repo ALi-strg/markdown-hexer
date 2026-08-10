@@ -2109,6 +2109,116 @@ describe("App shell", () => {
     expect(view.state.sliceDoc(selection.from, selection.to)).toBe("alpha");
   });
 
+  it("remembers each Tab's own Find query and current match across switches", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const pane = wrapper.findComponent({ ref: "editorPane" });
+    const view = (pane.vm as unknown as { getView: () => EditorView }).getView();
+    view.dispatch({ changes: { from: 0, insert: "alpha beta alpha" } });
+    await nextTick();
+
+    // Find "alpha" in the launch Tab and advance to the second match.
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "f", ctrlKey: true }),
+    );
+    await nextTick();
+    await wrapper.find('[data-testid="find-input"]').setValue("alpha");
+    await nextTick();
+    expect(wrapper.find('[data-testid="match-count"]').text()).toBe("1 / 2");
+    await wrapper.find('[data-testid="find-next"]').trigger("click");
+    await nextTick();
+    expect(wrapper.find('[data-testid="match-count"]').text()).toBe("2 / 2");
+
+    // A second file opens into its own Tab with its own (empty) Find state.
+    pickOpenPathMock.mockResolvedValue("C:\\notes\\b.md");
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "open_document") {
+        return Promise.resolve("# File B");
+      }
+      return Promise.resolve(undefined);
+    });
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "o", ctrlKey: true }),
+    );
+    await flushPromises();
+    await nextTick();
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "f", ctrlKey: true }),
+    );
+    await nextTick();
+    expect(
+      (wrapper.find('[data-testid="find-input"]').element as HTMLInputElement)
+        .value,
+    ).toBe("");
+    expect(wrapper.find('[data-testid="match-count"]').exists()).toBe(false);
+
+    // Back to the launch Tab: its query and current match are restored — the
+    // launch Tab's Find state was not clobbered by b.md's.
+    await wrapper.findAll('[data-testid="tab"]')[0].trigger("click");
+    await nextTick();
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "f", ctrlKey: true }),
+    );
+    await nextTick();
+    expect(
+      (wrapper.find('[data-testid="find-input"]').element as HTMLInputElement)
+        .value,
+    ).toBe("alpha");
+    expect(wrapper.find('[data-testid="match-count"]').text()).toBe("2 / 2");
+    // The panel's match count reads the restored current match (index 2 of 2),
+    // so the remembered match — not just the query — came back.
+    const restoredSelection = view.state.selection.main;
+    expect(view.state.sliceDoc(restoredSelection.from, restoredSelection.to)).toBe(
+      "alpha",
+    );
+  });
+
+  it("switches only the Active Document to Split View when replacing in Preview Only", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    const ui = useUiStore();
+    // The launch Tab keeps its own mode while a Preview-Only Tab replaces.
+    ui.cycleLayoutMode();
+    ui.cycleLayoutMode();
+    await nextTick();
+    expect(ui.layoutMode).toBe("focus");
+    pickOpenPathMock.mockResolvedValue("C:\\notes\\b.md");
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "open_document") {
+        return Promise.resolve("alpha beta alpha");
+      }
+      return Promise.resolve(undefined);
+    });
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "o", ctrlKey: true }),
+    );
+    await flushPromises();
+
+    // b.md is Active in Preview Only.
+    expect(ui.layoutMode).toBe("preview");
+    expect(document.tabs[1].layoutMode).toBe("preview");
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "f", ctrlKey: true }),
+    );
+    await nextTick();
+    await wrapper.find('[data-testid="find-input"]').setValue("alpha");
+    await wrapper.find('[data-testid="replace-input"]').setValue("ALPHA");
+    await wrapper.find('[data-testid="replace-next"]').trigger("click");
+    await nextTick();
+
+    // Only b.md switches to Split View; the launch Tab keeps its Focus mode.
+    expect(document.tabs[1].layoutMode).toBe("split");
+    expect(document.tabs[0].layoutMode).toBe("focus");
+    expect(document.content).toBe("ALPHA beta alpha");
+
+    await wrapper.findAll('[data-testid="tab"]')[0].trigger("click");
+    await nextTick();
+    expect(ui.layoutMode).toBe("focus");
+  });
+
   it("switches to Split View and replaces when replacing in Preview Only", async () => {
     const wrapper = mount(App);
     await flushPromises();
