@@ -3,26 +3,72 @@ import { computed, ref } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { pickSavePath } from "../lib/saveDialog";
 import { pickExternalModificationChoice } from "../lib/externalDialog";
-import { useUiStore } from "./ui";
+import type { MatchRange } from "../lib/findReplace";
+import { useUiStore, type LayoutMode } from "./ui";
 
 const UNTITLED_FILENAME = "Untitled.md";
 const APP_TITLE_SUFFIX = " — Markdown-Magic";
 const SAVE_FAILED_MESSAGE = "Save failed — your changes are not on disk";
 const OPEN_FAILED_MESSAGE = "Open failed — the file could not be read";
 
-export const useDocumentStore = defineStore("document", () => {
-  const content = ref("");
-  const canonicalPath = ref<string | null>(null);
-  const savedContent = ref("");
-  const diskContent = ref<string | null>(null);
+/// One open Document's full session state. The workspace owns an ordered list
+/// of these plus an Active index; the Active-Document surface the app already
+/// uses (content, canonical path, Dirty, filename, title, save/open/new/
+/// external-modification) reads and writes the Active Tab only.
+export interface Tab {
+  content: string;
+  canonicalPath: string | null;
+  savedContent: string;
+  diskContent: string | null;
+  layoutMode: LayoutMode;
+  findQuery: string;
+  currentMatch: MatchRange | null;
+}
 
-  const dirty = computed(() => content.value !== savedContent.value);
+function createUntitledTab(): Tab {
+  return {
+    content: "",
+    canonicalPath: null,
+    savedContent: "",
+    diskContent: null,
+    layoutMode: "split",
+    findQuery: "",
+    currentMatch: null,
+  };
+}
+
+/// The store was a single Document; it is now a workspace of Tabs. The store
+/// name and the Document-shaped public surface are kept so existing consumers
+/// and tests keep working unchanged while the state model becomes a Tab list.
+export const useDocumentStore = defineStore("document", () => {
+  const tabs = ref<Tab[]>([createUntitledTab()]);
+  const activeIndex = ref(0);
+
+  /// The Active Tab — the one the Document surface mirrors.
+  function activeTab(): Tab {
+    return tabs.value[activeIndex.value];
+  }
+
+  /// The Active Document's content, exposed so existing consumers keep reading
+  /// the same surface while the real state lives on the Active Tab record.
+  /// Edits always flow through `mirrorContent`; there is no second write route.
+  const content = computed(() => activeTab().content);
+
+  const canonicalPath = computed<string | null>({
+    get: () => activeTab().canonicalPath,
+    set: (path) => {
+      activeTab().canonicalPath = path;
+    },
+  });
+
+  const dirty = computed(() => activeTab().content !== activeTab().savedContent);
 
   const filename = computed(() => {
-    if (canonicalPath.value === null) {
+    const path = activeTab().canonicalPath;
+    if (path === null) {
       return UNTITLED_FILENAME;
     }
-    return canonicalPath.value.split(/[\\/]/).pop() ?? UNTITLED_FILENAME;
+    return path.split(/[\\/]/).pop() ?? UNTITLED_FILENAME;
   });
 
   const title = computed(() => {
@@ -31,14 +77,15 @@ export const useDocumentStore = defineStore("document", () => {
   });
 
   function mirrorContent(text: string) {
-    content.value = text;
+    activeTab().content = text;
   }
 
   /// Tells the Rust `asset://` protocol which directory to scope image serving
-  /// to. Called whenever the Document's canonical path changes so relative
-  /// image paths always resolve against the current Document's directory.
+  /// to. Called whenever the Active Document's canonical path changes so
+  /// relative image paths always resolve against the current Document's
+  /// directory.
   function syncAssetRoot() {
-    void invoke("set_asset_root", { documentPath: canonicalPath.value });
+    void invoke("set_asset_root", { documentPath: activeTab().canonicalPath });
   }
 
   /// Writes `text` to `path`, surfacing a failure as a toast. Does not update
@@ -59,28 +106,30 @@ export const useDocumentStore = defineStore("document", () => {
   }
 
   async function writeToPath(path: string): Promise<boolean> {
-    if (!(await writeToDisk(path, content.value))) {
+    const tab = activeTab();
+    if (!(await writeToDisk(path, tab.content))) {
       return false;
     }
-    canonicalPath.value = path;
-    savedContent.value = content.value;
-    diskContent.value = content.value;
+    tab.canonicalPath = path;
+    tab.savedContent = tab.content;
+    tab.diskContent = tab.content;
     syncAssetRoot();
     useUiStore().setLastDirectory(path);
     return true;
   }
 
   async function save(): Promise<boolean> {
-    if (canonicalPath.value === null) {
+    const tab = activeTab();
+    if (tab.canonicalPath === null) {
       return saveAs();
     }
-    return writeToPath(canonicalPath.value);
+    return writeToPath(tab.canonicalPath);
   }
 
   async function saveAs(): Promise<boolean> {
     const ui = useUiStore();
     const path = await pickSavePath({
-      defaultPath: canonicalPath.value ?? ui.lastDirectory ?? undefined,
+      defaultPath: activeTab().canonicalPath ?? ui.lastDirectory ?? undefined,
     });
     if (path === null) {
       return false;
@@ -88,23 +137,25 @@ export const useDocumentStore = defineStore("document", () => {
     return writeToPath(path);
   }
 
-  /// Swaps the current Document for a fresh Untitled Document.
+  /// Swaps the Active Document for a fresh Untitled Document.
   ///
   /// The caller runs the Confirm-Discard Guard first when the Document is Dirty.
   function newDocument() {
-    content.value = "";
-    canonicalPath.value = null;
-    savedContent.value = "";
-    diskContent.value = null;
+    const tab = activeTab();
+    tab.content = "";
+    tab.canonicalPath = null;
+    tab.savedContent = "";
+    tab.diskContent = null;
     syncAssetRoot();
   }
 
-  /// Reads a file from disk and swaps it into the current Document.
+  /// Reads a file from disk and swaps it into the Active Document.
   ///
   /// On success the path becomes canonical, the title updates to the filename,
   /// and Dirty clears. A failed read keeps the current Document and surfaces the
   /// error as a toast. Returns whether the swap happened.
   async function openDocument(path: string): Promise<boolean> {
+    const tab = activeTab();
     let text: string;
     try {
       text = await invoke<string>("open_document", { path });
@@ -117,33 +168,37 @@ export const useDocumentStore = defineStore("document", () => {
       );
       return false;
     }
-    content.value = text;
-    canonicalPath.value = path;
-    savedContent.value = text;
-    diskContent.value = text;
+    tab.content = text;
+    tab.canonicalPath = path;
+    tab.savedContent = text;
+    tab.diskContent = text;
     syncAssetRoot();
     useUiStore().setLastDirectory(path);
     return true;
   }
 
-  /// Replaces the Document with the on-disk version, treating it as the new
-  /// saved baseline so Dirty clears and the change is not re-detected.
-  function reloadFrom(text: string) {
-    content.value = text;
-    savedContent.value = text;
-    diskContent.value = text;
+  /// Replaces the Active Document with the on-disk version, treating it as the
+  /// new saved baseline so Dirty clears and the change is not re-detected.
+  /// `tab` defaults to the Active Tab; a caller that captured a Tab across an
+  /// await passes it so the reload always targets the same Document.
+  function reloadFrom(text: string, tab: Tab = activeTab()) {
+    tab.content = text;
+    tab.savedContent = text;
+    tab.diskContent = text;
   }
 
   /// Writes the current content over the Document's file without clearing
-  /// Dirty: an Overwrite resolves the conflict but is not a Save.
-  async function overwriteToDisk(): Promise<boolean> {
-    if (canonicalPath.value === null) {
+  /// Dirty: an Overwrite resolves the conflict but is not a Save. `tab` defaults
+  /// to the Active Tab; a caller that captured a Tab across an await passes it
+  /// so the Overwrite always targets the same Document.
+  async function overwriteToDisk(tab: Tab = activeTab()): Promise<boolean> {
+    if (tab.canonicalPath === null) {
       return false;
     }
-    if (!(await writeToDisk(canonicalPath.value, content.value))) {
+    if (!(await writeToDisk(tab.canonicalPath, tab.content))) {
       return false;
     }
-    diskContent.value = content.value;
+    tab.diskContent = tab.content;
     return true;
   }
 
@@ -155,36 +210,51 @@ export const useDocumentStore = defineStore("document", () => {
   /// replaced by a reload (silent or chosen), so the caller can push it into
   /// the editor.
   async function checkExternalModification(): Promise<boolean> {
-    if (canonicalPath.value === null) {
+    const tab = activeTab();
+    if (tab.canonicalPath === null) {
       return false;
     }
     let state: { content: string };
     try {
       state = await invoke<{ content: string }>("inspect_document", {
-        path: canonicalPath.value,
+        path: tab.canonicalPath,
       });
     } catch {
       return false;
     }
-    if (state.content === diskContent.value) {
+    if (state.content === tab.diskContent) {
       return false;
     }
     if (!dirty.value) {
-      reloadFrom(state.content);
+      reloadFrom(state.content, tab);
       return true;
     }
     const choice = await pickExternalModificationChoice(filename.value);
     if (choice === "reload") {
-      reloadFrom(state.content);
+      reloadFrom(state.content, tab);
       return true;
     }
     if (choice === "overwrite") {
-      await overwriteToDisk();
+      await overwriteToDisk(tab);
     }
     return false;
   }
 
+  /// Switches the Active Tab to `index`. Indices outside the Tab list are
+  /// ignored so the Active index always stays a valid Tab index. Returns
+  /// whether the switch happened.
+  function switchTab(index: number): boolean {
+    if (index < 0 || index >= tabs.value.length) {
+      return false;
+    }
+    activeIndex.value = index;
+    return true;
+  }
+
   return {
+    tabs,
+    activeIndex,
+    switchTab,
     content,
     canonicalPath,
     dirty,
