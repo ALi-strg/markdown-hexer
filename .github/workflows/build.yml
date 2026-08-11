@@ -143,6 +143,81 @@ jobs:
           gh release upload "${{ github.ref_name }}" \
             "Markdown-Magic_${RELEASE_VERSION}_linux-x86_64.flatpak" --clobber
 
+  # Native ARM64 Linux bundles (.deb / .rpm / .AppImage). ARM AppImages cannot
+  # be cross-compiled (linuxdeploy limitation), so this job runs on GitHub's
+  # native arm64 runner and is gated on the e2e job like the other release
+  # jobs: a regressed Document lifecycle never ships an ARM64 installer. PR
+  # runs build the bundles (empty tagName) but create no Release and upload
+  # nothing.
+  linux-arm64:
+    needs: e2e
+    runs-on: ubuntu-22.04-arm
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: resolve release version from tag
+        if: github.ref_type == 'tag'
+        shell: bash
+        run: |
+          echo "RELEASE_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+          printf '{"version":"%s"}' "${GITHUB_REF_NAME#v}" > .release-version.json
+
+      - name: install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+
+      - name: install frontend dependencies
+        run: npm ci
+
+      - name: run frontend unit tests
+        run: npm test
+
+      - name: run rust unit tests
+        working-directory: ./src-tauri
+        run: cargo test
+
+      - uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+          releaseName: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+          releaseBody: |
+            Markdown-Magic ${{ env.RELEASE_VERSION }}
+
+            | Platform | File | Notes |
+            |---|---|---|
+            | Windows (x64) | `*_windows-x64-setup.exe` | Standard installer |
+            | Windows (ARM64) | `*_windows-arm64-setup.exe` | For ARM-based Windows devices (e.g. Snapdragon X) |
+            | macOS | `*.dmg` | Universal or per-arch depending on build |
+            | Linux (Debian/Ubuntu) | `*.deb` | |
+            | Linux (Fedora/RHEL) | `*.rpm` | |
+            | Linux (universal) | `*.AppImage` | Works on most distros |
+            | Linux (Flatpak) | `*_linux-x86_64.flatpak` | Install with `flatpak install` |
+          releaseDraft: true
+          prerelease: ${{ contains(env.RELEASE_VERSION, '-') }}
+          args: ${{ github.ref_type == 'tag' && '--config .release-version.json' || '' }}
+          releaseAssetNamePattern: "[name]_[version]_linux-[arch][setup][ext]"
+
   release:
     needs: e2e
     permissions:
