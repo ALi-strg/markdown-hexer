@@ -71,7 +71,7 @@ jobs:
           WEBKIT_DISABLE_DMABUF_RENDERER: "1"
         run: xvfb-run -a -s "-screen 0 1280x800x24" npm run test:e2e
 
-      - uses: tauri-apps/tauri-action@v0
+      - uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -129,7 +129,7 @@ jobs:
         working-directory: ./src-tauri
         run: cargo test
 
-      - uses: tauri-apps/tauri-action@v0
+      - uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -149,7 +149,7 @@ jobs:
           releaseDraft: true
           prerelease: ${{ contains(env.RELEASE_VERSION, '-') }}
           args: ${{ github.ref_type == 'tag' && '--config .release-version.json' || '' }}
-          releaseAssetNamePattern: "[name]_[version]_[platform]-[arch]_[bundle][ext]"
+          releaseAssetNamePattern: "[name]_[version]_${{ matrix.label }}-[arch][setup][ext]"
 
       - name: add windows arm64 rust target
         if: matrix.platform == 'windows-latest'
@@ -157,7 +157,7 @@ jobs:
 
       - name: build windows arm64 bundle
         if: matrix.platform == 'windows-latest'
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -177,4 +177,4 @@ jobs:
           releaseDraft: true
           prerelease: ${{ contains(env.RELEASE_VERSION, '-') }}
           args: ${{ github.ref_type == 'tag' && '--config .release-version.json --target aarch64-pc-windows-msvc' || '--target aarch64-pc-windows-msvc' }}
-          releaseAssetNamePattern: "[name]_[version]_[platform]-[arch]_[bundle][ext]"
+          releaseAssetNamePattern: "[name]_[version]_windows-[arch][setup][ext]"
