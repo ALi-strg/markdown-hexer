@@ -169,11 +169,15 @@ jobs:
       - name: install Linux build dependencies
         run: |
           sudo apt-get update
+          # xdg-open is required by the AppImage bundler, which copies it into
+          # the bundle payload. The x64 runner image ships xdg-utils
+          # preinstalled; the ARM runner image does not.
           sudo apt-get install -y \
             libwebkit2gtk-4.1-dev \
             libappindicator3-dev \
             librsvg2-dev \
-            patchelf
+            patchelf \
+            xdg-utils
 
       - uses: actions/setup-node@v4
         with:
