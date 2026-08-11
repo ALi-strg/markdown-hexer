@@ -128,9 +128,21 @@ A tagged set of Bundles for one Version, published on GitHub Releases. Created a
 _Avoid_: build, artifact set, milestone
 
 **Bundle**:
-A platform-specific installer or package produced by the CI build — `.exe`/`.msi` (Windows), `.dmg`/`.app.tar.gz` (macOS), `.deb`/`.AppImage`/`.rpm` (Linux). A Bundle's filename embeds its Version, Platform Label, and architecture.
+A platform-specific installer or package produced by the CI build — `.exe`/`.msi` (Windows), `.dmg`/`.app.tar.gz` (macOS), `.deb`/`.AppImage`/`.rpm`/`.flatpak` (Linux). A Bundle's filename embeds its Version, Platform Label, and architecture.
 _Avoid_: artifact, installer, binary
 
 **Platform Label**:
 The canonical OS name in a Bundle filename: `windows`, `macos`, or `linux`.
 _Avoid_: darwin, ubuntu, win32
+
+**Flatpak Bundle**:
+A Linux Bundle in the Flatpak format — a single-file `.flatpak` attached to a GitHub Release and installed with `flatpak install`. Not the same thing as a Flathub listing.
+_Avoid_: flatpack, flatpak ref, "the appimage of flatpak"
+
+**Distribution Channel**:
+The place a user obtains a Bundle from. Today only GitHub Releases; Flathub — the Flatpak app store — is a possible future channel, deferred while the repository stays private (Flathub requires a public source).
+_Avoid_: release, store (unless Flathub specifically), download site
+
+**Flathub**:
+The Flatpak app store, a Distribution Channel distinct from the Flatpak Bundle format. Out of scope while the repository is private.
+_Avoid_: flatpak (the format), the flatpak store
