@@ -89,6 +89,7 @@ jobs:
             | Linux (Fedora/RHEL) | `*.rpm` | |
             | Linux (universal) | `*.AppImage` | Works on most distros |
             | Linux (Flatpak) | `*_linux-x86_64.flatpak` | Install with `flatpak install` |
+            | Linux (Flatpak, ARM64) | `*_linux-aarch64.flatpak` | Install with `flatpak install` |
           releaseDraft: true
           prerelease: ${{ contains(env.RELEASE_VERSION, '-') }}
           args: ${{ github.ref_type == 'tag' && '--config .release-version.json' || '' }}
@@ -213,10 +214,59 @@ jobs:
             | Linux (Fedora/RHEL) | `*.rpm` | |
             | Linux (universal) | `*.AppImage` | Works on most distros |
             | Linux (Flatpak) | `*_linux-x86_64.flatpak` | Install with `flatpak install` |
+            | Linux (Flatpak, ARM64) | `*_linux-aarch64.flatpak` | Install with `flatpak install` |
           releaseDraft: true
           prerelease: ${{ contains(env.RELEASE_VERSION, '-') }}
           args: ${{ github.ref_type == 'tag' && '--config .release-version.json' || '' }}
           releaseAssetNamePattern: "[name]_[version]_linux-[arch][setup][ext]"
+
+      # The aarch64 Flatpak Bundle wraps the ARM64 .deb just built above (ADR
+      # 0006) — same manifest and sandbox as the x86_64 bundle, built for the
+      # host arch. Tags only: on PR runs these steps are skipped entirely (no
+      # build, no upload). --arch=aarch64 stages the aarch64 GNOME runtime
+      # from flathub.
+      - name: copy deb for flatpak build
+        if: github.ref_type == 'tag'
+        run: cp src-tauri/target/release/bundle/deb/*.deb bundles/flatpak/markdown-magic.deb
+
+      - name: install flatpak tooling
+        if: github.ref_type == 'tag'
+        run: |
+          sudo apt-get update
+          # software-properties-common guarantees add-apt-repository exists;
+          # a no-op when the runner image already ships it.
+          sudo apt-get install -y software-properties-common
+          sudo add-apt-repository -y ppa:flatpak/stable
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder
+          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+
+      - name: build flatpak bundle
+        if: github.ref_type == 'tag'
+        run: |
+          flatpak-builder --user \
+            --repo=flatpak-repo \
+            --disable-rofiles-fuse \
+            --install-deps-from=flathub \
+            --force-clean \
+            --default-branch=master \
+            --arch=aarch64 \
+            --subject="Markdown-Magic ${RELEASE_VERSION} (${GITHUB_SHA})" \
+            flatpak-app \
+            bundles/flatpak/com.markdownmagic.editor.yml
+          flatpak build-bundle flatpak-repo markdown-magic.flatpak \
+            --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo \
+            com.markdownmagic.editor \
+            master
+          mv markdown-magic.flatpak "Markdown-Magic_${RELEASE_VERSION}_linux-aarch64.flatpak"
+
+      - name: upload flatpak bundle to release
+        if: github.ref_type == 'tag'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ github.ref_name }}" \
+            "Markdown-Magic_${RELEASE_VERSION}_linux-aarch64.flatpak" --clobber
 
   release:
     needs: e2e
@@ -282,6 +332,7 @@ jobs:
             | Linux (Fedora/RHEL) | `*.rpm` | |
             | Linux (universal) | `*.AppImage` | Works on most distros |
             | Linux (Flatpak) | `*_linux-x86_64.flatpak` | Install with `flatpak install` |
+            | Linux (Flatpak, ARM64) | `*_linux-aarch64.flatpak` | Install with `flatpak install` |
           releaseDraft: true
           prerelease: ${{ contains(env.RELEASE_VERSION, '-') }}
           args: ${{ github.ref_type == 'tag' && '--config .release-version.json' || '' }}
@@ -311,6 +362,7 @@ jobs:
             | Linux (Fedora/RHEL) | `*.rpm` | |
             | Linux (universal) | `*.AppImage` | Works on most distros |
             | Linux (Flatpak) | `*_linux-x86_64.flatpak` | Install with `flatpak install` |
+            | Linux (Flatpak, ARM64) | `*_linux-aarch64.flatpak` | Install with `flatpak install` |
           releaseDraft: true
           prerelease: ${{ contains(env.RELEASE_VERSION, '-') }}
           args: ${{ github.ref_type == 'tag' && '--config .release-version.json --target aarch64-pc-windows-msvc' || '--target aarch64-pc-windows-msvc' }}
