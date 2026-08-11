@@ -71,17 +71,206 @@ jobs:
           WEBKIT_DISABLE_DMABUF_RENDERER: "1"
         run: xvfb-run -a -s "-screen 0 1280x800x24" npm run test:e2e
 
-      - uses: tauri-apps/tauri-action@v0
+      - uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tagName: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
           releaseName: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
-          releaseBody: "Markdown-Magic ${{ env.RELEASE_VERSION }} — see the assets to download and install."
+          releaseBody: |
+            Markdown-Magic ${{ env.RELEASE_VERSION }}
+
+            | Platform | File | Notes |
+            |---|---|---|
+            | Windows (x64) | `*_windows-x64-setup.exe` | Standard installer |
+            | Windows (ARM64) | `*_windows-arm64-setup.exe` | For ARM-based Windows devices (e.g. Snapdragon X) |
+            | macOS | `*.dmg` | Universal or per-arch depending on build |
+            | Linux (Debian/Ubuntu) | `*.deb` | |
+            | Linux (Fedora/RHEL) | `*.rpm` | |
+            | Linux (universal) | `*.AppImage` | Works on most distros |
+            | Linux (Flatpak) | `*_linux-x86_64.flatpak` | Install with `flatpak install` |
+            | Linux (Flatpak, ARM64) | `*_linux-aarch64.flatpak` | Install with `flatpak install` |
           releaseDraft: true
           prerelease: ${{ contains(env.RELEASE_VERSION, '-') }}
           args: ${{ github.ref_type == 'tag' && '--config .release-version.json' || '' }}
           releaseAssetNamePattern: "[name]_[version]_linux-[arch][setup][ext]"
+
+      # The Flatpak Bundle wraps the .deb just built above (ADR 0006) inside a
+      # pinned GNOME runtime, so a single-file bundle installs with
+      # `flatpak install`. Tags only: on PR runs these steps are skipped
+      # entirely (no build, no upload). flatpak-builder runs --user (the
+      # flatpak-github-actions action hardcodes the system installation, which
+      # needs root on a bare runner); the flathub remote is added per-user.
+      - name: copy deb for flatpak build
+        if: github.ref_type == 'tag'
+        run: cp src-tauri/target/release/bundle/deb/*.deb bundles/flatpak/markdown-magic.deb
+
+      - name: install flatpak tooling
+        if: github.ref_type == 'tag'
+        run: |
+          sudo apt-get update
+          # software-properties-common guarantees add-apt-repository exists;
+          # a no-op when the runner image already ships it.
+          sudo apt-get install -y software-properties-common
+          sudo add-apt-repository -y ppa:flatpak/stable
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder
+          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+
+      - name: build flatpak bundle
+        if: github.ref_type == 'tag'
+        run: |
+          flatpak-builder --user \
+            --repo=flatpak-repo \
+            --disable-rofiles-fuse \
+            --install-deps-from=flathub \
+            --force-clean \
+            --default-branch=master \
+            --arch=x86_64 \
+            --subject="Markdown-Magic ${RELEASE_VERSION} (${GITHUB_SHA})" \
+            flatpak-app \
+            bundles/flatpak/com.markdownmagic.editor.yml
+          flatpak build-bundle flatpak-repo markdown-magic.flatpak \
+            --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo \
+            com.markdownmagic.editor \
+            master
+          mv markdown-magic.flatpak "Markdown-Magic_${RELEASE_VERSION}_linux-x86_64.flatpak"
+
+      - name: upload flatpak bundle to release
+        if: github.ref_type == 'tag'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ github.ref_name }}" \
+            "Markdown-Magic_${RELEASE_VERSION}_linux-x86_64.flatpak" --clobber
+
+  # Native ARM64 Linux bundles (.deb / .rpm / .AppImage). ARM AppImages cannot
+  # be cross-compiled (linuxdeploy limitation), so this job runs on GitHub's
+  # native arm64 runner and is gated on the e2e job like the other release
+  # jobs: a regressed Document lifecycle never ships an ARM64 installer. PR
+  # runs build the bundles (empty tagName) but create no Release and upload
+  # nothing.
+  linux-arm64:
+    needs: e2e
+    runs-on: ubuntu-22.04-arm
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: resolve release version from tag
+        if: github.ref_type == 'tag'
+        shell: bash
+        run: |
+          echo "RELEASE_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+          printf '{"version":"%s"}' "${GITHUB_REF_NAME#v}" > .release-version.json
+
+      - name: install Linux build dependencies
+        run: |
+          sudo apt-get update
+          # xdg-open is required by the AppImage bundler, which copies it into
+          # the bundle payload. The x64 runner image ships xdg-utils
+          # preinstalled; the ARM runner image does not.
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            xdg-utils
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+
+      - name: install frontend dependencies
+        run: npm ci
+
+      - name: run frontend unit tests
+        run: npm test
+
+      - name: run rust unit tests
+        working-directory: ./src-tauri
+        run: cargo test
+
+      - uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+          releaseName: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+          releaseBody: |
+            Markdown-Magic ${{ env.RELEASE_VERSION }}
+
+            | Platform | File | Notes |
+            |---|---|---|
+            | Windows (x64) | `*_windows-x64-setup.exe` | Standard installer |
+            | Windows (ARM64) | `*_windows-arm64-setup.exe` | For ARM-based Windows devices (e.g. Snapdragon X) |
+            | macOS | `*.dmg` | Universal or per-arch depending on build |
+            | Linux (Debian/Ubuntu) | `*.deb` | |
+            | Linux (Fedora/RHEL) | `*.rpm` | |
+            | Linux (universal) | `*.AppImage` | Works on most distros |
+            | Linux (Flatpak) | `*_linux-x86_64.flatpak` | Install with `flatpak install` |
+            | Linux (Flatpak, ARM64) | `*_linux-aarch64.flatpak` | Install with `flatpak install` |
+          releaseDraft: true
+          prerelease: ${{ contains(env.RELEASE_VERSION, '-') }}
+          args: ${{ github.ref_type == 'tag' && '--config .release-version.json' || '' }}
+          releaseAssetNamePattern: "[name]_[version]_linux-[arch][setup][ext]"
+
+      # The aarch64 Flatpak Bundle wraps the ARM64 .deb just built above (ADR
+      # 0006) — same manifest and sandbox as the x86_64 bundle, built for the
+      # host arch. Tags only: on PR runs these steps are skipped entirely (no
+      # build, no upload). --arch=aarch64 stages the aarch64 GNOME runtime
+      # from flathub.
+      - name: copy deb for flatpak build
+        if: github.ref_type == 'tag'
+        run: cp src-tauri/target/release/bundle/deb/*.deb bundles/flatpak/markdown-magic.deb
+
+      - name: install flatpak tooling
+        if: github.ref_type == 'tag'
+        run: |
+          sudo apt-get update
+          # software-properties-common guarantees add-apt-repository exists;
+          # a no-op when the runner image already ships it.
+          sudo apt-get install -y software-properties-common
+          sudo add-apt-repository -y ppa:flatpak/stable
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder
+          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+
+      - name: build flatpak bundle
+        if: github.ref_type == 'tag'
+        run: |
+          flatpak-builder --user \
+            --repo=flatpak-repo \
+            --disable-rofiles-fuse \
+            --install-deps-from=flathub \
+            --force-clean \
+            --default-branch=master \
+            --arch=aarch64 \
+            --subject="Markdown-Magic ${RELEASE_VERSION} (${GITHUB_SHA})" \
+            flatpak-app \
+            bundles/flatpak/com.markdownmagic.editor.yml
+          flatpak build-bundle flatpak-repo markdown-magic.flatpak \
+            --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo \
+            com.markdownmagic.editor \
+            master
+          mv markdown-magic.flatpak "Markdown-Magic_${RELEASE_VERSION}_linux-aarch64.flatpak"
+
+      - name: upload flatpak bundle to release
+        if: github.ref_type == 'tag'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ github.ref_name }}" \
+            "Markdown-Magic_${RELEASE_VERSION}_linux-aarch64.flatpak" --clobber
 
   release:
     needs: e2e
@@ -129,7 +318,7 @@ jobs:
         working-directory: ./src-tauri
         run: cargo test
 
-      - uses: tauri-apps/tauri-action@v0
+      - uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -146,10 +335,12 @@ jobs:
             | Linux (Debian/Ubuntu) | `*.deb` | |
             | Linux (Fedora/RHEL) | `*.rpm` | |
             | Linux (universal) | `*.AppImage` | Works on most distros |
+            | Linux (Flatpak) | `*_linux-x86_64.flatpak` | Install with `flatpak install` |
+            | Linux (Flatpak, ARM64) | `*_linux-aarch64.flatpak` | Install with `flatpak install` |
           releaseDraft: true
           prerelease: ${{ contains(env.RELEASE_VERSION, '-') }}
           args: ${{ github.ref_type == 'tag' && '--config .release-version.json' || '' }}
-          releaseAssetNamePattern: "[name]_[version]_[platform]-[arch]_[bundle][ext]"
+          releaseAssetNamePattern: "[name]_[version]_${{ matrix.label }}-[arch][setup][ext]"
 
       - name: add windows arm64 rust target
         if: matrix.platform == 'windows-latest'
@@ -157,7 +348,7 @@ jobs:
 
       - name: build windows arm64 bundle
         if: matrix.platform == 'windows-latest'
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -174,7 +365,9 @@ jobs:
             | Linux (Debian/Ubuntu) | `*.deb` | |
             | Linux (Fedora/RHEL) | `*.rpm` | |
             | Linux (universal) | `*.AppImage` | Works on most distros |
+            | Linux (Flatpak) | `*_linux-x86_64.flatpak` | Install with `flatpak install` |
+            | Linux (Flatpak, ARM64) | `*_linux-aarch64.flatpak` | Install with `flatpak install` |
           releaseDraft: true
           prerelease: ${{ contains(env.RELEASE_VERSION, '-') }}
           args: ${{ github.ref_type == 'tag' && '--config .release-version.json --target aarch64-pc-windows-msvc' || '--target aarch64-pc-windows-msvc' }}
-          releaseAssetNamePattern: "[name]_[version]_[platform]-[arch]_[bundle][ext]"
+          releaseAssetNamePattern: "[name]_[version]_windows-[arch][setup][ext]"

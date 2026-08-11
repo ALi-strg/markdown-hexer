@@ -1,0 +1,48 @@
+# Flatpak manifest for Markdown-Magic (x86_64) — see docs/adr/0006.
+#
+# CI stages the release .deb as `markdown-magic.deb` next to this manifest
+# (stable name, so the file source is version-independent) and wraps it in a
+# single-file bundle installable with `flatpak install`. The runtime is pinned
+# to one stable GNOME release; bump `runtime-version` when Flathub moves on.
+id: com.markdownmagic.editor
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+command: markdown-editor
+
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --share=ipc
+  # ADR 0006: the Preview Pane resolves relative images against the opened
+  # Document's directory over asset://, so the sandbox must see $HOME.
+  - --filesystem=home
+  # Deliberately no --env=WEBKIT_DISABLE_*: the DMABUF workaround is baked
+  # into the binary on Linux (ADR 0007), so it rides inside every bundle.
+
+modules:
+  - name: binary
+    buildsystem: simple
+    sources:
+      - type: file
+        path: markdown-magic.deb
+      - type: file
+        path: com.markdownmagic.editor.metainfo.xml
+    build-commands:
+      - mkdir -p deb-extract
+      # The .deb is an ar archive; extract data.tar.gz (binary, desktop file,
+      # hicolor icons) and lay it out in the runtime's /app prefix.
+      - ar -x --output=deb-extract markdown-magic.deb
+      - tar -xf deb-extract/data.tar.gz -C deb-extract
+      - install -Dm755 deb-extract/usr/bin/markdown-editor /app/bin/markdown-editor
+      # Desktop file: rename to the Flatpak app id and point Icon at the
+      # id-named icons installed below (Flatpak resolves icons by app id).
+      - sed -i 's/^Icon=.*/Icon=com.markdownmagic.editor/' deb-extract/usr/share/applications/Markdown-Magic.desktop
+      - install -Dm644 deb-extract/usr/share/applications/Markdown-Magic.desktop /app/share/applications/com.markdownmagic.editor.desktop
+      - install -Dm644 deb-extract/usr/share/icons/hicolor/32x32/apps/markdown-editor.png /app/share/icons/hicolor/32x32/apps/com.markdownmagic.editor.png
+      - install -Dm644 deb-extract/usr/share/icons/hicolor/128x128/apps/markdown-editor.png /app/share/icons/hicolor/128x128/apps/com.markdownmagic.editor.png
+      # tauri-bundler names the hicolor dir from the decoded PNG dimensions,
+      # so icons/128x128@2x.png (a 256x256 image) ships as 256x256@2 in the deb.
+      - install -Dm644 deb-extract/usr/share/icons/hicolor/256x256@2/apps/markdown-editor.png /app/share/icons/hicolor/256x256@2/apps/com.markdownmagic.editor.png
+      - install -Dm644 com.markdownmagic.editor.metainfo.xml /app/share/metainfo/com.markdownmagic.editor.metainfo.xml

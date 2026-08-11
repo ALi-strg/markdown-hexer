@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.markdownmagic.editor</id>
+  <launchable type="desktop-id">com.markdownmagic.editor.desktop</launchable>
+  <name>Markdown-Magic</name>
+  <summary>A distraction-free Markdown editor with a live Preview Pane</summary>
+  <developer id="io.github.ALi-strg">
+    <name>ALi-strg</name>
+  </developer>
+  <metadata_license>CC0-1.0</metadata_license>
+  <!-- Private repo with no LICENSE file: all rights reserved. -->
+  <project_license>LicenseRef-proprietary</project_license>
+  <url type="homepage">https://github.com/ALi-strg/markdown-editor</url>
+  <content_rating type="oars-1.1" />
+  <description>
+    <p>
+      Markdown-Magic is a cross-platform, distraction-free Markdown editor for
+      desktop. It pairs a CodeMirror source pane with a live rendered Preview
+      Pane, native Open/Save dialogs, and full keyboard-driven editing.
+    </p>
+    <p>
+      Documents opened from the file manager load into their own Tab, and
+      relative images render right next to the Markdown source in the Preview
+      Pane.
+    </p>
+  </description>
+  <!-- Bump the entry below on each release (v1.1.3, v1.1.4, ...). -->
+  <releases>
+    <release version="1.1.2" date="2026-08-10" />
+  </releases>
+</component>
