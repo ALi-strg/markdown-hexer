@@ -77,11 +77,71 @@ jobs:
         with:
           tagName: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
           releaseName: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
-          releaseBody: "Markdown-Magic ${{ env.RELEASE_VERSION }} — see the assets to download and install."
+          releaseBody: |
+            Markdown-Magic ${{ env.RELEASE_VERSION }}
+
+            | Platform | File | Notes |
+            |---|---|---|
+            | Windows (x64) | `*_windows-x64-setup.exe` | Standard installer |
+            | Windows (ARM64) | `*_windows-arm64-setup.exe` | For ARM-based Windows devices (e.g. Snapdragon X) |
+            | macOS | `*.dmg` | Universal or per-arch depending on build |
+            | Linux (Debian/Ubuntu) | `*.deb` | |
+            | Linux (Fedora/RHEL) | `*.rpm` | |
+            | Linux (universal) | `*.AppImage` | Works on most distros |
+            | Linux (Flatpak) | `*_linux-x86_64.flatpak` | Install with `flatpak install` |
           releaseDraft: true
           prerelease: ${{ contains(env.RELEASE_VERSION, '-') }}
           args: ${{ github.ref_type == 'tag' && '--config .release-version.json' || '' }}
           releaseAssetNamePattern: "[name]_[version]_linux-[arch][setup][ext]"
+
+      # The Flatpak Bundle wraps the .deb just built above (ADR 0006) inside a
+      # pinned GNOME runtime, so a single-file bundle installs with
+      # `flatpak install`. Tags only: on PR runs these steps are skipped
+      # entirely (no build, no upload). flatpak-builder runs --user (the
+      # flatpak-github-actions action hardcodes the system installation, which
+      # needs root on a bare runner); the flathub remote is added per-user.
+      - name: copy deb for flatpak build
+        if: github.ref_type == 'tag'
+        run: cp src-tauri/target/release/bundle/deb/*.deb bundles/flatpak/markdown-magic.deb
+
+      - name: install flatpak tooling
+        if: github.ref_type == 'tag'
+        run: |
+          sudo apt-get update
+          # software-properties-common guarantees add-apt-repository exists;
+          # a no-op when the runner image already ships it.
+          sudo apt-get install -y software-properties-common
+          sudo add-apt-repository -y ppa:flatpak/stable
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder
+          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+
+      - name: build flatpak bundle
+        if: github.ref_type == 'tag'
+        run: |
+          flatpak-builder --user \
+            --repo=flatpak-repo \
+            --disable-rofiles-fuse \
+            --install-deps-from=flathub \
+            --force-clean \
+            --default-branch=master \
+            --arch=x86_64 \
+            --subject="Markdown-Magic ${RELEASE_VERSION} (${GITHUB_SHA})" \
+            flatpak-app \
+            bundles/flatpak/com.markdownmagic.editor.yml
+          flatpak build-bundle flatpak-repo markdown-magic.flatpak \
+            --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo \
+            com.markdownmagic.editor \
+            master
+          mv markdown-magic.flatpak "Markdown-Magic_${RELEASE_VERSION}_linux-x86_64.flatpak"
+
+      - name: upload flatpak bundle to release
+        if: github.ref_type == 'tag'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ github.ref_name }}" \
+            "Markdown-Magic_${RELEASE_VERSION}_linux-x86_64.flatpak" --clobber
 
   release:
     needs: e2e
@@ -146,6 +206,7 @@ jobs:
             | Linux (Debian/Ubuntu) | `*.deb` | |
             | Linux (Fedora/RHEL) | `*.rpm` | |
             | Linux (universal) | `*.AppImage` | Works on most distros |
+            | Linux (Flatpak) | `*_linux-x86_64.flatpak` | Install with `flatpak install` |
           releaseDraft: true
           prerelease: ${{ contains(env.RELEASE_VERSION, '-') }}
           args: ${{ github.ref_type == 'tag' && '--config .release-version.json' || '' }}
@@ -174,6 +235,7 @@ jobs:
             | Linux (Debian/Ubuntu) | `*.deb` | |
             | Linux (Fedora/RHEL) | `*.rpm` | |
             | Linux (universal) | `*.AppImage` | Works on most distros |
+            | Linux (Flatpak) | `*_linux-x86_64.flatpak` | Install with `flatpak install` |
           releaseDraft: true
           prerelease: ${{ contains(env.RELEASE_VERSION, '-') }}
           args: ${{ github.ref_type == 'tag' && '--config .release-version.json --target aarch64-pc-windows-msvc' || '--target aarch64-pc-windows-msvc' }}

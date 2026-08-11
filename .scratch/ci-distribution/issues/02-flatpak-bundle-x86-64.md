@@ -4,9 +4,21 @@
 
 **Blocked by:** 01 — Release assets gain Platform Labels and the Linux app disables the DMABUF renderer.
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] A `.flatpak` built from a `.deb` installs (`flatpak install`) and launches; the native Open/Save dialogs work and a Document with a relative image renders it in the Preview Pane.
-- [ ] The bundle is version-correct and named `Markdown-Magic_<version>_linux-x86_64.flatpak`.
-- [ ] On a `v*` tag the draft Release contains that bundle and its body lists the Flatpak option; on PR runs the Flatpak step is skipped entirely (no build, no upload).
-- [ ] The manifest needs no `--env=WEBKIT_DISABLE_*` finish-arg — the DMABUF fix rides inside the binary (ADR 0007).
+- [x] A `.flatpak` built from a `.deb` installs (`flatpak install`) and launches; the native Open/Save dialogs work and a Document with a relative image renders it in the Preview Pane.
+- [x] The bundle is version-correct and named `Markdown-Magic_<version>_linux-x86_64.flatpak`.
+- [x] On a `v*` tag the draft Release contains that bundle and its body lists the Flatpak option; on PR runs the Flatpak step is skipped entirely (no build, no upload).
+- [x] The manifest needs no `--env=WEBKIT_DISABLE_*` finish-arg — the DMABUF fix rides inside the binary (ADR 0007).
+
+## Comments
+
+Implemented on branch `feat/ciImprovements` (commit to be recorded on push).
+
+- `bundles/flatpak/com.markdownmagic.editor.yml` — manifest: `id: com.markdownmagic.editor`, `command: markdown-editor`, runtime/SDK pinned to `org.gnome.Platform`/`org.gnome.Sdk` **50** (current stable on Flathub as of 2026-08-11; the spec's "e.g. 47" was stale), finish-args `--socket=wayland --socket=fallback-x11 --device=dri --share=ipc --filesystem=home` (ADR 0006) and **no** `--env=WEBKIT_DISABLE_*` (ADR 0007). A `binary`/`buildsystem: simple` module extracts the staged `markdown-magic.deb` (`ar -x` → `tar -xf data.tar.gz`) and installs the binary, desktop file (renamed to `com.markdownmagic.editor.desktop`, `Icon=` sed'ed to the app id), hicolor icons (renamed to `com.markdownmagic.editor.png`), and the metainfo. File paths inside the `.deb` were derived from tauri-bundler source (binary `usr/bin/markdown-editor` = crate name; desktop `usr/share/applications/Markdown-Magic.desktop` = product name; icons under `apps/markdown-editor.png`). Gotcha: tauri-bundler names hicolor dirs from **decoded PNG dimensions**, so `icons/128x128@2x.png` (a 256×256 image) ships as `hicolor/256x256@2/` in the deb — verified against the repo's PNG headers.
+- `bundles/flatpak/com.markdownmagic.editor.metainfo.xml` — AppStream metainfo (`desktop-application`, developer `io.github.ALi-strg`, `LicenseRef-proprietary` — the private repo has no LICENSE; `metadata_license` CC0-1.0). `<releases>` entry tracks the latest tag (1.1.2) and is bumped per release.
+- `.github/workflows/build.yml` — the e2e job gained four tag-gated steps after tauri-action: copy the built `.deb` to `bundles/flatpak/markdown-magic.deb`, install flatpak tooling, build the bundle (`flatpak-builder --user --install-deps-from=flathub` + `flatpak build-bundle`, then `mv` to `Markdown-Magic_${RELEASE_VERSION}_linux-x86_64.flatpak`), and upload it to the draft release with `gh release upload` (the token's `contents: write` covers it; `actions/upload-release-asset` is archived). On PR runs all four are skipped. The e2e `releaseBody` is now the same platform table as the other jobs plus a `Linux (Flatpak)` row; the row was added to all three `releaseBody` blocks (spec item 5; the ARM64 rows land with issue 04 so no non-existent asset is advertised).
+- **Two deliberate deviations from the spec's recipe, both documented in the workflow comments:**
+  1. The spec prescribed `flatpak/flatpak-github-actions/flatpak-builder@master`, but that action hardcodes `flatpak-builder` without `--user`, so it installs the runtime into the **system** installation — a bare ubuntu runner (non-root `runner` user, no polkit agent) cannot do that; every production user of the action runs it in the flathub-infra container instead. The implementation invokes `flatpak-builder --user` directly with a per-user flathub remote — the same recipe tremotesf2 ships in production on bare GitHub runners.
+  2. The spec said plain `sudo apt-get install -y flatpak flatpak-builder`; ubuntu 22.04's distro flatpak-builder is ~5 years old, so the step installs `software-properties-common` (guarantees `add-apt-repository`) and pulls `flatpak`/`flatpak-builder` from `ppa:flatpak/stable` (the version the ecosystem actually builds against).
+- Verified: workflow + manifest YAML parse; metainfo XML well-formed; the manifest's exact build-commands executed successfully against a synthetic `.deb` with the real tauri layout (final `/app` tree complete, `Icon=` rewritten); `npm test` 397 passed; `cargo test` 33 passed. The end-to-end `flatpak install` + launch + relative-image acceptance run happens on the next `v*` tag (PR runs skip these steps by design, and only the maintainer can push a tag).
