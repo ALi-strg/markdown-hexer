@@ -8,8 +8,8 @@
     <name>ALi-strg</name>
   </developer>
   <metadata_license>CC0-1.0</metadata_license>
-  <!-- Private repo with no LICENSE file: all rights reserved. -->
-  <project_license>LicenseRef-proprietary</project_license>
+  <!-- MIT License (see LICENSE in the repository root). -->
+  <project_license>MIT</project_license>
   <url type="homepage">https://github.com/ALi-strg/markdown-editor</url>
   <!-- Categories must come from the freedesktop menu-spec registry:
        appstreamcli compose fails with E: no-valid-category otherwise. -->

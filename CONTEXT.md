@@ -140,9 +140,27 @@ A Linux Bundle in the Flatpak format — a single-file `.flatpak` attached to a 
 _Avoid_: flatpack, flatpak ref, "the appimage of flatpak"
 
 **Distribution Channel**:
-The place a user obtains a Bundle from. Today only GitHub Releases; Flathub — the Flatpak app store — is a possible future channel, deferred while the repository stays private (Flathub requires a public source).
+The place a user obtains a Bundle from. Today only GitHub Releases; Flathub — the Flatpak app store — is a possible future channel, deferred by choice: the repository is public, so Flathub's public-source requirement no longer blocks it, but publishing there is not the current goal.
 _Avoid_: release, store (unless Flathub specifically), download site
 
 **Flathub**:
-The Flatpak app store, a Distribution Channel distinct from the Flatpak Bundle format. Out of scope while the repository is private.
+The Flatpak app store, a Distribution Channel distinct from the Flatpak Bundle format. Deferred by choice — possible now that the repository is public, but not the current goal.
 _Avoid_: flatpak (the format), the flatpak store
+
+## Development
+
+**Contributor**:
+Anyone who engages with the project — reports a bug, asks a question, or submits a Pull Request. Strangers and trusted people alike; direct access to the repository is not required.
+_Avoid_: user (a person who runs the app), collaborator
+
+**Collaborator**:
+A person with direct Write access to the repository — a trusted person granted access by the Code Owner. Collaborators push feature branches and open Pull Requests into `main`; they cannot merge without Code Owner approval.
+_Avoid_: contributor (overlaps with the public-facing term), developer, team member
+
+**Code Owner**:
+The repository's sole owner (Adrian Link, GitHub `ALi-strg`), named in `CODEOWNERS`. Required to approve every Pull Request into the protected `main` branch, and the only person who merges and publishes Releases.
+_Avoid_: maintainer, owner role, admin
+
+**Contribution Policy**:
+The rule, documented in CONTRIBUTING.md, that Pull Requests from outside the Collaborator circle are closed without merging, while bug reports via Issues are always welcome. Revisited once the codebase stabilizes.
+_Avoid_: PR policy, contributing guidelines

@@ -1,0 +1,3 @@
+# MIT license
+
+The project is released under the MIT License (LICENSE, © 2026 Adrian Link), chosen when the repository went public. Apache-2.0 was the considered alternative: it adds an explicit patent grant and is friendlier to corporate contributors, but the app has no patent exposure to protect against and the project has no corporate-contributor pipeline yet — MIT is the simpler, maximally permissive option and is what the frontend and Rust manifests now declare (`license: "MIT"` in `package.json` and `Cargo.toml`). License changes after external contributions accumulate require contributor consent, so the choice is effectively locked once strangers contribute; the Contribution Policy (ADR-0010) states that any future contribution is licensed under MIT.
