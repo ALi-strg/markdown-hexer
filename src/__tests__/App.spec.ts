@@ -2585,7 +2585,7 @@ describe("App shell", () => {
     const wrapper = mount(App);
     await flushPromises();
     await wrapper.find('[data-testid="toolbar-theme"]').setValue("light");
-    expect(localStorage.getItem("markdownmagic:settings")).toBe(
+    expect(localStorage.getItem("markdownhexer:settings")).toBe(
       JSON.stringify({ theme: "light" }),
     );
   });
@@ -2639,7 +2639,7 @@ describe("App shell", () => {
 
     await wrapper.find('[data-testid="toolbar-font"]').setValue("mono");
 
-    expect(localStorage.getItem("markdownmagic:settings")).toBe(
+    expect(localStorage.getItem("markdownhexer:settings")).toBe(
       JSON.stringify({ font: "mono" }),
     );
   });
@@ -2693,7 +2693,7 @@ describe("App shell", () => {
 
     await wrapper.find('[data-testid="toolbar-size"]').setValue("small");
 
-    expect(localStorage.getItem("markdownmagic:settings")).toBe(
+    expect(localStorage.getItem("markdownhexer:settings")).toBe(
       JSON.stringify({ textSize: "small" }),
     );
   });

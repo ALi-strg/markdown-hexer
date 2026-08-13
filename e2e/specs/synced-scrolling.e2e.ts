@@ -1,6 +1,6 @@
 import { typeInEditor } from "../helpers/editor";
 
-describe("Markdown-Magic synced scrolling", () => {
+describe("Markdown Hexer synced scrolling", () => {
   async function typeTallDocument() {
     const lines: string[] = [];
     for (let i = 1; i <= 40; i++) {

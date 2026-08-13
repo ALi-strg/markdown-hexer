@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 export type ExternalChoice = "reload" | "overwrite" | "cancel";
 
-const E2E_EXTERNAL_CHOICE_KEY = "markdownmagic:e2e:external-choice";
+const E2E_EXTERNAL_CHOICE_KEY = "markdownhexer:e2e:external-choice";
 
 const CHOICES: ExternalChoice[] = ["reload", "overwrite", "cancel"];
 

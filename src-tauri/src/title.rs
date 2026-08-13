@@ -1,10 +1,10 @@
 /// Formats the native OS title bar text for a Document.
 ///
-/// `format_window_title("Untitled.md", false)` → `Untitled.md — Markdown-Magic`
-/// `format_window_title("notes.md", true)`  → `notes.md * — Markdown-Magic`
+/// `format_window_title("Untitled.md", false)` → `Untitled.md — Markdown Hexer`
+/// `format_window_title("notes.md", true)`  → `notes.md * — Markdown Hexer`
 pub fn format_window_title(filename: &str, dirty: bool) -> String {
     let dirty_marker = if dirty { " *" } else { "" };
-    format!("{filename}{dirty_marker} — Markdown-Magic")
+    format!("{filename}{dirty_marker} — Markdown Hexer")
 }
 
 /// Linux-only Wayland workaround: the compositor-drawn titlebar is the GTK
@@ -46,7 +46,7 @@ mod tests {
     fn clean_document_title_has_no_asterisk() {
         assert_eq!(
             format_window_title("Untitled.md", false),
-            "Untitled.md — Markdown-Magic"
+            "Untitled.md — Markdown Hexer"
         );
     }
 
@@ -54,7 +54,7 @@ mod tests {
     fn dirty_document_title_has_asterisk_before_separator() {
         assert_eq!(
             format_window_title("notes.md", true),
-            "notes.md * — Markdown-Magic"
+            "notes.md * — Markdown Hexer"
         );
     }
 }

@@ -6,10 +6,10 @@ import fs from "node:fs";
 // window title follows the Active Tab, a + creates a numbered Untitled Tab,
 // and an OS file-open of a new path adds a Tab while a repeat open of an
 // already-open path focuses the existing Tab (one Tab per path).
-describe("Markdown-Magic Tab Bar", () => {
+describe("Markdown Hexer Tab Bar", () => {
   const firstPath = path.join(
     os.tmpdir(),
-    `markdownmagic-e2e-tabs-a-${Date.now()}.md`,
+    `markdownhexer-e2e-tabs-a-${Date.now()}.md`,
   );
   const firstFilename = path.basename(firstPath);
 
@@ -47,7 +47,7 @@ describe("Markdown-Magic Tab Bar", () => {
 
     await browser.waitUntil(
       async () =>
-        (await browser.getTitle()) === "Untitled 2.md — Markdown-Magic",
+        (await browser.getTitle()) === "Untitled 2.md — Markdown Hexer",
       { timeout: 10000, timeoutMsg: "+ did not create and activate Untitled 2.md" },
     );
 
@@ -61,7 +61,7 @@ describe("Markdown-Magic Tab Bar", () => {
 
     await browser.waitUntil(
       async () =>
-        (await browser.getTitle()) === `${firstFilename} — Markdown-Magic`,
+        (await browser.getTitle()) === `${firstFilename} — Markdown Hexer`,
       { timeout: 10000, timeoutMsg: "file-open did not add a Tab" },
     );
 
@@ -75,7 +75,7 @@ describe("Markdown-Magic Tab Bar", () => {
 
     const tabs = await $$('[data-testid="tab"]');
     expect(tabs.length).toBe(3);
-    expect(await browser.getTitle()).toBe(`${firstFilename} — Markdown-Magic`);
+    expect(await browser.getTitle()).toBe(`${firstFilename} — Markdown Hexer`);
   });
 
   it("switches Tabs by click, following the window title", async () => {
@@ -84,7 +84,7 @@ describe("Markdown-Magic Tab Bar", () => {
 
     await browser.waitUntil(
       async () =>
-        (await browser.getTitle()) === "Untitled.md — Markdown-Magic",
+        (await browser.getTitle()) === "Untitled.md — Markdown Hexer",
       { timeout: 10000, timeoutMsg: "clicking a Tab did not activate it" },
     );
   });
@@ -98,14 +98,14 @@ describe("Markdown-Magic Tab Bar", () => {
 
     await browser.waitUntil(
       async () =>
-        (await browser.getTitle()) === "Untitled 2.md — Markdown-Magic",
+        (await browser.getTitle()) === "Untitled 2.md — Markdown Hexer",
       { timeout: 10000, timeoutMsg: "clicking the middle Tab did not activate it" },
     );
 
     await $$('[data-testid="tab-close"]')[1].click();
 
     await browser.waitUntil(
-      async () => (await browser.getTitle()) === `${firstFilename} — Markdown-Magic`,
+      async () => (await browser.getTitle()) === `${firstFilename} — Markdown Hexer`,
       { timeout: 10000, timeoutMsg: "closing the Active Tab did not activate its right neighbour" },
     );
     expect(await $$('[data-testid="tab"]')).toHaveLength(2);

@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
-  <id>com.markdownmagic.editor</id>
-  <launchable type="desktop-id">com.markdownmagic.editor.desktop</launchable>
-  <name>Markdown-Magic</name>
+  <id>com.markdownhexer.editor</id>
+  <launchable type="desktop-id">com.markdownhexer.editor.desktop</launchable>
+  <name>Markdown Hexer</name>
   <summary>A distraction-free Markdown editor with a live Preview Pane</summary>
   <developer id="io.github.ALi-strg">
     <name>ALi-strg</name>
@@ -20,7 +20,7 @@
   <content_rating type="oars-1.1" />
   <description>
     <p>
-      Markdown-Magic is a cross-platform, distraction-free Markdown editor for
+      Markdown Hexer is a cross-platform, distraction-free Markdown editor for
       desktop. It pairs a CodeMirror source pane with a live rendered Preview
       Pane, native Open/Save dialogs, and full keyboard-driven editing.
     </p>

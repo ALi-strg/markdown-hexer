@@ -14,14 +14,14 @@ import { spawnSync } from "node:child_process";
 // shared tauri-driver, failing every remaining spec). On platforms with
 // working native single-instance forwarding, the test spawns a real second
 // process to validate the no-second-window behavior end to end.
-describe("Markdown-Magic file association & single-instance open", () => {
+describe("Markdown Hexer file association & single-instance open", () => {
   const firstPath = path.join(
     os.tmpdir(),
-    `markdownmagic-e2e-open-first-${Date.now()}.md`,
+    `markdownhexer-e2e-open-first-${Date.now()}.md`,
   );
   const secondPath = path.join(
     os.tmpdir(),
-    `markdownmagic-e2e-open-second-${Date.now()}.md`,
+    `markdownhexer-e2e-open-second-${Date.now()}.md`,
   );
   const firstFilename = path.basename(firstPath);
   const secondFilename = path.basename(secondPath);
@@ -66,7 +66,7 @@ describe("Markdown-Magic file association & single-instance open", () => {
 
     await browser.waitUntil(
       async () =>
-        (await browser.getTitle()) === `${firstFilename} — Markdown-Magic`,
+        (await browser.getTitle()) === `${firstFilename} — Markdown Hexer`,
       { timeout: 10000, timeoutMsg: "file-open did not update the title" },
     );
 
@@ -92,7 +92,7 @@ describe("Markdown-Magic file association & single-instance open", () => {
     await typeText("# Local edits");
     await browser.waitUntil(
       async () =>
-        (await browser.getTitle()) === `${firstFilename} * — Markdown-Magic`,
+        (await browser.getTitle()) === `${firstFilename} * — Markdown Hexer`,
       { timeout: 10000, timeoutMsg: "asterisk did not appear after editing" },
     );
 
@@ -100,7 +100,7 @@ describe("Markdown-Magic file association & single-instance open", () => {
 
     await browser.waitUntil(
       async () =>
-        (await browser.getTitle()) === `${secondFilename} — Markdown-Magic`,
+        (await browser.getTitle()) === `${secondFilename} — Markdown Hexer`,
       { timeout: 10000, timeoutMsg: "forwarded file did not open a new Tab" },
     );
 
@@ -139,7 +139,7 @@ describe("Markdown-Magic file association & single-instance open", () => {
 
     await browser.waitUntil(
       async () =>
-        (await browser.getTitle()) === `${secondFilename} — Markdown-Magic`,
+        (await browser.getTitle()) === `${secondFilename} — Markdown Hexer`,
       {
         timeout: 15000,
         timeoutMsg: "second launch did not focus in the running window",

@@ -7,18 +7,18 @@ import { typeInEditor } from "../helpers/editor";
 // Undo/Redo are driven through the same flows as the shortcuts. Native dialogs
 // are stubbed via the VITE_E2E localStorage seam; the writes/reads still run
 // through the real save_document/open_document commands.
-describe("Markdown-Magic Document Controls & Undo/Redo", () => {
+describe("Markdown Hexer Document Controls & Undo/Redo", () => {
   const savePath = path.join(
     os.tmpdir(),
-    `markdownmagic-e2e-doc-controls-${Date.now()}.md`,
+    `markdownhexer-e2e-doc-controls-${Date.now()}.md`,
   );
   const saveAsPath = path.join(
     os.tmpdir(),
-    `markdownmagic-e2e-doc-controls-as-${Date.now()}.md`,
+    `markdownhexer-e2e-doc-controls-as-${Date.now()}.md`,
   );
   const openPath = path.join(
     os.tmpdir(),
-    `markdownmagic-e2e-doc-controls-open-${Date.now()}.md`,
+    `markdownhexer-e2e-doc-controls-open-${Date.now()}.md`,
   );
   const saveFilename = path.basename(savePath);
 
@@ -38,13 +38,13 @@ describe("Markdown-Magic Document Controls & Undo/Redo", () => {
 
   async function stubSaveDialog(p: string) {
     await browser.execute((stubPath) => {
-      localStorage.setItem("markdownmagic:e2e:save-path", stubPath);
+      localStorage.setItem("markdownhexer:e2e:save-path", stubPath);
     }, p);
   }
 
   async function stubOpenDialog() {
     await browser.execute((p) => {
-      localStorage.setItem("markdownmagic:e2e:open-path", p);
+      localStorage.setItem("markdownhexer:e2e:open-path", p);
     }, openPath);
   }
 
@@ -74,7 +74,7 @@ describe("Markdown-Magic Document Controls & Undo/Redo", () => {
     await (await $('[data-testid="toolbar-new"]')).click();
     await browser.waitUntil(
       async () =>
-        (await browser.getTitle()) === "Untitled 2.md — Markdown-Magic",
+        (await browser.getTitle()) === "Untitled 2.md — Markdown Hexer",
       {
         timeout: 10000,
         timeoutMsg: "New button did not create an Untitled Tab",
@@ -92,7 +92,7 @@ describe("Markdown-Magic Document Controls & Undo/Redo", () => {
     await typeInEditor("# Saved via button");
     await browser.waitUntil(
       async () =>
-        (await browser.getTitle()) === "Untitled 2.md * — Markdown-Magic",
+        (await browser.getTitle()) === "Untitled 2.md * — Markdown Hexer",
       { timeout: 10000, timeoutMsg: "asterisk did not appear after typing" },
     );
 
@@ -101,7 +101,7 @@ describe("Markdown-Magic Document Controls & Undo/Redo", () => {
 
     await browser.waitUntil(
       async () =>
-        (await browser.getTitle()) === `${saveFilename} — Markdown-Magic`,
+        (await browser.getTitle()) === `${saveFilename} — Markdown Hexer`,
       {
         timeout: 10000,
         timeoutMsg: "Save button did not write the Document",
@@ -117,7 +117,7 @@ describe("Markdown-Magic Document Controls & Undo/Redo", () => {
 
     await browser.waitUntil(
       async () =>
-        (await browser.getTitle()) === `${saveAsFilename} — Markdown-Magic`,
+        (await browser.getTitle()) === `${saveAsFilename} — Markdown Hexer`,
       {
         timeout: 10000,
         timeoutMsg: "Save As button did not write to the new path",
@@ -230,7 +230,7 @@ describe("Markdown-Magic Document Controls & Undo/Redo", () => {
 
     await browser.waitUntil(
       async () =>
-        (await browser.getTitle()) === `${openFilename} — Markdown-Magic`,
+        (await browser.getTitle()) === `${openFilename} — Markdown Hexer`,
       {
         timeout: 10000,
         timeoutMsg: "Open button did not load the picked file",

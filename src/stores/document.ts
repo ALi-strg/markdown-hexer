@@ -9,7 +9,7 @@ import type { MatchRange } from "../lib/findReplace";
 import { useUiStore, type LayoutMode } from "./ui";
 
 const UNTITLED_FILENAME = "Untitled.md";
-const APP_TITLE_SUFFIX = " — Markdown-Magic";
+const APP_TITLE_SUFFIX = " — Markdown Hexer";
 const SAVE_FAILED_MESSAGE = "Save failed — your changes are not on disk";
 const OPEN_FAILED_MESSAGE = "Open failed — the file could not be read";
 const SAVE_AS_COLLISION_MESSAGE =

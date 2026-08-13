@@ -3,7 +3,7 @@
 // matchMedia, so `data-theme` always carries a Palette — never "system". The
 // E2E switches themes and asserts `data-theme` plus the pane styling actually
 // change.
-describe("Markdown-Magic theme", () => {
+describe("Markdown Hexer theme", () => {
   const THEME_VALUES: Record<string, string> = {
     System: "system",
     Light: "light",
@@ -29,7 +29,7 @@ describe("Markdown-Magic theme", () => {
 
   async function storedTheme(): Promise<string | null> {
     return browser.execute(() => {
-      const raw = localStorage.getItem("markdownmagic:settings");
+      const raw = localStorage.getItem("markdownhexer:settings");
       if (raw === null) {
         return null;
       }

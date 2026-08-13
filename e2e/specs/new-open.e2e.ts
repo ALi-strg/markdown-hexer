@@ -7,8 +7,8 @@ import fs from "node:fs";
 // via localStorage. The read still runs through the real open_document command.
 // New and Open add Tabs: they never replace a Document and never run the
 // Confirm-Discard Guard.
-describe("Markdown-Magic New & Open flows", () => {
-  const openPath = path.join(os.tmpdir(), `markdownmagic-e2e-open-${Date.now()}.md`);
+describe("Markdown Hexer New & Open flows", () => {
+  const openPath = path.join(os.tmpdir(), `markdownhexer-e2e-open-${Date.now()}.md`);
   const openFilename = path.basename(openPath);
 
   before(() => {
@@ -25,7 +25,7 @@ describe("Markdown-Magic New & Open flows", () => {
 
   async function stubOpenDialog() {
     await browser.execute((p) => {
-      localStorage.setItem("markdownmagic:e2e:open-path", p);
+      localStorage.setItem("markdownhexer:e2e:open-path", p);
     }, openPath);
   }
 
@@ -43,7 +43,7 @@ describe("Markdown-Magic New & Open flows", () => {
     await typeText("# Draft");
     await browser.waitUntil(
       async () =>
-        (await browser.getTitle()) === "Untitled.md * — Markdown-Magic",
+        (await browser.getTitle()) === "Untitled.md * — Markdown Hexer",
       { timeout: 10000, timeoutMsg: "asterisk did not appear after typing" },
     );
 
@@ -52,7 +52,7 @@ describe("Markdown-Magic New & Open flows", () => {
 
     await browser.waitUntil(
       async () =>
-        (await browser.getTitle()) === "Untitled 2.md — Markdown-Magic",
+        (await browser.getTitle()) === "Untitled 2.md — Markdown Hexer",
       { timeout: 10000, timeoutMsg: "New did not create Untitled 2.md" },
     );
 
@@ -79,7 +79,7 @@ describe("Markdown-Magic New & Open flows", () => {
 
     await browser.waitUntil(
       async () =>
-        (await browser.getTitle()) === `${openFilename} — Markdown-Magic`,
+        (await browser.getTitle()) === `${openFilename} — Markdown Hexer`,
       {
         timeout: 10000,
         timeoutMsg: "title did not update to the opened filename",

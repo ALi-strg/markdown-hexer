@@ -54,7 +54,7 @@ export const FONT_LABELS: Record<Font, string> = {
   mono: "Mono",
 };
 
-const SETTINGS_STORAGE_KEY = "markdownmagic:settings";
+const SETTINGS_STORAGE_KEY = "markdownhexer:settings";
 
 function isTheme(value: unknown): value is Theme {
   return typeof value === "string" && (THEMES as string[]).includes(value);

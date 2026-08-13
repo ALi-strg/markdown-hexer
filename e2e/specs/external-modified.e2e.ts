@@ -9,10 +9,10 @@ import { typeInEditor } from "../helpers/editor";
 // rewritten on disk by the test, and the app compares it through the real
 // inspect_document command. The check is triggered through the __triggerExternalCheck
 // seam (real window-focus events are not reliably observable under the driver).
-describe("Markdown-Magic Externally-Modified detection", () => {
+describe("Markdown Hexer Externally-Modified detection", () => {
   const externalPath = path.join(
     os.tmpdir(),
-    `markdownmagic-e2e-external-${Date.now()}.md`,
+    `markdownhexer-e2e-external-${Date.now()}.md`,
   );
   const externalFilename = path.basename(externalPath);
 
@@ -30,13 +30,13 @@ describe("Markdown-Magic Externally-Modified detection", () => {
 
   async function stubOpenDialog() {
     await browser.execute((p) => {
-      localStorage.setItem("markdownmagic:e2e:open-path", p);
+      localStorage.setItem("markdownhexer:e2e:open-path", p);
     }, externalPath);
   }
 
   async function stubExternalChoice(choice: string) {
     await browser.execute((c) => {
-      localStorage.setItem("markdownmagic:e2e:external-choice", c);
+      localStorage.setItem("markdownhexer:e2e:external-choice", c);
     }, choice);
   }
 
@@ -72,7 +72,7 @@ describe("Markdown-Magic Externally-Modified detection", () => {
 
     await browser.waitUntil(
       async () =>
-        (await browser.getTitle()) === `${externalFilename} — Markdown-Magic`,
+        (await browser.getTitle()) === `${externalFilename} — Markdown Hexer`,
       { timeout: 10000, timeoutMsg: "Open did not load the external file" },
     );
     await waitForPreviewToContain("Original");
@@ -83,7 +83,7 @@ describe("Markdown-Magic Externally-Modified detection", () => {
     await waitForPreviewToContain("Changed on disk");
     await browser.waitUntil(
       async () =>
-        (await browser.getTitle()) === `${externalFilename} — Markdown-Magic`,
+        (await browser.getTitle()) === `${externalFilename} — Markdown Hexer`,
       {
         timeout: 10000,
         timeoutMsg: "silent reload left the Document Dirty or changed the title",
@@ -100,7 +100,7 @@ describe("Markdown-Magic Externally-Modified detection", () => {
     await typeText("\n\n# Local edits");
     await browser.waitUntil(
       async () =>
-        (await browser.getTitle()) === `${externalFilename} * — Markdown-Magic`,
+        (await browser.getTitle()) === `${externalFilename} * — Markdown Hexer`,
       { timeout: 10000, timeoutMsg: "asterisk did not appear after editing" },
     );
 
@@ -110,7 +110,7 @@ describe("Markdown-Magic Externally-Modified detection", () => {
 
     await browser.waitUntil(
       async () =>
-        (await browser.getTitle()) === `${externalFilename} — Markdown-Magic`,
+        (await browser.getTitle()) === `${externalFilename} — Markdown Hexer`,
       {
         timeout: 10000,
         timeoutMsg: "asterisk did not clear after Reload",
@@ -123,7 +123,7 @@ describe("Markdown-Magic Externally-Modified detection", () => {
     await typeText("\n\n# Local keep");
     await browser.waitUntil(
       async () =>
-        (await browser.getTitle()) === `${externalFilename} * — Markdown-Magic`,
+        (await browser.getTitle()) === `${externalFilename} * — Markdown Hexer`,
       { timeout: 10000, timeoutMsg: "asterisk did not appear after editing" },
     );
     const localContent = fs.readFileSync(externalPath, "utf8") + "\n\n# Local keep";
@@ -143,7 +143,7 @@ describe("Markdown-Magic Externally-Modified detection", () => {
     );
     await browser.waitUntil(
       async () =>
-        (await browser.getTitle()) === `${externalFilename} * — Markdown-Magic`,
+        (await browser.getTitle()) === `${externalFilename} * — Markdown Hexer`,
       {
         timeout: 10000,
         timeoutMsg: "Document should stay Dirty until saved after Overwrite",
@@ -153,7 +153,7 @@ describe("Markdown-Magic Externally-Modified detection", () => {
     await browser.keys(["Control", "s"]);
     await browser.waitUntil(
       async () =>
-        (await browser.getTitle()) === `${externalFilename} — Markdown-Magic`,
+        (await browser.getTitle()) === `${externalFilename} — Markdown Hexer`,
       {
         timeout: 10000,
         timeoutMsg: "Save after Overwrite did not clear the asterisk",
@@ -166,7 +166,7 @@ describe("Markdown-Magic Externally-Modified detection", () => {
     await typeText("\n\n# Keep me");
     await browser.waitUntil(
       async () =>
-        (await browser.getTitle()) === `${externalFilename} * — Markdown-Magic`,
+        (await browser.getTitle()) === `${externalFilename} * — Markdown Hexer`,
       { timeout: 10000, timeoutMsg: "asterisk did not appear after editing" },
     );
 
@@ -177,7 +177,7 @@ describe("Markdown-Magic Externally-Modified detection", () => {
     await browser.pause(500);
     await browser.waitUntil(
       async () =>
-        (await browser.getTitle()) === `${externalFilename} * — Markdown-Magic`,
+        (await browser.getTitle()) === `${externalFilename} * — Markdown Hexer`,
       {
         timeout: 10000,
         timeoutMsg: "Cancel should keep the Document Dirty",

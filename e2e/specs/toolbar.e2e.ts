@@ -5,10 +5,10 @@ import fs from "node:fs";
 // Formatting is driven through real CodeMirror transactions, so the E2E
 // exercises the full path: toolbar clicks and Cmd/Ctrl shortcuts apply through
 // the editor, and Cmd/Ctrl+Z reverts them via the normal undo history.
-describe("Markdown-Magic toolbar formatting & shortcuts", () => {
+describe("Markdown Hexer toolbar formatting & shortcuts", () => {
   const openPath = path.join(
     os.tmpdir(),
-    `markdownmagic-e2e-toolbar-${Date.now()}.md`,
+    `markdownhexer-e2e-toolbar-${Date.now()}.md`,
   );
   const openFilename = path.basename(openPath);
 
@@ -26,7 +26,7 @@ describe("Markdown-Magic toolbar formatting & shortcuts", () => {
 
   async function stubOpenDialog() {
     await browser.execute((p) => {
-      localStorage.setItem("markdownmagic:e2e:open-path", p);
+      localStorage.setItem("markdownhexer:e2e:open-path", p);
     }, openPath);
   }
 
@@ -61,7 +61,7 @@ describe("Markdown-Magic toolbar formatting & shortcuts", () => {
     await browser.keys(["Control", "o"]);
     await browser.waitUntil(
       async () =>
-        (await browser.getTitle()) === `${openFilename} — Markdown-Magic`,
+        (await browser.getTitle()) === `${openFilename} — Markdown Hexer`,
       { timeout: 10000, timeoutMsg: "Open did not load the file" },
     );
 

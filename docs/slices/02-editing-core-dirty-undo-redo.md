@@ -9,7 +9,7 @@ docs/PRD.md — User stories 2, 19, 24, 38; Implementation Decisions (State mana
 
 ## What to build
 
-CodeMirror 6 becomes the authoritative editor. The `document` store mirrors the text via an `updateListener` and is never written back into the editor (ADR-0001) — no feedback loops. Typing in the Editor Pane sets the Document Dirty; the window title inserts `*` after the filename (e.g. `Untitled.md * — Markdown-Magic`) and removes it when the Document is clean. Cmd/Ctrl+Z and Cmd/Ctrl+Shift+Z provide undo/redo through CodeMirror's native history, so any edit can be reversed.
+CodeMirror 6 becomes the authoritative editor. The `document` store mirrors the text via an `updateListener` and is never written back into the editor (ADR-0001) — no feedback loops. Typing in the Editor Pane sets the Document Dirty; the window title inserts `*` after the filename (e.g. `Untitled.md * — Markdown Hexer`) and removes it when the Document is clean. Cmd/Ctrl+Z and Cmd/Ctrl+Shift+Z provide undo/redo through CodeMirror's native history, so any edit can be reversed.
 
 The Dirty asterisk clearing on Save belongs to Slice 07; here the Dirty state and title update are testable through the store and E2E.
 

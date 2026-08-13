@@ -128,7 +128,7 @@ describe("workspace store model", () => {
     expect(document.content).toBe(tab.content);
     expect(document.canonicalPath).toBe("C:\\notes\\b.md");
     expect(document.filename).toBe("b.md");
-    expect(document.title).toBe("b.md — Markdown-Magic");
+    expect(document.title).toBe("b.md — Markdown Hexer");
     expect(document.dirty).toBe(false);
   });
 
@@ -585,7 +585,7 @@ describe("workspace store model", () => {
     });
     expect(document.tabs[0].canonicalPath).toBe("C:\\notes\\free.md");
     expect(document.filename).toBe("free.md");
-    expect(document.title).toBe("free.md — Markdown-Magic");
+    expect(document.title).toBe("free.md — Markdown Hexer");
     expect(document.tabs[0].untitledNumber).toBeNull();
   });
 

@@ -7,14 +7,14 @@ import fs from "node:fs";
 // build) with a real temp path. The seam runs the same openPath code path a
 // real drop uses: no Confirm-Discard Guard, an add-or-focus Tab, and the
 // auto-chosen Preview Only layout for a new Tab.
-describe("Markdown-Magic drag-and-drop open", () => {
+describe("Markdown Hexer drag-and-drop open", () => {
   const dropAPath = path.join(
     os.tmpdir(),
-    `markdownmagic-e2e-drop-a-${Date.now()}.md`,
+    `markdownhexer-e2e-drop-a-${Date.now()}.md`,
   );
   const dropBPath = path.join(
     os.tmpdir(),
-    `markdownmagic-e2e-drop-b-${Date.now()}.md`,
+    `markdownhexer-e2e-drop-b-${Date.now()}.md`,
   );
   const dropAFilename = path.basename(dropAPath);
   const dropBFilename = path.basename(dropBPath);
@@ -58,7 +58,7 @@ describe("Markdown-Magic drag-and-drop open", () => {
 
     await browser.waitUntil(
       async () =>
-        (await browser.getTitle()) === `${dropAFilename} — Markdown-Magic`,
+        (await browser.getTitle()) === `${dropAFilename} — Markdown Hexer`,
       { timeout: 10000, timeoutMsg: "drop did not update the title" },
     );
 
@@ -90,7 +90,7 @@ describe("Markdown-Magic drag-and-drop open", () => {
     await typeText("# Local edits");
     await browser.waitUntil(
       async () =>
-        (await browser.getTitle()) === `${dropAFilename} * — Markdown-Magic`,
+        (await browser.getTitle()) === `${dropAFilename} * — Markdown Hexer`,
       { timeout: 10000, timeoutMsg: "asterisk did not appear after editing" },
     );
 
@@ -98,7 +98,7 @@ describe("Markdown-Magic drag-and-drop open", () => {
 
     await browser.waitUntil(
       async () =>
-        (await browser.getTitle()) === `${dropBFilename} — Markdown-Magic`,
+        (await browser.getTitle()) === `${dropBFilename} — Markdown Hexer`,
       { timeout: 10000, timeoutMsg: "drop did not open a new Tab" },
     );
 
@@ -115,6 +115,6 @@ describe("Markdown-Magic drag-and-drop open", () => {
 
     const tabs = await $$('[data-testid="tab"]');
     expect(tabs.length).toBe(2);
-    expect(await browser.getTitle()).toBe(`${dropBFilename} — Markdown-Magic`);
+    expect(await browser.getTitle()).toBe(`${dropBFilename} — Markdown Hexer`);
   });
 });

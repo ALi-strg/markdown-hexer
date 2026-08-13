@@ -1,6 +1,6 @@
-# Contributing to Markdown-Magic
+# Contributing to Markdown Hexer
 
-Thanks for your interest. Markdown-Magic is in active development, so this page tells you what's welcome right now and what isn't — please read it before opening issues or pull requests.
+Thanks for your interest. Markdown Hexer is in active development, so this page tells you what's welcome right now and what isn't — please read it before opening issues or pull requests.
 
 ## Reporting bugs
 
@@ -23,7 +23,7 @@ If you're tempted to send a PR with a fix, please file a bug report or a detaile
 
 ## The license
 
-Markdown-Magic is released under the MIT License. If you ever do contribute code (through any channel), it's understood that your contribution is licensed under MIT as well, matching the project.
+Markdown Hexer is released under the MIT License. If you ever do contribute code (through any channel), it's understood that your contribution is licensed under MIT as well, matching the project.
 
 ## Thank you
 

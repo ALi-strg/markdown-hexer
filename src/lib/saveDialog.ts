@@ -4,7 +4,7 @@ export interface SaveDialogOptions {
   defaultPath?: string;
 }
 
-const E2E_SAVE_PATH_KEY = "markdownmagic:e2e:save-path";
+const E2E_SAVE_PATH_KEY = "markdownhexer:e2e:save-path";
 
 /// Opens the native Save As dialog.
 ///

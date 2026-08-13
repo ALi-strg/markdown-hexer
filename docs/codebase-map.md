@@ -1,4 +1,4 @@
-# Codebase Map — markdown-editor (Markdown-Magic)
+# Codebase Map — markdown-editor (Markdown Hexer)
 
 > Scope: whole repo
 > Last updated: 2026-08-10
@@ -17,7 +17,7 @@ A cross-platform Tauri 2 desktop app: a distraction-free Markdown editor with a 
 | Package manager | npm |
 | Build | `vue-tsc --noEmit && vite build`; Rust via `tauri build` |
 | Test | Vitest (jsdom) + `cargo test` + WebdriverIO/tauri-driver |
-| Product name | Markdown-Magic (identifier `com.markdownmagic.editor`); repo slug `markdown-editor` |
+| Product name | Markdown Hexer (identifier `com.markdownhexer.editor`); repo slug `markdown-editor` |
 
 ## Commands
 ```
@@ -64,7 +64,7 @@ npm run tauri build -- --debug --no-bundle   # what test:e2e uses to build the a
 **IPC surface** (frontend `invoke` ↔ Rust commands, all in `src-tauri/src/lib.rs`):
 | Command | Rust fn | Purpose |
 |---|---|---|
-| `set_document_title` | `set_document_title` | OS title `<filename> [*] — Markdown-Magic` (`title.rs`) |
+| `set_document_title` | `set_document_title` | OS title `<filename> [*] — Markdown Hexer` (`title.rs`) |
 | `save_document` | `save_document` | Write content as clean UTF-8 (`save.rs`) |
 | `open_document` | `open_document` | Read UTF-8, strip leading BOM (`open.rs` → `encoding.rs`) |
 | `inspect_document` | `inspect_document` | Content+mtime for Externally-Modified detection (`inspect.rs`) |
@@ -95,7 +95,7 @@ npm run tauri build -- --debug --no-bundle   # what test:e2e uses to build the a
 
 **Layout/UI** (`src/stores/ui.ts`): `layoutMode` is a per-Tab record field — chosen at Tab creation (New → Split View, Open → Preview Only) — surfaced to the window as a computed over the Active Tab; the Layout Switcher and `Ctrl/Cmd+Shift+P` mutate only the Active Tab's mode. `dividerPosition` (0..1, clamped 0.15–0.85) stays app-wide (persisted only in-session), plus `findOverlayOpen`, `toast`, `lastDirectory`. Modes never persist across launches.
 
-**Settings** (`src/stores/settings.ts`): Theme (six states — `system` default + Palettes `light`/`dark`/`high-contrast`/`nord`/`terminal-green`; System resolves to Light/Dark via `matchMedia`, so `data-theme` always carries a Palette), font (`default`/`serif`/`sans`/`mono`), and text size (`small`/`medium`/`large`, medium default); persisted in localStorage under `markdownmagic:settings`; applied via `data-theme`/`data-font`/`data-text-size` attributes on the app root.
+**Settings** (`src/stores/settings.ts`): Theme (six states — `system` default + Palettes `light`/`dark`/`high-contrast`/`nord`/`terminal-green`; System resolves to Light/Dark via `matchMedia`, so `data-theme` always carries a Palette), font (`default`/`serif`/`sans`/`mono`), and text size (`small`/`medium`/`large`, medium default); persisted in localStorage under `markdownhexer:settings`; applied via `data-theme`/`data-font`/`data-text-size` attributes on the app root.
 
 **Asset scope protocol** (`asset.rs`): `DocumentScope` state holds the current path; `asset://` requests must be absolute, canonicalized, and inside the Document's directory (403 otherwise, 404 if missing). MIME sniffed.
 
@@ -136,7 +136,7 @@ npm run tauri build -- --debug --no-bundle   # what test:e2e uses to build the a
 ## Gotchas & Non-obvious Facts
 - **Editor is authoritative**: after New/Open/external reload, `App.vue` must call `editorPane.replaceContent(...)`; `replaceContent` rebuilds CM state and **clears undo history**.
 - **Prism colors are per-Palette CSS variables**: `prism-theme.css` is one static token stylesheet reading `--syntax-*` vars; each Palette block in `styles.css` declares them (11 vars: comment/punctuation/keyword/literal/property/tag/string/function/class/atrule/url). A new Palette that skips them renders code blocks in the inherited palette's colors.
-- **E2E seam**: `VITE_E2E=1` (set by `wdio.conf.ts`) replaces native dialogs with localStorage stubs (`markdownmagic:e2e:guard-choice`, `:external-choice`, `:open-path`, `:save-path`) and installs global triggers (`__triggerWindowClose`, `__triggerExternalCheck`, `__triggerDrop`, `__triggerFileOpen`) in `App.vue` onMounted. The close-guard spec relies on `__triggerWindowClose`; the app does **not** actually destroy on close when `VITE_E2E=1`.
+- **E2E seam**: `VITE_E2E=1` (set by `wdio.conf.ts`) replaces native dialogs with localStorage stubs (`markdownhexer:e2e:guard-choice`, `:external-choice`, `:open-path`, `:save-path`) and installs global triggers (`__triggerWindowClose`, `__triggerExternalCheck`, `__triggerDrop`, `__triggerFileOpen`) in `App.vue` onMounted. The close-guard spec relies on `__triggerWindowClose`; the app does **not** actually destroy on close when `VITE_E2E=1`.
 - **Windows E2E**: `tauri-driver` is spawned via a `cmd.exe` shell wrapper that orphidifies the real process; `wdio.conf.ts` force-kills the tree with `taskkill /IM tauri-driver.exe /T /F`.
 - **Ambient `CI` env var breaks `tauri build`**: tauri CLI maps `CI` onto its `--ci` flag (accepts true/false), so a bare `CI=1` in the shell fails the e2e build before compilation ("invalid value '1' for '--ci'"). `wdio.conf.ts` onPrepare spawns the build with `env: { ...process.env, CI: "false" }`; if you build manually for e2e, prefix with `CI=false`.
 - **Find/replace never edits hidden text**: replacing in Preview Only first switches to Split View (`ui.showSourceForReplace()`); `dispatchSelectionToEditor`/`syncSelectionToEditor` mirror the tracked match into the editor.

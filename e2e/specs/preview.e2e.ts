@@ -1,4 +1,4 @@
-describe("Markdown-Magic live preview", () => {
+describe("Markdown Hexer live preview", () => {
   it("renders markdown in the Preview Pane as the user types", async () => {
     await browser.pause(1000);
 

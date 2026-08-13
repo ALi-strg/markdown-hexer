@@ -1,8 +1,8 @@
 [package]
 name = "markdown-editor"
 version = "0.1.0"
-description = "Markdown-Magic — a distraction-free native Markdown editor"
-authors = ["Markdown-Magic"]
+description = "Markdown Hexer — a distraction-free native Markdown editor"
+authors = ["Markdown Hexer"]
 license = "MIT"
 edition = "2021"
 

@@ -1,6 +1,6 @@
-# Markdown-Magic
+# Markdown Hexer
 
-> **Early development — expect breaking changes.** Markdown-Magic is actively developed and changes fast: UI, behavior, and the document model can shift between releases without notice. Bug reports are welcome regardless — see [Reporting bugs](#reporting-bugs).
+> **Early development — expect breaking changes.** Markdown Hexer is actively developed and changes fast: UI, behavior, and the document model can shift between releases without notice. Bug reports are welcome regardless — see [Reporting bugs](#reporting-bugs).
 
 A cross-platform, distraction-free Markdown editor built with Tauri 2, Vue 3, and CodeMirror 6. Multiple Documents in Tabs, a live-rendered Preview Pane, and native file-system integration.
 

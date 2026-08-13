@@ -1,8 +1,8 @@
-describe("Markdown-Magic editing core", () => {
+describe("Markdown Hexer editing core", () => {
   it("marks the Document Dirty while typing and reverts on undo", async () => {
     await browser.pause(1000);
 
-    expect(await browser.getTitle()).toBe("Untitled.md — Markdown-Magic");
+    expect(await browser.getTitle()).toBe("Untitled.md — Markdown Hexer");
 
     const editorContent = await $(
       '[data-testid="editor-pane"] .cm-content',
@@ -13,7 +13,7 @@ describe("Markdown-Magic editing core", () => {
 
     await browser.waitUntil(
       async () =>
-        (await browser.getTitle()) === "Untitled.md * — Markdown-Magic",
+        (await browser.getTitle()) === "Untitled.md * — Markdown Hexer",
       { timeout: 10000, timeoutMsg: "asterisk did not appear in title" },
     );
 
@@ -26,7 +26,7 @@ describe("Markdown-Magic editing core", () => {
 
     await browser.waitUntil(
       async () =>
-        (await browser.getTitle()) === "Untitled.md — Markdown-Magic",
+        (await browser.getTitle()) === "Untitled.md — Markdown Hexer",
       { timeout: 10000, timeoutMsg: "asterisk did not clear after undo" },
     );
   });

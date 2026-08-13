@@ -1,8 +1,8 @@
-describe("Markdown-Magic smoke test", () => {
+describe("Markdown Hexer smoke test", () => {
   it("opens with the Untitled.md title and both panes in Split View", async () => {
     await browser.pause(1000);
 
-    expect(await browser.getTitle()).toBe("Untitled.md — Markdown-Magic");
+    expect(await browser.getTitle()).toBe("Untitled.md — Markdown Hexer");
 
     const editorPane = await $('[data-testid="editor-pane"]');
     const previewPane = await $('[data-testid="preview-pane"]');

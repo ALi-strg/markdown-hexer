@@ -8,8 +8,8 @@ import { typeInEditor } from "../helpers/editor";
 // via localStorage. The guard logic and the real save_document write still run.
 // Because a wdio run launches a single app instance, the E2E build keeps the
 // window alive after a Save / Don't Save decision so the suite survives.
-describe("Markdown-Magic Confirm-Discard Guard on close", () => {
-  const savePath = path.join(os.tmpdir(), `markdownmagic-e2e-guard-${Date.now()}.md`);
+describe("Markdown Hexer Confirm-Discard Guard on close", () => {
+  const savePath = path.join(os.tmpdir(), `markdownhexer-e2e-guard-${Date.now()}.md`);
   const saveFilename = path.basename(savePath);
   const savedContent = "# Guard cancel\n\n# Guard save";
 
@@ -23,13 +23,13 @@ describe("Markdown-Magic Confirm-Discard Guard on close", () => {
 
   async function stubGuardChoice(choice: string) {
     await browser.execute((c) => {
-      localStorage.setItem("markdownmagic:e2e:guard-choice", c);
+      localStorage.setItem("markdownhexer:e2e:guard-choice", c);
     }, choice);
   }
 
   async function stubSaveDialog() {
     await browser.execute((p) => {
-      localStorage.setItem("markdownmagic:e2e:save-path", p);
+      localStorage.setItem("markdownhexer:e2e:save-path", p);
     }, savePath);
   }
 
@@ -59,7 +59,7 @@ describe("Markdown-Magic Confirm-Discard Guard on close", () => {
     await typeText("# Guard cancel");
     await browser.waitUntil(
       async () =>
-        (await browser.getTitle()) === "Untitled.md * — Markdown-Magic",
+        (await browser.getTitle()) === "Untitled.md * — Markdown Hexer",
       { timeout: 10000, timeoutMsg: "asterisk did not appear after typing" },
     );
 
@@ -67,7 +67,7 @@ describe("Markdown-Magic Confirm-Discard Guard on close", () => {
     await triggerClose();
     await browser.pause(500);
 
-    expect(await browser.getTitle()).toBe("Untitled.md * — Markdown-Magic");
+    expect(await browser.getTitle()).toBe("Untitled.md * — Markdown Hexer");
   });
 
   it("saves the Document and clears the asterisk when Save is chosen", async () => {
@@ -80,7 +80,7 @@ describe("Markdown-Magic Confirm-Discard Guard on close", () => {
     await waitForFile(savedContent);
     await browser.waitUntil(
       async () =>
-        (await browser.getTitle()) === `${saveFilename} — Markdown-Magic`,
+        (await browser.getTitle()) === `${saveFilename} — Markdown Hexer`,
       {
         timeout: 10000,
         timeoutMsg: "title did not clear the asterisk after guard save",
@@ -92,7 +92,7 @@ describe("Markdown-Magic Confirm-Discard Guard on close", () => {
     await typeText("\n\n# Guard discard");
     await browser.waitUntil(
       async () =>
-        (await browser.getTitle()) === `${saveFilename} * — Markdown-Magic`,
+        (await browser.getTitle()) === `${saveFilename} * — Markdown Hexer`,
       { timeout: 10000, timeoutMsg: "asterisk did not reappear after typing" },
     );
 
@@ -100,7 +100,7 @@ describe("Markdown-Magic Confirm-Discard Guard on close", () => {
     await triggerClose();
     await browser.pause(500);
 
-    expect(await browser.getTitle()).toBe(`${saveFilename} * — Markdown-Magic`);
+    expect(await browser.getTitle()).toBe(`${saveFilename} * — Markdown Hexer`);
     expect(fs.existsSync(savePath) ? fs.readFileSync(savePath, "utf8") : null).toBe(
       savedContent,
     );
@@ -111,7 +111,7 @@ describe("Markdown-Magic Confirm-Discard Guard on close", () => {
     // the suite returns to its prior single-Tab state at the end.
     const otherPath = path.join(
       os.tmpdir(),
-      `markdownmagic-e2e-guard-tab-${Date.now()}.md`,
+      `markdownhexer-e2e-guard-tab-${Date.now()}.md`,
     );
     const otherFilename = path.basename(otherPath);
     fs.writeFileSync(otherPath, "# Other file");
@@ -124,7 +124,7 @@ describe("Markdown-Magic Confirm-Discard Guard on close", () => {
         ).__triggerFileOpen(p);
       }, otherPath);
       await browser.waitUntil(
-        async () => (await browser.getTitle()) === `${otherFilename} — Markdown-Magic`,
+        async () => (await browser.getTitle()) === `${otherFilename} — Markdown Hexer`,
         { timeout: 10000, timeoutMsg: "file-open did not add the second Tab" },
       );
 
@@ -133,7 +133,7 @@ describe("Markdown-Magic Confirm-Discard Guard on close", () => {
       await typeText("# Dirty close");
       await browser.waitUntil(
         async () =>
-          (await browser.getTitle()) === `${otherFilename} * — Markdown-Magic`,
+          (await browser.getTitle()) === `${otherFilename} * — Markdown Hexer`,
         { timeout: 10000, timeoutMsg: "asterisk did not appear after typing" },
       );
 
@@ -144,7 +144,7 @@ describe("Markdown-Magic Confirm-Discard Guard on close", () => {
       // Cancel keeps the Dirty Tab open.
       const afterCancel = await $$('[data-testid="tab"]');
       expect(afterCancel.length).toBe(2);
-      expect(await browser.getTitle()).toBe(`${otherFilename} * — Markdown-Magic`);
+      expect(await browser.getTitle()).toBe(`${otherFilename} * — Markdown Hexer`);
 
       // Don't Save closes the Tab; the app returns to its prior single Tab.
       await stubGuardChoice("dont-save");
@@ -153,7 +153,7 @@ describe("Markdown-Magic Confirm-Discard Guard on close", () => {
 
       const afterClose = await $$('[data-testid="tab"]');
       expect(afterClose.length).toBe(1);
-      expect(await browser.getTitle()).toBe(`${saveFilename} * — Markdown-Magic`);
+      expect(await browser.getTitle()).toBe(`${saveFilename} * — Markdown Hexer`);
     } finally {
       try {
         fs.unlinkSync(otherPath);

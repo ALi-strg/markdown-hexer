@@ -51,7 +51,7 @@ describe("settings store", () => {
     const settings = useSettingsStore();
     settings.setFont("mono");
     expect(settings.font).toBe("mono");
-    expect(localStorage.getItem("markdownmagic:settings")).toBe(
+    expect(localStorage.getItem("markdownhexer:settings")).toBe(
       JSON.stringify({ font: "mono" }),
     );
   });
@@ -60,13 +60,13 @@ describe("settings store", () => {
     const settings = useSettingsStore();
     settings.setTheme("dark");
     expect(settings.theme).toBe("dark");
-    expect(localStorage.getItem("markdownmagic:settings")).toBe(
+    expect(localStorage.getItem("markdownhexer:settings")).toBe(
       JSON.stringify({ theme: "dark" }),
     );
   });
 
   it("restores a persisted font on the next launch", () => {
-    localStorage.setItem("markdownmagic:settings", JSON.stringify({ font: "serif" }));
+    localStorage.setItem("markdownhexer:settings", JSON.stringify({ font: "serif" }));
     setActivePinia(createPinia());
 
     const settings = useSettingsStore();
@@ -74,7 +74,7 @@ describe("settings store", () => {
   });
 
   it("restores a persisted theme on the next launch", () => {
-    localStorage.setItem("markdownmagic:settings", JSON.stringify({ theme: "light" }));
+    localStorage.setItem("markdownhexer:settings", JSON.stringify({ theme: "light" }));
     setActivePinia(createPinia());
 
     const settings = useSettingsStore();
@@ -82,7 +82,7 @@ describe("settings store", () => {
   });
 
   it("falls back to Default for an unknown persisted font", () => {
-    localStorage.setItem("markdownmagic:settings", JSON.stringify({ font: "comic" }));
+    localStorage.setItem("markdownhexer:settings", JSON.stringify({ font: "comic" }));
     setActivePinia(createPinia());
 
     const settings = useSettingsStore();
@@ -95,7 +95,7 @@ describe("settings store", () => {
     settings.setTheme("dark");
     expect(settings.font).toBe("mono");
     expect(settings.theme).toBe("dark");
-    expect(localStorage.getItem("markdownmagic:settings")).toBe(
+    expect(localStorage.getItem("markdownhexer:settings")).toBe(
       JSON.stringify({ font: "mono", theme: "dark" }),
     );
   });
@@ -106,13 +106,13 @@ describe("settings store", () => {
     settings.setFont("serif");
     expect(settings.theme).toBe("light");
     expect(settings.font).toBe("serif");
-    expect(localStorage.getItem("markdownmagic:settings")).toBe(
+    expect(localStorage.getItem("markdownhexer:settings")).toBe(
       JSON.stringify({ theme: "light", font: "serif" }),
     );
   });
 
   it("falls back to System for an unknown persisted theme", () => {
-    localStorage.setItem("markdownmagic:settings", JSON.stringify({ theme: "neon" }));
+    localStorage.setItem("markdownhexer:settings", JSON.stringify({ theme: "neon" }));
     setActivePinia(createPinia());
 
     const settings = useSettingsStore();
@@ -120,7 +120,7 @@ describe("settings store", () => {
   });
 
   it("falls back to System when the persisted blob is corrupt", () => {
-    localStorage.setItem("markdownmagic:settings", "not json{{{");
+    localStorage.setItem("markdownhexer:settings", "not json{{{");
     setActivePinia(createPinia());
 
     const settings = useSettingsStore();
@@ -141,14 +141,14 @@ describe("settings store", () => {
     const settings = useSettingsStore();
     settings.setTextSize("large");
     expect(settings.textSize).toBe("large");
-    expect(localStorage.getItem("markdownmagic:settings")).toBe(
+    expect(localStorage.getItem("markdownhexer:settings")).toBe(
       JSON.stringify({ textSize: "large" }),
     );
   });
 
   it("restores a persisted text size on the next launch", () => {
     localStorage.setItem(
-      "markdownmagic:settings",
+      "markdownhexer:settings",
       JSON.stringify({ textSize: "small" }),
     );
     setActivePinia(createPinia());
@@ -159,7 +159,7 @@ describe("settings store", () => {
 
   it("falls back to Medium for an unknown persisted text size", () => {
     localStorage.setItem(
-      "markdownmagic:settings",
+      "markdownhexer:settings",
       JSON.stringify({ textSize: "huge" }),
     );
     setActivePinia(createPinia());
@@ -174,7 +174,7 @@ describe("settings store", () => {
     settings.setTextSize("large");
     expect(settings.theme).toBe("nord");
     expect(settings.textSize).toBe("large");
-    expect(localStorage.getItem("markdownmagic:settings")).toBe(
+    expect(localStorage.getItem("markdownhexer:settings")).toBe(
       JSON.stringify({ theme: "nord", textSize: "large" }),
     );
   });
@@ -183,7 +183,7 @@ describe("settings store", () => {
     const settings = useSettingsStore();
     settings.setTheme("high-contrast");
     expect(settings.theme).toBe("high-contrast");
-    expect(localStorage.getItem("markdownmagic:settings")).toBe(
+    expect(localStorage.getItem("markdownhexer:settings")).toBe(
       JSON.stringify({ theme: "high-contrast" }),
     );
   });

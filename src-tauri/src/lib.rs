@@ -11,7 +11,7 @@ mod title;
 /// Sets the OS window title from the Document's filename and Dirty flag.
 ///
 /// The frontend calls this whenever the Document or its Dirty state changes so
-/// the native title bar stays in sync: `<filename> * — Markdown-Magic`.
+/// the native title bar stays in sync: `<filename> * — Markdown Hexer`.
 #[tauri::command]
 fn set_document_title(window: tauri::Window, filename: String, dirty: bool) {
     let title = title::format_window_title(&filename, dirty);

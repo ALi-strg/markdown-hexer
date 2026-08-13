@@ -16,7 +16,7 @@ mod tests {
 
     fn temp_dir(name: &str) -> std::path::PathBuf {
         let dir = std::env::temp_dir().join(format!(
-            "markdownmagic-open-test-{}-{}",
+            "markdownhexer-open-test-{}-{}",
             std::process::id(),
             name
         ));

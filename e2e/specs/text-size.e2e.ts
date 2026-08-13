@@ -2,7 +2,7 @@
 // Editor Pane and the Preview Pane and persists in localStorage. Medium is the
 // default look (editor 14px, preview 15px). The E2E switches sizes and asserts
 // `data-text-size` plus the computed font-size of both panes actually change.
-describe("Markdown-Magic text size", () => {
+describe("Markdown Hexer text size", () => {
   const SIZE_VALUES: Record<string, string> = {
     Small: "small",
     Medium: "medium",
@@ -66,7 +66,7 @@ describe("Markdown-Magic text size", () => {
   it("persists the chosen text size for the next launch", async () => {
     await setSize("Large");
     const stored = await browser.execute(() =>
-      localStorage.getItem("markdownmagic:settings"),
+      localStorage.getItem("markdownhexer:settings"),
     );
     expect(stored).toContain("large");
   });

@@ -78,7 +78,7 @@ jobs:
           tagName: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
           releaseName: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
           releaseBody: |
-            Markdown-Magic ${{ env.RELEASE_VERSION }}
+            Markdown Hexer ${{ env.RELEASE_VERSION }}
 
             | Platform | File | Notes |
             |---|---|---|
@@ -103,7 +103,7 @@ jobs:
       # needs root on a bare runner); the flathub remote is added per-user.
       - name: copy deb for flatpak build
         if: github.ref_type == 'tag'
-        run: cp src-tauri/target/release/bundle/deb/*.deb bundles/flatpak/markdown-magic.deb
+        run: cp src-tauri/target/release/bundle/deb/*.deb bundles/flatpak/markdown-hexer.deb
 
       - name: install flatpak tooling
         if: github.ref_type == 'tag'
@@ -127,14 +127,14 @@ jobs:
             --force-clean \
             --default-branch=master \
             --arch=x86_64 \
-            --subject="Markdown-Magic ${RELEASE_VERSION} (${GITHUB_SHA})" \
+            --subject="Markdown Hexer ${RELEASE_VERSION} (${GITHUB_SHA})" \
             flatpak-app \
-            bundles/flatpak/com.markdownmagic.editor.yml
-          flatpak build-bundle flatpak-repo markdown-magic.flatpak \
+            bundles/flatpak/com.markdownhexer.editor.yml
+          flatpak build-bundle flatpak-repo markdown-hexer.flatpak \
             --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo \
-            com.markdownmagic.editor \
+            com.markdownhexer.editor \
             master
-          mv markdown-magic.flatpak "Markdown-Magic_${RELEASE_VERSION}_linux-x86_64.flatpak"
+          mv markdown-hexer.flatpak "Markdown-Hexer_${RELEASE_VERSION}_linux-x86_64.flatpak"
 
       - name: upload flatpak bundle to release
         if: github.ref_type == 'tag'
@@ -142,7 +142,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release upload "${{ github.ref_name }}" \
-            "Markdown-Magic_${RELEASE_VERSION}_linux-x86_64.flatpak" --clobber
+            "Markdown-Hexer_${RELEASE_VERSION}_linux-x86_64.flatpak" --clobber
 
   # Native ARM64 Linux bundles (.deb / .rpm / .AppImage). ARM AppImages cannot
   # be cross-compiled (linuxdeploy limitation), so this job runs on GitHub's
@@ -207,7 +207,7 @@ jobs:
           tagName: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
           releaseName: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
           releaseBody: |
-            Markdown-Magic ${{ env.RELEASE_VERSION }}
+            Markdown Hexer ${{ env.RELEASE_VERSION }}
 
             | Platform | File | Notes |
             |---|---|---|
@@ -231,7 +231,7 @@ jobs:
       # from flathub.
       - name: copy deb for flatpak build
         if: github.ref_type == 'tag'
-        run: cp src-tauri/target/release/bundle/deb/*.deb bundles/flatpak/markdown-magic.deb
+        run: cp src-tauri/target/release/bundle/deb/*.deb bundles/flatpak/markdown-hexer.deb
 
       - name: install flatpak tooling
         if: github.ref_type == 'tag'
@@ -255,14 +255,14 @@ jobs:
             --force-clean \
             --default-branch=master \
             --arch=aarch64 \
-            --subject="Markdown-Magic ${RELEASE_VERSION} (${GITHUB_SHA})" \
+            --subject="Markdown Hexer ${RELEASE_VERSION} (${GITHUB_SHA})" \
             flatpak-app \
-            bundles/flatpak/com.markdownmagic.editor.yml
-          flatpak build-bundle flatpak-repo markdown-magic.flatpak \
+            bundles/flatpak/com.markdownhexer.editor.yml
+          flatpak build-bundle flatpak-repo markdown-hexer.flatpak \
             --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo \
-            com.markdownmagic.editor \
+            com.markdownhexer.editor \
             master
-          mv markdown-magic.flatpak "Markdown-Magic_${RELEASE_VERSION}_linux-aarch64.flatpak"
+          mv markdown-hexer.flatpak "Markdown-Hexer_${RELEASE_VERSION}_linux-aarch64.flatpak"
 
       - name: upload flatpak bundle to release
         if: github.ref_type == 'tag'
@@ -270,7 +270,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release upload "${{ github.ref_name }}" \
-            "Markdown-Magic_${RELEASE_VERSION}_linux-aarch64.flatpak" --clobber
+            "Markdown-Hexer_${RELEASE_VERSION}_linux-aarch64.flatpak" --clobber
 
   release:
     needs: e2e
@@ -325,7 +325,7 @@ jobs:
           tagName: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
           releaseName: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
           releaseBody: |
-            Markdown-Magic ${{ env.RELEASE_VERSION }}
+            Markdown Hexer ${{ env.RELEASE_VERSION }}
 
             | Platform | File | Notes |
             |---|---|---|
@@ -355,7 +355,7 @@ jobs:
           tagName: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
           releaseName: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
           releaseBody: |
-            Markdown-Magic ${{ env.RELEASE_VERSION }}
+            Markdown Hexer ${{ env.RELEASE_VERSION }}
 
             | Platform | File | Notes |
             |---|---|---|

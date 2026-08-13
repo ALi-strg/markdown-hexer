@@ -3,7 +3,7 @@
 // paths: the Help button opens it in source-visible modes, Cmd/Ctrl+/ toggles
 // it from anywhere (including Preview Only, where the button is hidden), and
 // Esc / clicking outside / pressing the button again dismiss it.
-describe("Markdown-Magic Shortcuts Reference", () => {
+describe("Markdown Hexer Shortcuts Reference", () => {
   async function openFromSourceMode() {
     const editor = await $('[data-testid="editor-pane"]');
     if (!(await editor.isDisplayed())) {
