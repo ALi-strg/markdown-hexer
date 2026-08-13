@@ -1,7 +1,7 @@
 # Codebase Map — markdown-editor (Markdown Hexer)
 
 > Scope: whole repo
-> Last updated: 2026-08-10
+> Last updated: 2026-08-13
 > Purpose: Context brief for agents. Read this before working in this area.
 
 ## TL;DR
