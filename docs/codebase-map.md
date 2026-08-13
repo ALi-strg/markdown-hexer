@@ -119,7 +119,7 @@ npm run tauri build -- --debug --no-bundle   # what test:e2e uses to build the a
 | `src-tauri/src/{save,open,encoding,inspect}.rs` | File I/O (clean UTF-8, BOM handling) |
 | `src-tauri/src/instance.rs` | Single-instance/launch-arg file forwarding |
 | `src-tauri/src/{confirm,external}.rs` | Native dialog definitions |
-| `src-tauri/src/title.rs` | Window-title format string |
+| `src-tauri/src/title.rs` | Window-title format string + Wayland CSD titlebar sync (`sync_csd_titlebar`, Linux-only) |
 | `src-tauri/tauri.conf.json` | Window, CSP, bundling, file associations (md/markdown/mdown, txt) |
 | `src-tauri/capabilities/default.json` | Permissions for the `main` window (core/dialog/opener defaults + close/destroy) |
 | `wdio.conf.ts` | WebdriverIO config; onPrepare builds debug app with `VITE_E2E=1` (spawns `tauri build` with `CI=false` — see gotcha), kills orphaned `tauri-driver` on Windows |

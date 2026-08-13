@@ -26,3 +26,11 @@ tauri-plugin-dialog = "2"
 tauri-plugin-single-instance = "2"
 tauri-plugin-opener = "2"
 
+# Linux-only: the Wayland CSD header bar does not follow `set_title`, so the
+# titlebar widget itself is synced from `title::sync_csd_titlebar`. Pinned to
+# the same gtk release tauri depends on (see Cargo.lock) so the widget types
+# unify.
+[target.'cfg(target_os = "linux")'.dependencies]
+gtk = { version = "0.18", features = ["v3_24"] }
+
+

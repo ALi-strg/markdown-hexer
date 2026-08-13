@@ -14,9 +14,12 @@ mod title;
 /// the native title bar stays in sync: `<filename> * — Markdown-Magic`.
 #[tauri::command]
 fn set_document_title(window: tauri::Window, filename: String, dirty: bool) {
+    let title = title::format_window_title(&filename, dirty);
     window
-        .set_title(&title::format_window_title(&filename, dirty))
+        .set_title(&title)
         .expect("failed to set window title");
+    #[cfg(target_os = "linux")]
+    title::sync_csd_titlebar(window, title);
 }
 
 /// Writes the Document's content to a path chosen by the user.
