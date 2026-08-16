@@ -8,6 +8,15 @@ mod open;
 mod save;
 mod title;
 
+/// Returns the running bundle's Version — the release tag on shipped builds
+/// (CI resolves it from the git tag and injects it via `--config`, ADR 0004),
+/// the static dev baseline in development. The About Dialog reads this so it
+/// can never drift from the version the bundle actually carries.
+#[tauri::command]
+fn get_app_version(app: tauri::AppHandle) -> String {
+    app.package_info().version.to_string()
+}
+
 /// Sets the OS window title from the Document's filename and Dirty flag.
 ///
 /// The frontend calls this whenever the Document or its Dirty state changes so
@@ -97,6 +106,7 @@ pub fn run() {
             open_document,
             inspect_document,
             get_pending_file,
+            get_app_version,
             asset::set_asset_root,
             confirm::show_confirm_discard,
             external::show_external_modified

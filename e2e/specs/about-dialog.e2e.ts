@@ -1,9 +1,10 @@
-// The Shortcuts Reference is the single place every shortcut is listed, drawn
-// from the same registry the toolbar tooltips read. E2E exercises the real
-// paths: the Help button opens it in source-visible modes, Cmd/Ctrl+/ toggles
-// it from anywhere (including Preview Only, where the button is hidden), and
-// Esc / clicking outside / pressing the button again dismiss it.
-describe("Markdown Hexer Shortcuts Reference", () => {
+// The About Dialog is the app's about surface and the single place every
+// shortcut is listed, drawn from the same registry the toolbar tooltips read.
+// E2E exercises the real paths: the About button opens it in source-visible
+// modes, Cmd/Ctrl+/ toggles it from anywhere (including Preview Only, where
+// the button is hidden), Esc / clicking outside / pressing the button again
+// dismiss it, and it shows the bundle's version and the repository link.
+describe("Markdown Hexer About Dialog", () => {
   async function openFromSourceMode() {
     const editor = await $('[data-testid="editor-pane"]');
     if (!(await editor.isDisplayed())) {
@@ -12,29 +13,38 @@ describe("Markdown Hexer Shortcuts Reference", () => {
       await browser.keys(["Control", "Shift", "p"]);
     }
     await editor.waitForDisplayed({ timeout: 15000 });
-    const help = await $('[data-testid="toolbar-help"]');
-    await help.waitForDisplayed({ timeout: 10000 });
-    return help;
+    const about = await $('[data-testid="toolbar-about"]');
+    await about.waitForDisplayed({ timeout: 10000 });
+    return about;
   }
 
-  it("shows the Help tooltip, opens the grouped reference on click, and closes with Esc", async () => {
+  it("shows the About tooltip, opens the dialog with version and repository link, and closes with Esc", async () => {
     await browser.pause(1000);
-    const help = await openFromSourceMode();
-    expect(await help.getAttribute("title")).toBe("Help (Ctrl/Cmd+/)");
+    const about = await openFromSourceMode();
+    expect(await about.getAttribute("title")).toBe("About (Ctrl/Cmd+/)");
 
-    await help.click();
-    const modal = await $('[data-testid="shortcuts-modal"]');
+    await about.click();
+    const modal = await $('[data-testid="about-modal"]');
     await modal.waitForDisplayed({ timeout: 10000 });
 
     const text = await modal.getText();
-    expect(text).toContain("Shortcuts Reference");
+    expect(text).toContain("About Markdown Hexer");
+    // The version comes from the running bundle, so only its presence (not its
+    // value) is asserted: dev and PR builds carry the static baseline, tag
+    // builds the release version.
+    const version = await $('[data-testid="about-version"]');
+    expect((await version.getText()).trim()).not.toBe("");
+    const repoLink = await $('[data-testid="about-repo-link"]');
+    expect(await repoLink.getAttribute("href")).toBe(
+      "https://github.com/ALi-strg/markdown-hexer",
+    );
     for (const groupId of [
       "shortcut-group-file",
       "shortcut-group-edit",
       "shortcut-group-format",
       "shortcut-group-view",
       "shortcut-group-tab",
-      "shortcut-group-help",
+      "shortcut-group-app",
     ]) {
       expect(await (await $(`[data-testid="${groupId}"]`)).isDisplayed()).toBe(
         true,
@@ -57,37 +67,37 @@ describe("Markdown Hexer Shortcuts Reference", () => {
     await browser.keys(["Escape"]);
     await browser.waitUntil(
       async () => !(await modal.isDisplayed()),
-      { timeout: 10000, timeoutMsg: "Esc did not close the Shortcuts Reference" },
+      { timeout: 10000, timeoutMsg: "Esc did not close the About Dialog" },
     );
   });
 
-  it("toggles the reference with Cmd/Ctrl+/ from Preview Only, where the Help button is hidden", async () => {
+  it("toggles the dialog with Cmd/Ctrl+/ from Preview Only, where the About button is hidden", async () => {
     await browser.keys(["Control", "Shift", "p"]);
     const editor = await $('[data-testid="editor-pane"]');
     await browser.waitUntil(
       async () => !(await editor.isDisplayed()),
       { timeout: 10000, timeoutMsg: "did not reach Preview Only" },
     );
-    expect(await (await $('[data-testid="toolbar-help"]')).isDisplayed()).toBe(
+    expect(await (await $('[data-testid="toolbar-about"]')).isDisplayed()).toBe(
       false,
     );
 
     await browser.keys(["Control", "/"]);
-    const modal = await $('[data-testid="shortcuts-modal"]');
+    const modal = await $('[data-testid="about-modal"]');
     await modal.waitForDisplayed({ timeout: 10000 });
 
     await browser.keys(["Control", "/"]);
     await browser.waitUntil(
       async () => !(await modal.isDisplayed()),
-      { timeout: 10000, timeoutMsg: "Cmd/Ctrl+/ did not close the reference" },
+      { timeout: 10000, timeoutMsg: "Cmd/Ctrl+/ did not close the dialog" },
     );
   });
 
-  it("closes the reference on an outside click and on toggling again", async () => {
+  it("closes the dialog on an outside click and on toggling again", async () => {
     await browser.pause(1000);
-    const help = await openFromSourceMode();
-    await help.click();
-    const modal = await $('[data-testid="shortcuts-modal"]');
+    const about = await openFromSourceMode();
+    await about.click();
+    const modal = await $('[data-testid="about-modal"]');
     await modal.waitForDisplayed({ timeout: 10000 });
 
     // Click the overlay outside the centered modal. Element click offsets are
@@ -103,13 +113,13 @@ describe("Markdown Hexer Shortcuts Reference", () => {
       async () => !(await modal.isDisplayed()),
       {
         timeout: 10000,
-        timeoutMsg: "clicking outside did not close the Shortcuts Reference",
+        timeoutMsg: "clicking outside did not close the About Dialog",
       },
     );
 
-    await help.click();
+    await about.click();
     await modal.waitForDisplayed({ timeout: 10000 });
-    // The overlay covers the toolbar while the reference is open, so the Help
+    // The overlay covers the toolbar while the dialog is open, so the About
     // button cannot receive a pointer click; the toggle shortcut is the app's
     // "press again" path here.
     await browser.keys(["Control", "/"]);
@@ -117,7 +127,7 @@ describe("Markdown Hexer Shortcuts Reference", () => {
       async () => !(await modal.isDisplayed()),
       {
         timeout: 10000,
-        timeoutMsg: "toggling again did not close the Shortcuts Reference",
+        timeoutMsg: "toggling again did not close the About Dialog",
       },
     );
   });

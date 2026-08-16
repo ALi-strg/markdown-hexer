@@ -106,12 +106,13 @@ npm run tauri build -- --debug --no-bundle   # what test:e2e uses to build the a
 | `src/components/EditorPane.vue` | CodeMirror 6 mount; mirrors edits into store; `replaceContent` rebuilds state; routes CM search panel into a hidden off-screen host |
 | `src/components/PreviewPane.vue` | Debounced render, `asset://` img rewrite, external-link opening |
 | `src/components/FindReplacePanel.vue` | App-hosted find/replace UI (works in Preview Only); replaces switch to Split View first |
-| `src/components/Toolbar.vue` | Format buttons (bold/italic/heading/list/link/code) + Theme/Font/Size selects |
+| `src/components/Toolbar.vue` | Format buttons (bold/italic/heading/list/link/code) + Theme/Font/Size selects; About button opens the About Dialog |
+| `src/components/AboutDialog.vue` | Modal with product name, bundle Version (via `get_app_version`), GitHub repo link, and the grouped Shortcuts Reference (`SHORTCUT_GROUPS`); `Ctrl/Cmd+/` toggles it |
 | `src/stores/document.ts` | Document state, save/open/new/reload/external-modification logic |
 | `src/stores/settings.ts` | Theme + font + text size, localStorage persistence |
 | `src/stores/ui.ts` | Layout mode, divider, toast, last-directory |
 | `src/lib/formatting.ts` + `editorFormatting.ts` | Pure markdown formatting (bold/italic/…), applied as a single undoable CM transaction |
-| `src/lib/shortcuts.ts` | Single shortcut registry: toolbar tooltips + Shortcuts Reference modal (`SHORTCUT_GROUPS`), incl. `THEME_CONTROL`/`FONT_CONTROL`/`SIZE_CONTROL` (label-only entries) |
+| `src/lib/shortcuts.ts` | Single shortcut registry: toolbar tooltips + the About Dialog's Shortcuts Reference (`SHORTCUT_GROUPS`), incl. `THEME_CONTROL`/`FONT_CONTROL`/`SIZE_CONTROL` (label-only entries) |
 | `src/lib/findReplace.ts` | Match-count / next / prev helpers over CM search state |
 | `src/lib/blockMap.ts` | Block ranges for Synced Scrolling |
 | `src/lib/{open,save}Dialog.ts`, `guardDialog.ts`, `externalDialog.ts` | Native dialog wrappers with E2E localStorage stubs |

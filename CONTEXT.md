@@ -120,7 +120,7 @@ _Avoid_: markdown-editor (the repo slug), Markdown Editor
 ## Distribution
 
 **Version**:
-The product's release version, taken from the git tag at build time with the leading `v` stripped (`v1.0.3` → `1.0.3`). Every shipped Bundle carries it. The static version in the source manifests is a dev baseline and never ships.
+The product's release version, taken from the git tag at build time with the leading `v` stripped (`v1.0.3` → `1.0.3`). Every shipped Bundle carries it, and the About Dialog shows it. The static version in the source manifests is a dev baseline and never ships.
 _Avoid_: build number, manifest version, 0.1.0
 
 **Release**:
@@ -146,6 +146,12 @@ _Avoid_: release, store (unless Flathub specifically), download site
 **Flathub**:
 The Flatpak app store, a Distribution Channel distinct from the Flatpak Bundle format. Deferred by choice — possible now that the repository is public, but not the current goal.
 _Avoid_: flatpak (the format), the flatpak store
+
+## About
+
+**About Dialog**:
+The modal opened by the toolbar's About button or `Ctrl/Cmd+/` (from any Layout Mode) that shows the product name, the Version of the running Bundle, a link to the repository, and the Shortcuts Reference.
+_Avoid_: Help dialog, about box, shortcuts modal
 
 ## Development
 
