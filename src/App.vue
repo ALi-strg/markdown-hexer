@@ -32,16 +32,16 @@
       @font-change="onFontChange"
       @text-size-change="onTextSizeChange"
       @layout-change="onLayoutChange"
-      @help="onHelp"
+      @about="onAbout"
     />
     <FindReplacePanel
       v-if="ui.findOverlayOpen"
       ref="findPanelRef"
       :get-view="getEditorView"
     />
-    <ShortcutsReference
-      v-if="shortcutsOpen"
-      @close="closeShortcuts"
+    <AboutDialog
+      v-if="aboutOpen"
+      @close="closeAbout"
     />
     <div
       ref="workspaceRef"
@@ -97,7 +97,7 @@ import type { EditorView } from "@codemirror/view";
 import EditorPane from "./components/EditorPane.vue";
 import FindReplacePanel from "./components/FindReplacePanel.vue";
 import PreviewPane from "./components/PreviewPane.vue";
-import ShortcutsReference from "./components/ShortcutsReference.vue";
+import AboutDialog from "./components/AboutDialog.vue";
 import TabBar from "./components/TabBar.vue";
 import Toolbar from "./components/Toolbar.vue";
 import { confirmDiscard } from "./lib/confirmDiscard";
@@ -105,10 +105,10 @@ import { applyFormatting } from "./lib/editorFormatting";
 import type { FormatOperation } from "./lib/formatting";
 import { pickOpenPath } from "./lib/openDialog";
 import {
+  ABOUT_SHORTCUT,
   CYCLE_LAYOUT_COMBO,
   DOCUMENT_SHORTCUTS,
   FORMAT_SHORTCUTS,
-  HELP_SHORTCUT,
   matchesCombo,
   TAB_SHORTCUTS,
   type DocumentControlOperation,
@@ -140,7 +140,7 @@ const previewPane = ref<{
   getPreviewHost: () => HTMLElement | null;
 } | null>(null);
 const findPanelRef = ref<{ focusQuery: () => void } | null>(null);
-const shortcutsOpen = ref(false);
+const aboutOpen = ref(false);
 const workspaceRef = ref<HTMLElement | null>(null);
 const dividerRef = ref<HTMLElement | null>(null);
 
@@ -299,15 +299,15 @@ async function runTabControl(operation: TabControlOperation) {
 }
 
 async function onKeydown(event: KeyboardEvent) {
-  if (shortcutsOpen.value && event.key === "Escape") {
+  if (aboutOpen.value && event.key === "Escape") {
     event.preventDefault();
-    shortcutsOpen.value = false;
+    aboutOpen.value = false;
     return;
   }
-  const helpCombo = HELP_SHORTCUT.combo;
-  if (helpCombo !== null && matchesCombo(event, helpCombo)) {
+  const aboutCombo = ABOUT_SHORTCUT.combo;
+  if (aboutCombo !== null && matchesCombo(event, aboutCombo)) {
     event.preventDefault();
-    shortcutsOpen.value = !shortcutsOpen.value;
+    aboutOpen.value = !aboutOpen.value;
     return;
   }
   for (const operation of DOCUMENT_SHORTCUT_ORDER) {
@@ -434,15 +434,15 @@ function onLayoutChange(mode: LayoutMode) {
   ui.setLayoutMode(mode);
 }
 
-/// Toggles the Shortcuts Reference. The Help button in source-visible modes and
-/// the `Ctrl/Cmd+/` shortcut both call this, so pressing the button again (or
-/// the shortcut again) closes the modal from any Layout Mode.
-function onHelp() {
-  shortcutsOpen.value = !shortcutsOpen.value;
+/// Toggles the About Dialog. The About button in source-visible modes and the
+/// `Ctrl/Cmd+/` shortcut both call this, so pressing the button again (or the
+/// shortcut again) closes the dialog from any Layout Mode.
+function onAbout() {
+  aboutOpen.value = !aboutOpen.value;
 }
 
-function closeShortcuts() {
-  shortcutsOpen.value = false;
+function closeAbout() {
+  aboutOpen.value = false;
 }
 
 /// Creates a New Untitled Tab and makes it Active. New never runs the

@@ -2916,7 +2916,7 @@ describe("App shell", () => {
       "toolbar-undo",
       "toolbar-redo",
       "toolbar-bold",
-      "toolbar-help",
+      "toolbar-about",
     ]) {
       expect(wrapper.find(`[data-testid="${id}"]`).isVisible()).toBe(false);
     }
@@ -3140,54 +3140,65 @@ describe("App shell", () => {
     expect(document.content).toBe("hello");
   });
 
-  it("renders the Help button past the Layout Switcher with its tooltip", () => {
+  it("renders the About button past the Layout Switcher with its tooltip", () => {
     const wrapper = mount(App);
-    const help = wrapper.find('[data-testid="toolbar-help"]');
-    expect(help.exists()).toBe(true);
-    expect(help.attributes("title")).toBe("Help (Ctrl/Cmd+/)");
+    const about = wrapper.find('[data-testid="toolbar-about"]');
+    expect(about.exists()).toBe(true);
+    expect(about.attributes("title")).toBe("About (Ctrl/Cmd+/)");
     const layoutSwitcher = wrapper.find('[data-testid="layout-switcher"]')
       .element;
     expect(
-      layoutSwitcher.compareDocumentPosition(help.element) &
+      layoutSwitcher.compareDocumentPosition(about.element) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
   });
 
-  it("keeps the Help button visible in Split View and Focus Mode", async () => {
+  it("keeps the About button visible in Split View and Focus Mode", async () => {
     const wrapper = mount(App);
     const ui = useUiStore();
-    expect(wrapper.find('[data-testid="toolbar-help"]').isVisible()).toBe(true);
+    expect(wrapper.find('[data-testid="toolbar-about"]').isVisible()).toBe(true);
 
     ui.cycleLayoutMode();
     ui.cycleLayoutMode();
     await nextTick();
-    expect(wrapper.find('[data-testid="toolbar-help"]').isVisible()).toBe(true);
+    expect(wrapper.find('[data-testid="toolbar-about"]').isVisible()).toBe(true);
   });
 
-  it("hides the Help button in Preview Only", async () => {
+  it("hides the About button in Preview Only", async () => {
     const wrapper = mount(App);
     const ui = useUiStore();
     ui.cycleLayoutMode();
     await nextTick();
-    expect(wrapper.find('[data-testid="toolbar-help"]').isVisible()).toBe(false);
+    expect(wrapper.find('[data-testid="toolbar-about"]').isVisible()).toBe(false);
   });
 
-  it("opens the Shortcuts Reference on the Help button and lists every shortcut grouped", async () => {
+  it("opens the About Dialog on the About button, showing version, repository link, and every shortcut grouped", async () => {
     const wrapper = mount(App);
-    await wrapper.find('[data-testid="toolbar-help"]').trigger("click");
-    await nextTick();
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "get_app_version") {
+        return Promise.resolve("1.2.3");
+      }
+      return Promise.resolve(undefined);
+    });
+    await wrapper.find('[data-testid="toolbar-about"]').trigger("click");
+    await flushPromises();
 
-    const modal = wrapper.find('[data-testid="shortcuts-modal"]');
+    const modal = wrapper.find('[data-testid="about-modal"]');
     expect(modal.exists()).toBe(true);
     expect(modal.attributes("role")).toBe("dialog");
-    expect(modal.text()).toContain("Shortcuts Reference");
+    expect(modal.text()).toContain("About Markdown Hexer");
+    expect(modal.text()).toContain("Version 1.2.3");
+    expect(
+      wrapper.find('[data-testid="about-repo-link"]').attributes("href"),
+    ).toBe("https://github.com/ALi-strg/markdown-hexer");
 
     const groupIds = [
       "shortcut-group-file",
       "shortcut-group-edit",
       "shortcut-group-format",
       "shortcut-group-view",
-      "shortcut-group-help",
+      "shortcut-group-tab",
+      "shortcut-group-app",
     ];
     for (const id of groupIds) {
       expect(wrapper.find(`[data-testid="${id}"]`).exists()).toBe(true);
@@ -3208,7 +3219,7 @@ describe("App shell", () => {
       ["Link", "Ctrl/Cmd+K"],
       ["Code", "Ctrl/Cmd+Shift+C"],
       ["Cycle layout", "Ctrl/Cmd+Shift+P"],
-      ["Help", "Ctrl/Cmd+/"],
+      ["About", "Ctrl/Cmd+/"],
     ];
     const text = modal.text();
     for (const [label, combo] of expectations) {
@@ -3217,12 +3228,12 @@ describe("App shell", () => {
     }
   });
 
-  it("lists the Tab shortcuts in the Shortcuts Reference", async () => {
+  it("lists the Tab shortcuts in the About Dialog", async () => {
     const wrapper = mount(App);
-    await wrapper.find('[data-testid="toolbar-help"]').trigger("click");
+    await wrapper.find('[data-testid="toolbar-about"]').trigger("click");
     await nextTick();
 
-    const modal = wrapper.find('[data-testid="shortcuts-modal"]');
+    const modal = wrapper.find('[data-testid="about-modal"]');
     expect(modal.exists()).toBe(true);
     expect(wrapper.find('[data-testid="shortcut-group-tab"]').exists()).toBe(
       true,
@@ -3242,7 +3253,7 @@ describe("App shell", () => {
 
   it("lists the reference entries within their category groups", async () => {
     const wrapper = mount(App);
-    await wrapper.find('[data-testid="toolbar-help"]').trigger("click");
+    await wrapper.find('[data-testid="toolbar-about"]').trigger("click");
     await nextTick();
 
     expect(
@@ -3258,73 +3269,73 @@ describe("App shell", () => {
       wrapper.find('[data-testid="shortcut-group-view"]').text(),
     ).toContain("Cycle layout");
     expect(
-      wrapper.find('[data-testid="shortcut-group-help"]').text(),
+      wrapper.find('[data-testid="shortcut-group-app"]').text(),
     ).toContain("Ctrl/Cmd+/");
   });
 
-  it("toggles the Shortcuts Reference with Cmd/Ctrl+/", async () => {
+  it("toggles the About Dialog with Cmd/Ctrl+/", async () => {
     const wrapper = mount(App);
     window.dispatchEvent(
       new KeyboardEvent("keydown", { key: "/", ctrlKey: true }),
     );
     await nextTick();
-    expect(wrapper.find('[data-testid="shortcuts-modal"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="about-modal"]').exists()).toBe(true);
 
     window.dispatchEvent(
       new KeyboardEvent("keydown", { key: "/", ctrlKey: true }),
     );
     await nextTick();
-    expect(wrapper.find('[data-testid="shortcuts-modal"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="about-modal"]').exists()).toBe(false);
   });
 
-  it("opens the Shortcuts Reference with Cmd/Ctrl+/ from Preview Only", async () => {
+  it("opens the About Dialog with Cmd/Ctrl+/ from Preview Only", async () => {
     const wrapper = mount(App);
     const ui = useUiStore();
     ui.cycleLayoutMode();
     await nextTick();
-    expect(wrapper.find('[data-testid="toolbar-help"]').isVisible()).toBe(false);
+    expect(wrapper.find('[data-testid="toolbar-about"]').isVisible()).toBe(false);
 
     window.dispatchEvent(
       new KeyboardEvent("keydown", { key: "/", ctrlKey: true }),
     );
     await nextTick();
-    expect(wrapper.find('[data-testid="shortcuts-modal"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="about-modal"]').exists()).toBe(true);
   });
 
-  it("closes the Shortcuts Reference with Escape", async () => {
+  it("closes the About Dialog with Escape", async () => {
     const wrapper = mount(App);
-    await wrapper.find('[data-testid="toolbar-help"]').trigger("click");
+    await wrapper.find('[data-testid="toolbar-about"]').trigger("click");
     await nextTick();
-    expect(wrapper.find('[data-testid="shortcuts-modal"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="about-modal"]').exists()).toBe(true);
 
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
     await nextTick();
-    expect(wrapper.find('[data-testid="shortcuts-modal"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="about-modal"]').exists()).toBe(false);
   });
 
-  it("closes the Shortcuts Reference when clicking outside the modal", async () => {
+  it("closes the About Dialog when clicking outside the modal", async () => {
     const wrapper = mount(App);
-    await wrapper.find('[data-testid="toolbar-help"]').trigger("click");
+    await wrapper.find('[data-testid="toolbar-about"]').trigger("click");
     await nextTick();
-    expect(wrapper.find('[data-testid="shortcuts-modal"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="about-modal"]').exists()).toBe(true);
 
-    await wrapper.find('[data-testid="shortcuts-overlay"]').trigger("click");
+    await wrapper.find('[data-testid="about-overlay"]').trigger("click");
     await nextTick();
-    expect(wrapper.find('[data-testid="shortcuts-modal"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="about-modal"]').exists()).toBe(false);
   });
 
-  it("closes the Shortcuts Reference when the Help button is pressed again", async () => {
+  it("closes the About Dialog when the About button is pressed again", async () => {
     const wrapper = mount(App);
-    await wrapper.find('[data-testid="toolbar-help"]').trigger("click");
+    await wrapper.find('[data-testid="toolbar-about"]').trigger("click");
     await nextTick();
-    expect(wrapper.find('[data-testid="shortcuts-modal"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="about-modal"]').exists()).toBe(true);
 
-    await wrapper.find('[data-testid="toolbar-help"]').trigger("click");
+    await wrapper.find('[data-testid="toolbar-about"]').trigger("click");
     await nextTick();
-    expect(wrapper.find('[data-testid="shortcuts-modal"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="about-modal"]').exists()).toBe(false);
   });
 
-  it("never changes the Document or editor state when the Shortcuts Reference opens or closes", async () => {
+  it("never changes the Document or editor state when the About Dialog opens or closes", async () => {
     const wrapper = mount(App);
     await flushPromises();
     const document = useDocumentStore();
@@ -3337,7 +3348,7 @@ describe("App shell", () => {
       wrapper.find('[data-testid="toolbar-undo"]').element as HTMLButtonElement
     ).disabled;
 
-    await wrapper.find('[data-testid="toolbar-help"]').trigger("click");
+    await wrapper.find('[data-testid="toolbar-about"]').trigger("click");
     await nextTick();
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
     await nextTick();

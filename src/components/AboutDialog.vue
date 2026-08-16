@@ -1,20 +1,34 @@
 <template>
   <div
-    class="shortcuts-overlay"
-    data-testid="shortcuts-overlay"
+    class="about-overlay"
+    data-testid="about-overlay"
     @click.self="emit('close')"
   >
     <div
       ref="modalRef"
-      class="shortcuts-modal"
+      class="about-modal"
       role="dialog"
       aria-modal="true"
-      aria-labelledby="shortcuts-title"
+      aria-labelledby="about-title"
       tabindex="-1"
-      data-testid="shortcuts-modal"
+      data-testid="about-modal"
     >
-      <h2 id="shortcuts-title" class="shortcuts-title">Shortcuts Reference</h2>
-      <div class="shortcuts-groups">
+      <header class="about-header">
+        <img :src="appIcon" alt="" class="about-icon" />
+        <h2 id="about-title" class="about-title">About Markdown Hexer</h2>
+        <p v-if="version" class="about-version" data-testid="about-version">
+          Version {{ version }}
+        </p>
+        <a
+          class="about-repo-link"
+          data-testid="about-repo-link"
+          :href="REPO_URL"
+          @click.prevent="onOpenRepository"
+        >
+          GitHub repository
+        </a>
+      </header>
+      <div class="about-groups">
         <section
           v-for="group in SHORTCUT_GROUPS"
           :key="group.label"
@@ -42,9 +56,30 @@
 
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from "vue";
+import { invoke } from "@tauri-apps/api/core";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { comboLabel, SHORTCUT_GROUPS } from "../lib/shortcuts";
+import appIcon from "../../src-tauri/icons/128x128.png";
 
 const emit = defineEmits<{ close: [] }>();
+
+/// The product's repository. Opened in the default browser via the opener
+/// plugin, never inside the app window.
+const REPO_URL = "https://github.com/ALi-strg/markdown-hexer";
+
+/// The Version the running bundle carries — the release tag on shipped builds
+/// (CI strips the leading `v`), the static dev baseline in development. Read
+/// from the backend so the About Dialog can never drift from the bundle it
+/// rides in. A failed read leaves the line hidden: the version is
+/// informational, never worth an error toast.
+const version = ref("");
+onMounted(async () => {
+  try {
+    version.value = await invoke<string>("get_app_version");
+  } catch {
+    // Informational; the dialog still renders without the version line.
+  }
+});
 
 /// Moves focus into the dialog when it opens and restores it on dismissal, so
 /// the modal semantics stay honest: Tab no longer lands on the toolbar/editor
@@ -60,10 +95,14 @@ onMounted(() => {
 onBeforeUnmount(() => {
   previouslyFocused?.focus();
 });
+
+function onOpenRepository() {
+  void openUrl(REPO_URL);
+}
 </script>
 
 <style scoped>
-.shortcuts-overlay {
+.about-overlay {
   position: fixed;
   inset: 0;
   z-index: 1000;
@@ -74,10 +113,10 @@ onBeforeUnmount(() => {
   background: rgba(0, 0, 0, 0.4);
 }
 
-.shortcuts-modal {
+.about-modal {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 16px;
   max-width: 560px;
   max-height: 80vh;
   padding: 20px 24px;
@@ -89,15 +128,43 @@ onBeforeUnmount(() => {
   overflow-y: auto;
 }
 
-.shortcuts-title {
-  margin: 0;
+.about-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+}
+
+.about-icon {
+  width: 72px;
+  height: 72px;
+  border-radius: 14px;
+}
+
+.about-title {
+  margin: 6px 0 0;
   font-size: 1.1rem;
 }
 
-.shortcuts-groups {
+.about-version {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--text-muted, inherit);
+}
+
+.about-repo-link {
+  margin-top: 4px;
+  font-size: 0.9rem;
+  color: var(--accent-color, #1a73e8);
+}
+
+.about-groups {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: 16px 24px;
+  border-top: 1px solid var(--border-color, #d8dde3);
+  padding-top: 16px;
 }
 
 .shortcut-group-title {

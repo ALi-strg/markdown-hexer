@@ -205,13 +205,13 @@
     </div>
     <button
       type="button"
-      class="toolbar-button toolbar-help"
-      data-testid="toolbar-help"
+      class="toolbar-button toolbar-about"
+      data-testid="toolbar-about"
       v-show="layoutMode !== 'preview'"
-      :title="tooltipText(HELP_SHORTCUT)"
-      @click="emit('help')"
+      :title="tooltipText(ABOUT_SHORTCUT)"
+      @click="emit('about')"
     >
-      Help
+      About
     </button>
   </div>
 </template>
@@ -219,11 +219,11 @@
 <script setup lang="ts">
 import type { FormatOperation } from "../lib/formatting";
 import {
+  ABOUT_SHORTCUT,
   CYCLE_LAYOUT_COMBO,
   DOCUMENT_SHORTCUTS,
   FONT_CONTROL,
   FORMAT_SHORTCUTS,
-  HELP_SHORTCUT,
   REDO_SHORTCUT,
   SIZE_CONTROL,
   THEME_CONTROL,
@@ -275,7 +275,7 @@ const emit = defineEmits<{
   fontChange: [font: Font];
   textSizeChange: [size: TextSize];
   layoutChange: [mode: LayoutMode];
-  help: [];
+  about: [];
 }>();
 
 function onThemeChange(event: Event) {

@@ -65,8 +65,8 @@ export function matchesCombo(event: KeyboardEvent, combo: KeyCombo): boolean {
 }
 
 /// The single registry of toolbar controls to their labels and shortcuts.
-/// Both the tooltips and the Shortcuts Reference draw from this, so the two can
-/// never drift.
+/// Both the tooltips and the About Dialog's Shortcuts Reference draw from
+/// this, so the two can never drift.
 export const FORMAT_SHORTCUTS: Record<FormatOperation, ShortcutEntry> = {
   bold: {
     label: "Bold",
@@ -173,10 +173,11 @@ export const CYCLE_LAYOUT_SHORTCUT: ShortcutEntry = {
   combo: CYCLE_LAYOUT_COMBO,
 };
 
-/// The Help control: a toolbar button that opens the Shortcuts Reference. Its
-/// `Ctrl/Cmd+/` shortcut also toggles the reference from any Layout Mode.
-export const HELP_SHORTCUT: ShortcutEntry = {
-  label: "Help",
+/// The About control: a toolbar button that opens the About Dialog (which
+/// carries the Shortcuts Reference inside it). Its `Ctrl/Cmd+/` shortcut also
+/// toggles the dialog from any Layout Mode.
+export const ABOUT_SHORTCUT: ShortcutEntry = {
+  label: "About",
   combo: { key: "/", ctrlCmd: true, shift: false },
 };
 
@@ -217,9 +218,9 @@ export interface ShortcutGroup {
   entries: ShortcutEntry[];
 }
 
-/// The Shortcuts Reference contents, grouped by category. Every entry is the
-/// same `ShortcutEntry` object the tooltips read, so the modal can never drift
-/// from the toolbar.
+/// The Shortcuts Reference contents inside the About Dialog, grouped by
+/// category. Every entry is the same `ShortcutEntry` object the tooltips read,
+/// so the dialog can never drift from the toolbar.
 export const SHORTCUT_GROUPS: ShortcutGroup[] = [
   {
     label: "File",
@@ -259,7 +260,7 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
     ],
   },
   {
-    label: "Help",
-    entries: [HELP_SHORTCUT],
+    label: "App",
+    entries: [ABOUT_SHORTCUT],
   },
 ];
