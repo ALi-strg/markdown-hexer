@@ -2564,20 +2564,20 @@ describe("App shell", () => {
     );
   });
 
-  it("offers all six Themes in the toolbar", async () => {
+  it("offers System and all six Palettes in the toolbar", async () => {
     const wrapper = mount(App);
     await flushPromises();
     expect(
       wrapper.findAll('[data-testid="toolbar-theme"] option'),
-    ).toHaveLength(6);
+    ).toHaveLength(7);
   });
 
   it("switches to a Palette theme from the toolbar", async () => {
     const wrapper = mount(App);
     await flushPromises();
-    await wrapper.find('[data-testid="toolbar-theme"]').setValue("nord");
+    await wrapper.find('[data-testid="toolbar-theme"]').setValue("house");
     expect(wrapper.find('[data-testid="app"]').attributes("data-theme")).toBe(
-      "nord",
+      "house",
     );
   });
 

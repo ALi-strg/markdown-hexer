@@ -121,10 +121,9 @@ function onOpenRepository() {
   max-height: 80vh;
   padding: 20px 24px;
   border: 1px solid var(--border-color, #d8dde3);
-  border-radius: 8px;
+  border-radius: 0;
   background: var(--surface-color, #ffffff);
   color: var(--text-color, inherit);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3);
   overflow-y: auto;
 }
 
@@ -139,7 +138,7 @@ function onOpenRepository() {
 .about-icon {
   width: 72px;
   height: 72px;
-  border-radius: 14px;
+  border-radius: 0;
 }
 
 .about-title {
@@ -169,10 +168,10 @@ function onOpenRepository() {
 
 .shortcut-group-title {
   margin: 0 0 6px;
-  font-size: 0.8rem;
+  font: 11px/1.2 monospace;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--text-muted, inherit);
+  letter-spacing: 0.12em;
+  color: var(--link-color, var(--text-muted, inherit));
 }
 
 .shortcut-entries {
@@ -195,7 +194,7 @@ function onOpenRepository() {
 .shortcut-keys {
   padding: 1px 6px;
   border: 1px solid var(--border-color, #d8dde3);
-  border-radius: 4px;
+  border-radius: 0;
   background: var(--input-background, #ffffff);
   font-family: var(--editor-font-family, monospace);
   font-size: 0.8rem;

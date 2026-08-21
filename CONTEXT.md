@@ -87,15 +87,19 @@ Each Document carries its own Layout Mode. When a Tab is created, the mode is au
 ## Appearance
 
 **Theme**:
-The appearance preference shown in the toolbar. Six states: System (default) or one of five curated Palettes — Light (warm beige), Dark (deep navy), High Contrast (near-black), Nord (cool arctic blue-grey), Terminal Green (green-on-black). A manual choice persists until changed. Persisted in localStorage.
+The appearance preference shown in the toolbar. Seven states: System (default) or one of six curated Palettes — Light (warm beige), House (cool paper with green-gray ink), Dark (deep navy), High Contrast (near-black), Nord (cool arctic blue-grey), or Terminal Green (green-on-black). A manual choice persists until changed. Persisted in localStorage.
 _Avoid_: Color mode, dark mode toggle
 
 **Palette**:
-A concrete color scheme, one of the five: Light, Dark, High Contrast, Nord, or Terminal Green. System is a Theme but not a Palette.
-_Avoid_: Theme (the six-state preference; System is a Theme but not a Palette)
+A concrete color scheme, one of the six: Light, House, Dark, High Contrast, Nord, or Terminal Green. System is a Theme but not a Palette. The Design language is shared across all Palettes.
+_Avoid_: Theme (the seven-state preference; System is a Theme but not a Palette)
+
+**Design language**:
+The shared visual treatment of the app chrome: Helvetica Neue or its fallback, monospace uppercase micro-labels, hairline borders, and flat surfaces with no radius or shadow. It follows the alitools-pages House style. The Design language does not replace a Palette and does not control the Editor Pane or Preview Pane content fonts.
+_Avoid_: look-and-feel, skin, theme
 
 **System**:
-The default Theme state. Not a Palette: it follows the OS live and resolves to the Light or Dark Palette. Persisted in localStorage.
+The default Theme state. Not a Palette: it follows the OS live and resolves to the Light Palette for light mode or the Dark Palette for dark mode. House is an explicit Palette and is not selected by System. Persisted in localStorage.
 _Avoid_: Auto theme, OS theme
 
 **Text Size**:

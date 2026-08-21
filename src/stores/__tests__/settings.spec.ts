@@ -179,12 +179,13 @@ describe("settings store", () => {
     );
   });
 
-  it("accepts a palette theme beyond Light and Dark", () => {
+  it("accepts the House Palette", () => {
     const settings = useSettingsStore();
-    settings.setTheme("high-contrast");
-    expect(settings.theme).toBe("high-contrast");
+    settings.setTheme("house");
+    expect(settings.theme).toBe("house");
+    expect(settings.resolvedTheme).toBe("house");
     expect(localStorage.getItem("markdownhexer:settings")).toBe(
-      JSON.stringify({ theme: "high-contrast" }),
+      JSON.stringify({ theme: "house" }),
     );
   });
 
