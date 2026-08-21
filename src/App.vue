@@ -673,6 +673,7 @@ watch(() => [document.filename, document.dirty], syncWindowTitle);
   height: 100vh;
   background: var(--background-color);
   color: var(--text-color);
+  font-family: var(--ui-font-family);
 }
 
 .workspace {
@@ -716,11 +717,10 @@ watch(() => [document.filename, document.dirty], syncWindowTitle);
   bottom: 24px;
   transform: translateX(-50%);
   padding: 10px 16px;
-  border-radius: 6px;
+  border-radius: 0;
   background: var(--toast-background, #333);
   color: var(--toast-color, #fff);
   font-size: 0.9rem;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   z-index: 100;
 }
 </style>

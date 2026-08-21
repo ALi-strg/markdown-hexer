@@ -1,4 +1,4 @@
-// Theme: a six-state preference (System plus five Palettes) driven through the
+// Theme: a seven-state preference (System plus six Palettes) driven through the
 // toolbar. System is the default and resolves to the Light or Dark Palette via
 // matchMedia, so `data-theme` always carries a Palette — never "system". The
 // E2E switches themes and asserts `data-theme` plus the pane styling actually
@@ -7,6 +7,7 @@ describe("Markdown Hexer theme", () => {
   const THEME_VALUES: Record<string, string> = {
     System: "system",
     Light: "light",
+    House: "house",
     Dark: "dark",
     "High Contrast": "high-contrast",
     Nord: "nord",
@@ -64,6 +65,13 @@ describe("Markdown Hexer theme", () => {
     // The warm beige background and dark brown text must reach the DOM.
     expect(await appBackground()).toBe("rgb(245, 241, 227)");
     expect(await appTextColor()).toBe("rgb(63, 50, 34)");
+  });
+
+  it("switches to House and restyles the panes", async () => {
+    await setTheme("House");
+    expect(await appTheme()).toBe("house");
+    expect(await appBackground()).toBe("rgb(247, 246, 240)");
+    expect(await appTextColor()).toBe("rgb(38, 48, 42)");
   });
 
   it("switches to Dark and restyles the panes", async () => {

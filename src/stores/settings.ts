@@ -2,10 +2,11 @@ import { defineStore } from "pinia";
 import { computed, ref } from "vue";
 
 /// The appearance preference: System, which resolves to the Light or Dark
-/// Palette, or one of the five Palettes directly.
+/// Palette, or one of the six Palettes directly.
 export type Theme =
   | "system"
   | "light"
+  | "house"
   | "dark"
   | "high-contrast"
   | "nord"
@@ -23,6 +24,7 @@ export type Font = "default" | "serif" | "sans" | "mono";
 export const THEMES: Theme[] = [
   "system",
   "light",
+  "house",
   "dark",
   "high-contrast",
   "nord",
@@ -32,6 +34,7 @@ export const THEMES: Theme[] = [
 export const THEME_LABELS: Record<Theme, string> = {
   system: "System",
   light: "Light",
+  house: "House",
   dark: "Dark",
   "high-contrast": "High Contrast",
   nord: "Nord",

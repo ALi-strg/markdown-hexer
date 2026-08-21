@@ -1,6 +1,7 @@
 :root {
   /* Typography tokens: curated font stacks and sizes shared by both panes.
      The data-font attribute overrides the two font-family tokens below. */
+  --ui-font-family: "Helvetica Neue", Arial, sans-serif;
   --editor-font-family: "Cascadia Mono", "JetBrains Mono", Consolas, monospace;
   --preview-font-family: "Segoe UI", system-ui, sans-serif;
   --editor-font-size: 14px;
@@ -222,6 +223,49 @@
   --syntax-url: #3dff6e;
 }
 
+/* House: the alitools-pages palette. Syntax colors intentionally reuse the
+   readable GitHub-light hues from Light. */
+[data-theme="house"] {
+  color-scheme: light;
+  --background-color: #f7f6f0;
+  --surface-color: #f7f6f0;
+  --text-color: #26302a;
+  --text-muted: #78827a;
+  --border-color: #d2d8cf;
+  --input-background: #f7f6f0;
+  --accent-color: #8fa98f;
+  --accent-contrast-color: #26302a;
+  --hover-background: rgba(143, 169, 143, 0.12);
+  --selection-background: #dce9e5;
+  --selection-color: #26302a;
+  --caret-color: #66816f;
+  --gutter-background: transparent;
+  --gutter-text: #78827a;
+  --active-line-background: rgba(143, 169, 143, 0.08);
+  --code-background: #dce9e5;
+  --code-border: #d2d8cf;
+  --link-color: #66816f;
+  --blockquote-border: #8fa98f;
+  --blockquote-text: #78827a;
+  --table-stripe-background: rgba(143, 169, 143, 0.08);
+  --toast-background: #26302a;
+  --toast-color: #f7f6f0;
+  --scrollbar-thumb: rgba(38, 48, 42, 0.25);
+  --scrollbar-thumb-hover: rgba(38, 48, 42, 0.4);
+
+  --syntax-comment: #6e7781;
+  --syntax-punctuation: #57606a;
+  --syntax-keyword: #cf222e;
+  --syntax-literal: #cf222e;
+  --syntax-property: #0550ae;
+  --syntax-tag: #953800;
+  --syntax-string: #0a3069;
+  --syntax-function: #8250df;
+  --syntax-class: #953800;
+  --syntax-atrule: #953800;
+  --syntax-url: #57606a;
+}
+
 /* Text size: Medium is the default look carried by the :root typography
    tokens, so only Small and Large override them. One shared pick scales both
    panes; the Preview's em-based headings follow the base size. */
@@ -315,7 +359,7 @@
 ::-webkit-scrollbar-thumb {
   background-color: var(--scrollbar-thumb);
   border: 3px solid transparent;
-  border-radius: 8px;
+  border-radius: 0;
   background-clip: content-box;
 }
 
@@ -339,6 +383,14 @@ body {
   height: 100%;
   background-color: var(--background-color);
   color: var(--text-color);
+  font-family: var(--ui-font-family);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
 }
 
 #app {

@@ -95,7 +95,7 @@ npm run tauri build -- --debug --no-bundle   # what test:e2e uses to build the a
 
 **Layout/UI** (`src/stores/ui.ts`): `layoutMode` is a per-Tab record field — chosen at Tab creation (New → Split View, Open → Preview Only) — surfaced to the window as a computed over the Active Tab; the Layout Switcher and `Ctrl/Cmd+Shift+P` mutate only the Active Tab's mode. `dividerPosition` (0..1, clamped 0.15–0.85) stays app-wide (persisted only in-session), plus `findOverlayOpen`, `toast`, `lastDirectory`. Modes never persist across launches.
 
-**Settings** (`src/stores/settings.ts`): Theme (six states — `system` default + Palettes `light`/`dark`/`high-contrast`/`nord`/`terminal-green`; System resolves to Light/Dark via `matchMedia`, so `data-theme` always carries a Palette), font (`default`/`serif`/`sans`/`mono`), and text size (`small`/`medium`/`large`, medium default); persisted in localStorage under `markdownhexer:settings`; applied via `data-theme`/`data-font`/`data-text-size` attributes on the app root.
+**Settings** (`src/stores/settings.ts`): Theme (seven states — `system` default + Palettes `light`/`house`/`dark`/`high-contrast`/`nord`/`terminal-green`; System resolves to Light/Dark via `matchMedia`, so `data-theme` always carries a Palette), font (`default`/`serif`/`sans`/`mono`), and text size (`small`/`medium`/`large`, medium default); persisted in localStorage under `markdownhexer:settings`; applied via `data-theme`/`data-font`/`data-text-size` attributes on the app root.
 
 **Asset scope protocol** (`asset.rs`): `DocumentScope` state holds the current path; `asset://` requests must be absolute, canonicalized, and inside the Document's directory (403 otherwise, 404 if missing). MIME sniffed.
 

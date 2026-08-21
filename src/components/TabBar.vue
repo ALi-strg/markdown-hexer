@@ -107,7 +107,7 @@ function tabLabel(tab: Tab): string {
   max-width: 220px;
   border: 1px solid transparent;
   border-bottom: none;
-  border-radius: 6px 6px 0 0;
+  border-radius: 0;
   background: transparent;
   color: var(--text-color);
   font-size: 0.85rem;
@@ -161,7 +161,7 @@ function tabLabel(tab: Tab): string {
   height: 20px;
   margin-right: 6px;
   border: none;
-  border-radius: 4px;
+  border-radius: 0;
   background: transparent;
   color: var(--text-color);
   font-size: 0.9rem;
@@ -179,7 +179,7 @@ function tabLabel(tab: Tab): string {
   height: 28px;
   margin-left: 2px;
   border: none;
-  border-radius: 6px;
+  border-radius: 0;
   background: transparent;
   color: var(--text-color);
   font-size: 1rem;

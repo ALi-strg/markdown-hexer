@@ -15,7 +15,7 @@ A cross-platform, distraction-free Markdown editor built with Tauri 2, Vue 3, an
 - **Externally-Modified detection** — on window focus, the app detects when the file changed on disk: silent reload when clean, Reload / Overwrite / Cancel when Dirty.
 - **Editing** — full undo/redo, toolbar + `Cmd/Ctrl+B`/`Cmd/Ctrl+I` formatting (bold, italic, heading, list, link, code), and `Cmd/Ctrl+F` find & replace (replace in Preview Only switches to a source-visible mode first).
 - **Images & links** — relative image paths resolve against the Document's directory via a scoped `asset://` protocol; links open in the system browser.
-- **Appearance** — Theme follows the OS (System) or one of five curated Palettes (Light, Dark, High Contrast, Nord, Terminal Green), plus a curated font picker for both panes; preferences persist across launches.
+- **Appearance** — Theme follows the OS (System) or one of six curated Palettes (Light, House, Dark, High Contrast, Nord, Terminal Green), plus a curated font picker for both panes; preferences persist across launches.
 - **OS integration** — open `.md`/`.markdown`/`.mdown`/`.txt` via double-click (file associations) or drag-and-drop; a second launch opens the file in the running window (single instance). BOM-prefixed files open cleanly and save as clean UTF-8.
 
 ## Reporting bugs

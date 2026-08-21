@@ -195,7 +195,7 @@ defineExpose({ getPreviewHost: () => previewHost.value });
 .preview-host :deep(code) {
   background: var(--code-background);
   border: 1px solid var(--code-border);
-  border-radius: 4px;
+  border-radius: 0;
   padding: 0.1em 0.3em;
   font-size: 0.9em;
 }
@@ -203,7 +203,7 @@ defineExpose({ getPreviewHost: () => previewHost.value });
 .preview-host :deep(pre) {
   background: var(--code-background);
   border: 1px solid var(--code-border);
-  border-radius: 6px;
+  border-radius: 0;
   padding: 0.8rem 1rem;
   overflow-x: auto;
   line-height: 1.5;

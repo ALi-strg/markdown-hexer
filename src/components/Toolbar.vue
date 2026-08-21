@@ -325,7 +325,7 @@ function onTextSizeChange(event: Event) {
   height: 26px;
   padding: 0 8px;
   border: 1px solid transparent;
-  border-radius: 4px;
+  border-radius: 0;
   background: transparent;
   color: inherit;
   font-size: 0.9rem;
@@ -362,9 +362,13 @@ function onTextSizeChange(event: Event) {
   flex: 1;
 }
 
-.toolbar-theme-label {
-  font-size: 0.8rem;
-  color: var(--text-color, inherit);
+.toolbar-theme-label,
+.toolbar-font-label,
+.toolbar-size-label {
+  font: 11px/1 monospace;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--link-color, var(--text-muted, inherit));
   margin-right: 4px;
 }
 
@@ -374,7 +378,7 @@ function onTextSizeChange(event: Event) {
   height: 26px;
   padding: 0 4px;
   border: 1px solid var(--border-color, #e0e0e0);
-  border-radius: 4px;
+  border-radius: 0;
   background: var(--input-background, #ffffff);
   color: var(--text-color, inherit);
   font-size: 0.85rem;
@@ -392,10 +396,7 @@ function onTextSizeChange(event: Event) {
 
 .toolbar-font-label,
 .toolbar-size-label {
-  font-size: 0.8rem;
-  color: var(--text-color, inherit);
   margin-left: 8px;
-  margin-right: 4px;
 }
 
 .layout-switcher {
@@ -403,7 +404,7 @@ function onTextSizeChange(event: Event) {
   gap: 2px;
   padding: 2px;
   border: 1px solid var(--border-color, #e0e0e0);
-  border-radius: 6px;
+  border-radius: 0;
   background: var(--input-background, transparent);
 }
 
@@ -411,7 +412,7 @@ function onTextSizeChange(event: Event) {
   height: 22px;
   padding: 0 10px;
   border: none;
-  border-radius: 4px;
+  border-radius: 0;
   background: transparent;
   color: var(--text-muted, var(--text-color, inherit));
   font-size: 0.8rem;
