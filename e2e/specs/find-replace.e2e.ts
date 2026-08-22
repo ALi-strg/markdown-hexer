@@ -3,9 +3,10 @@ import os from "node:os";
 import fs from "node:fs";
 
 // Find & replace runs through @codemirror/search driven by the app's find
-// overlay, so the E2E exercises the real path: Cmd/Ctrl+F opens the overlay in
-// Preview Only, matches are navigable there, and a replace first switches to
-// Split View before editing hidden text.
+// overlay, so the E2E exercises the real path: Preview Only hides the Editor
+// Pane, so Cmd/Ctrl+F there first switches the Document to Split View (the
+// source must be visible for highlights and scroll-to-match); matches are then
+// navigable and replaced in place.
 describe("Markdown Hexer find & replace", () => {
   const openPath = path.join(
     os.tmpdir(),
@@ -88,23 +89,23 @@ describe("Markdown Hexer find & replace", () => {
     );
   }
 
-  it("opens find in Preview Only and stays in Preview Only while finding", async () => {
+  it("opens find in Preview Only by switching to Split View", async () => {
     await openFileInPreviewOnly();
 
     const editorPane = await $('[data-testid="editor-pane"]');
     expect(await editorPane.isDisplayed()).toBe(false);
 
     await openFindOverlay();
-    expect(await editorPane.isDisplayed()).toBe(false);
+    expect(await editorPane.isDisplayed()).toBe(true);
 
     const input = await $('[data-testid="find-input"]');
     await input.click();
     await browser.keys("alpha");
     await waitForMatchCount("1 / 3");
-    expect(await editorPane.isDisplayed()).toBe(false);
+    expect(await editorPane.isDisplayed()).toBe(true);
   });
 
-  it("navigates matches with next and previous while still in Preview Only", async () => {
+  it("navigates matches with next and previous while finding continues", async () => {
     const input = await $('[data-testid="find-input"]');
     await input.click();
     await browser.keys("Enter");
@@ -112,9 +113,6 @@ describe("Markdown Hexer find & replace", () => {
 
     await browser.keys(["Shift", "Enter"]);
     await waitForMatchCount("1 / 3");
-
-    const editorPane = await $('[data-testid="editor-pane"]');
-    expect(await editorPane.isDisplayed()).toBe(false);
   });
 
   it("switches to Split View and replaces in place when replacing in Preview Only", async () => {
