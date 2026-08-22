@@ -55,7 +55,7 @@ Remove a Tab and its Document. If the Document is Dirty, the Confirm-Discard Gua
 _Avoid_: Close file, destroy tab
 
 **Find & Replace**:
-The app-hosted search panel that operates on the Active Document. Each Tab keeps its own Find & Replace state (query and current match), so switching Tabs swaps the panel to that Tab's state. In Preview Only, triggering a replace first switches the Active Document to Split View.
+The app-hosted search panel that operates on the Active Document. Each Tab keeps its own Find & Replace state (query and current match), so switching Tabs swaps the panel to that Tab's state. Preview Only gives no highlight or scroll feedback (its Editor Pane is hidden), so opening Find, typing a query, cycling matches, or triggering a replace first switches the Active Document to Split View.
 _Avoid_: Search box, search-and-replace
 
 ## Layout Modes

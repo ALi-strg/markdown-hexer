@@ -2225,7 +2225,10 @@ describe("App shell", () => {
     expect(wrapper.find('[data-testid="find-panel"]').exists()).toBe(true);
   });
 
-  it("keeps find available in Preview Only until a replace is attempted", async () => {
+  it("surfaces the source when find opens in Preview Only", async () => {
+    // The Editor Pane is hidden in Preview Only, so search there would give no
+    // highlight and no scroll feedback; opening Find surfaces the source, the
+    // same one-off accommodation a Replace attempt makes.
     const wrapper = mount(App);
     await flushPromises();
     const ui = useUiStore();
@@ -2237,7 +2240,30 @@ describe("App shell", () => {
     );
     await nextTick();
 
-    expect(ui.layoutMode).toBe("preview");
+    expect(ui.layoutMode).toBe("split");
+    expect(wrapper.find('[data-testid="find-panel"]').exists()).toBe(true);
+  });
+
+  it("re-surfaces the source when find is re-opened in Preview Only", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const ui = useUiStore();
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "f", ctrlKey: true }),
+    );
+    await nextTick();
+
+    // Panel already open; the user switches to Preview Only anyway, then
+    // presses Cmd/Ctrl+F again to go back to searching.
+    ui.setLayoutMode("preview");
+    await nextTick();
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "f", ctrlKey: true }),
+    );
+    await nextTick();
+
+    expect(ui.layoutMode).toBe("split");
     expect(wrapper.find('[data-testid="find-panel"]').exists()).toBe(true);
   });
 
@@ -2288,6 +2314,30 @@ describe("App shell", () => {
     expect(wrapper.find('[data-testid="match-count"]').text()).toBe("1 / 2");
     const selection = view.state.selection.main;
     expect(view.state.sliceDoc(selection.from, selection.to)).toBe("alpha");
+  });
+
+  it("surfaces the source when a query is typed while in Preview Only", async () => {
+    // Panel open across a manual switch to Preview Only: typing (and cycling)
+    // must still surface the source, or the match count advances with no
+    // highlight and no scroll anywhere.
+    const wrapper = mount(App);
+    await flushPromises();
+    const ui = useUiStore();
+    const pane = wrapper.findComponent({ ref: "editorPane" });
+    const view = (pane.vm as unknown as { getView: () => EditorView }).getView();
+    view.dispatch({ changes: { from: 0, insert: "alpha beta alpha" } });
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "f", ctrlKey: true }),
+    );
+    await nextTick();
+    ui.setLayoutMode("preview");
+    await nextTick();
+
+    await wrapper.find('[data-testid="find-input"]').setValue("alpha");
+    await flushPromises();
+
+    expect(ui.layoutMode).toBe("split");
   });
 
   it("remembers each Tab's own Find query and current match across switches", async () => {

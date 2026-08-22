@@ -105,7 +105,7 @@ npm run tauri build -- --debug --no-bundle   # what test:e2e uses to build the a
 | `src/App.vue` | Orchestrator: global shortcuts (`onKeydown` line 262), window events (close-request, focus, drag-drop, file-open-requested), divider drag, layout/style wiring |
 | `src/components/EditorPane.vue` | CodeMirror 6 mount; mirrors edits into store; `replaceContent` rebuilds state; routes CM search panel into a hidden off-screen host |
 | `src/components/PreviewPane.vue` | Debounced render, `asset://` img rewrite, external-link opening |
-| `src/components/FindReplacePanel.vue` | App-hosted find/replace UI (works in Preview Only); replaces switch to Split View first |
+| `src/components/FindReplacePanel.vue` | App-hosted find/replace UI; find or replace in Preview Only switches to Split View first |
 | `src/components/Toolbar.vue` | Format buttons (bold/italic/heading/list/link/code) + Theme/Font/Size selects; About button opens the About Dialog |
 | `src/components/AboutDialog.vue` | Modal with product name, bundle Version (via `get_app_version`), GitHub repo link, and the grouped Shortcuts Reference (`SHORTCUT_GROUPS`); `Ctrl/Cmd+/` toggles it |
 | `src/stores/document.ts` | Document state, save/open/new/reload/external-modification logic |
@@ -140,7 +140,7 @@ npm run tauri build -- --debug --no-bundle   # what test:e2e uses to build the a
 - **E2E seam**: `VITE_E2E=1` (set by `wdio.conf.ts`) replaces native dialogs with localStorage stubs (`markdownhexer:e2e:guard-choice`, `:external-choice`, `:open-path`, `:save-path`) and installs global triggers (`__triggerWindowClose`, `__triggerExternalCheck`, `__triggerDrop`, `__triggerFileOpen`) in `App.vue` onMounted. The close-guard spec relies on `__triggerWindowClose`; the app does **not** actually destroy on close when `VITE_E2E=1`.
 - **Windows E2E**: `tauri-driver` is spawned via a `cmd.exe` shell wrapper that orphidifies the real process; `wdio.conf.ts` force-kills the tree with `taskkill /IM tauri-driver.exe /T /F`.
 - **Ambient `CI` env var breaks `tauri build`**: tauri CLI maps `CI` onto its `--ci` flag (accepts true/false), so a bare `CI=1` in the shell fails the e2e build before compilation ("invalid value '1' for '--ci'"). `wdio.conf.ts` onPrepare spawns the build with `env: { ...process.env, CI: "false" }`; if you build manually for e2e, prefix with `CI=false`.
-- **Find/replace never edits hidden text**: replacing in Preview Only first switches to Split View (`ui.showSourceForReplace()`); `dispatchSelectionToEditor`/`syncSelectionToEditor` mirror the tracked match into the editor.
+- **Find/replace never works blind**: searching or replacing in Preview Only first switches to Split View (`ui.showSource()`, called from Find open and every tracked-match move), because the hidden Editor Pane can show no highlight and cannot scroll to a match; `dispatchSelectionToEditor`/`syncSelectionToEditor` mirror the tracked match into the editor.
 - CM's own search panel is routed into an **off-screen hidden host** (`EditorPane.vue` `hiddenPanelHost`) purely to activate match highlighting; the visible panel is `FindReplacePanel`.
 - BOM handling: open/inspect strip a single leading BOM; save writes clean UTF-8 (no BOM). Same read path means a BOM file is never falsely flagged Externally-Modified.
 - Asset protocol is deliberately strict: absolute + canonicalized + inside Document dir; symlinks/`..` that escape are rejected (403).

@@ -48,10 +48,12 @@ export const useUiStore = defineStore("ui", () => {
     document.activeTab().layoutMode = next;
   }
 
-  /// Makes the source visible so a replace never edits hidden text: Preview
-  /// Only gives way to Split View, while source-visible modes are unchanged.
-  /// The switch is a one-off accommodation on the Active Document.
-  function showSourceForReplace() {
+  /// Makes the source visible so searching or replacing never works blind:
+  /// Preview Only gives way to Split View (the Editor Pane is hidden there, so
+  /// match highlighting and scroll-to-match would be impossible), while
+  /// source-visible modes are unchanged. The switch is a one-off accommodation
+  /// on the Active Document.
+  function showSource() {
     if (layoutMode.value === "preview") {
       document.activeTab().layoutMode = "split";
     }
@@ -80,7 +82,7 @@ export const useUiStore = defineStore("ui", () => {
     toast,
     cycleLayoutMode,
     setLayoutMode,
-    showSourceForReplace,
+    showSource,
     showToast,
     setLastDirectory,
   };

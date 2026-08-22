@@ -343,13 +343,15 @@ async function onKeydown(event: KeyboardEvent) {
 /// Opens the find & replace overlay in any Layout Mode. The first open also
 /// activates CodeMirror's search state (seeding the query from the current
 /// selection and enabling match highlighting); a later Cmd/Ctrl+F just returns
-/// focus to the query field. The Editor Pane stays hidden in Preview Only until
-/// a replace is attempted, which is the FindReplacePanel's job.
+/// focus to the query field. Preview Only surfaces the source first: its
+/// hidden Editor Pane could give no highlight or scroll feedback, so Find
+/// makes the same one-off accommodation as a Replace attempt.
 function onFind() {
   const view = editorPane.value?.getView();
   if (!view) {
     return;
   }
+  ui.showSource();
   if (!ui.findOverlayOpen) {
     ui.findOverlayOpen = true;
     openSearchPanel(view);

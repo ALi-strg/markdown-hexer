@@ -137,16 +137,18 @@ function dispatchSelectionToEditor(view: EditorView, match: MatchRange) {
   });
 }
 
-/// Moves the current match (and, in a source-visible mode, the editor's
-/// selection) onto `match`. `null` leaves the current match untouched.
+/// Moves the current match onto `match` and drives the editor's selection to
+/// it. Preview Only surfaces the source first: its hidden Editor Pane cannot
+/// show highlights or scroll to the match. The selection dispatch waits for
+/// the next tick, since the pane's `v-show` only becomes visible after Vue
+/// flushes the layout change.
 function setCurrentMatch(view: EditorView, match: MatchRange | null) {
   if (match === null) {
     return;
   }
+  ui.showSource();
   currentMatch.value = match;
-  if (ui.layoutMode !== "preview") {
-    dispatchSelectionToEditor(view, match);
-  }
+  nextTick(() => dispatchSelectionToEditor(view, match));
 }
 
 /// Selects the first match of the current query so the match count is
@@ -280,7 +282,7 @@ function doReplaceNext() {
   if (!view) {
     return;
   }
-  ui.showSourceForReplace();
+  ui.showSource();
   nextTick(() => {
     syncSelectionToEditor(view);
     replaceNext(view);
@@ -297,7 +299,7 @@ function doReplaceAll() {
   if (!view) {
     return;
   }
-  ui.showSourceForReplace();
+  ui.showSource();
   nextTick(() => {
     syncSelectionToEditor(view);
     replaceAll(view);
