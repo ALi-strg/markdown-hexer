@@ -150,23 +150,23 @@ describe("ui store", () => {
     expect(ui.layoutMode).toBe("focus"); // a.md keeps Focus
   });
 
-  it("switches Preview Only to Split View for a replace", () => {
+  it("switches Preview Only to Split View while searching or replacing", () => {
     const ui = useUiStore();
     const document = useDocumentStore();
     pushTab("C:\\notes\\a.md");
     document.switchTab(1);
     expect(ui.layoutMode).toBe("preview");
-    ui.showSourceForReplace();
+    ui.showSource();
     expect(ui.layoutMode).toBe("split");
   });
 
-  it("leaves a source-visible mode unchanged for a replace", () => {
+  it("leaves a source-visible mode unchanged while searching or replacing", () => {
     const ui = useUiStore();
     const document = useDocumentStore();
     pushTab("C:\\notes\\a.md");
     document.switchTab(1);
     ui.cycleLayoutMode(); // a.md: Preview → Focus
-    ui.showSourceForReplace();
+    ui.showSource();
     expect(ui.layoutMode).toBe("focus");
   });
 
