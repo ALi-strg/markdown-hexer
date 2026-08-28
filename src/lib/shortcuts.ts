@@ -185,7 +185,9 @@ export type TabControlOperation =
   | "newTab"
   | "closeTab"
   | "nextTab"
-  | "previousTab";
+  | "previousTab"
+  | "moveTabLeft"
+  | "moveTabRight";
 
 /// The Tab Controls — New Tab, Close Tab, and the forward/back Tab cycle. The
 /// Shortcuts Reference draws from this registry, and the keydown dispatch
@@ -210,6 +212,14 @@ export const TAB_SHORTCUTS: Record<TabControlOperation, ShortcutEntry> = {
   previousTab: {
     label: "Previous Tab",
     combo: { key: "Tab", ctrlCmd: true, shift: true, ctrlOnly: true },
+  },
+  moveTabLeft: {
+    label: "Move Tab Left",
+    combo: { key: "PageUp", ctrlCmd: true, shift: true },
+  },
+  moveTabRight: {
+    label: "Move Tab Right",
+    combo: { key: "PageDown", ctrlCmd: true, shift: true },
   },
 };
 
@@ -257,6 +267,8 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
       TAB_SHORTCUTS.closeTab,
       TAB_SHORTCUTS.nextTab,
       TAB_SHORTCUTS.previousTab,
+      TAB_SHORTCUTS.moveTabLeft,
+      TAB_SHORTCUTS.moveTabRight,
     ],
   },
   {

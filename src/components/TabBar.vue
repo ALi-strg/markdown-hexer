@@ -1,11 +1,22 @@
 <template>
-  <nav class="tab-bar" data-testid="tab-bar" aria-label="Open Documents">
+  <nav
+    class="tab-bar"
+    data-testid="tab-bar"
+    aria-label="Open Documents"
+    @dragover.prevent
+    @drop.prevent="onDropAtEnd"
+  >
     <div
       v-for="(tab, index) in tabs"
       :key="tab.canonicalPath ?? `untitled-${tab.untitledNumber}`"
       class="tab"
-      :class="{ active: index === activeIndex }"
+      :class="{ active: index === activeIndex, dragging: index === dragIndex }"
       :title="tab.canonicalPath ?? undefined"
+      draggable="true"
+      @dragstart="onDragStart(index, $event)"
+      @dragover.prevent.stop="onDragOver(index)"
+      @drop.prevent.stop
+      @dragend="dragIndex = null"
     >
       <button
         type="button"
@@ -38,10 +49,15 @@
     >
       +
     </button>
+    <!-- The nav itself is the drop zone for the empty strip right of the
+         last Tab (and the `+` button): a drop there moves the dragged Tab
+         to the end. The per-Tab handlers stop propagation, so these nav
+         handlers only fire over the strip. -->
   </nav>
 </template>
 
 <script setup lang="ts">
+import { ref } from "vue";
 import type { Tab } from "../stores/document";
 import { isTabDirty, tabDisplayName } from "../stores/document";
 import { DOCUMENT_SHORTCUTS, tooltipText } from "../lib/shortcuts";
@@ -54,8 +70,45 @@ const props = defineProps<{
 const emit = defineEmits<{
   activate: [index: number];
   close: [index: number];
+  move: [from: number, to: number];
   new: [];
 }>();
+
+/// The 0-based index of the Tab being dragged, or null between drags. The
+/// store reorders live on every crossed boundary (the `move` emit), so this
+/// tracks where the dragged Tab currently sits, never where it started.
+const dragIndex = ref<number | null>(null);
+
+/// Starts a drag of the Tab at `index`. A dataTransfer entry is required for
+/// Firefox to fire any drag events at all; the content is irrelevant because
+/// the reorder is positional.
+function onDragStart(index: number, event: DragEvent) {
+  dragIndex.value = index;
+  event.dataTransfer?.setData("text/plain", "");
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = "move";
+  }
+}
+
+/// Reorders live while dragging: crossing onto another Tab emits one `move`
+/// (the store's no-op guard swallows repeats at dragover rate). Dropping is
+/// deliberately not a separate step — the order is already correct, and an
+/// aborted drag (Esc, drop outside) leaves it where the drag left it.
+function onDragOver(index: number) {
+  if (dragIndex.value === null || dragIndex.value === index) {
+    return;
+  }
+  emit("move", dragIndex.value, index);
+  dragIndex.value = index;
+}
+
+function onDropAtEnd() {
+  const last = props.tabs.length - 1;
+  if (dragIndex.value !== null && dragIndex.value !== last) {
+    emit("move", dragIndex.value, last);
+    dragIndex.value = last;
+  }
+}
 
 /// The name of the parent folder of the Document, e.g. `drafts` for
 /// `C:\notes\drafts\a.md`. Null for a root-level or Untitled Document: a
@@ -112,6 +165,10 @@ function tabLabel(tab: Tab): string {
   color: var(--text-color);
   font-size: 0.85rem;
   white-space: nowrap;
+}
+
+.tab.dragging {
+  opacity: 0.5;
 }
 
 .tab:hover {

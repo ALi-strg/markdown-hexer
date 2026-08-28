@@ -667,6 +667,49 @@ describe("App shell", () => {
     expect(document.activeIndex).toBe(0);
   });
 
+  it("moves the Active Tab right on Ctrl+Shift+PageDown and left on Ctrl+Shift+PageUp", async () => {
+    mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    document.newTab();
+    document.newTab();
+    // [Untitled.md, Untitled 2.md, Untitled 3.md], Untitled 3.md Active.
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "PageDown",
+        ctrlKey: true,
+        shiftKey: true,
+      }),
+    );
+    await flushPromises();
+    // Already last: no move, still Active.
+    expect(document.activeIndex).toBe(2);
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "PageUp",
+        ctrlKey: true,
+        shiftKey: true,
+      }),
+    );
+    await flushPromises();
+    expect(document.tabs[1].untitledNumber).toBe(3);
+    expect(document.activeIndex).toBe(1);
+    expect(document.filename).toBe("Untitled 3.md");
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "PageUp",
+        ctrlKey: true,
+        shiftKey: true,
+      }),
+    );
+    await flushPromises();
+    expect(document.tabs[0].untitledNumber).toBe(3);
+    expect(document.activeIndex).toBe(0);
+  });
+
   it("loads the opened file into the Editor Pane on Cmd/Ctrl+O", async () => {
     const wrapper = mount(App);
     await flushPromises();

@@ -39,11 +39,11 @@ _Avoid_: Save copy, export
 ## Tabs
 
 **Tab**:
-The slot in the Tab Bar holding one Document. Each Tab keeps its own Document state — content, Dirty state, canonical path, Layout Mode, Find & Replace state, and the editor's cursor, scroll, and undo history — for the session. `New` inserts the new Tab after the active one and makes it Active. Tabs stay in insertion order (not reorderable).
+The slot in the Tab Bar holding one Document. Each Tab keeps its own Document state — content, Dirty state, canonical path, Layout Mode, Find & Replace state, and the editor's cursor, scroll, and undo history — for the session. `New` inserts the new Tab after the active one and makes it Active. Tabs can be reordered within the Tab Bar by dragging (Tabs shift aside as the drag crosses them; a drop right of the last Tab moves it to the end) or with Cmd/Ctrl+Shift+PageUp/PageDown, which move the Active Tab one position left or right. Dragging never makes a Tab Active. Order is session-only.
 _Avoid_: File tab, buffer
 
 **Tab Bar**:
-The strip at the very top of the window, above the toolbar, showing every open Tab in insertion order. Each Tab is labelled with its Document's filename (with the parent folder added when two open Documents share a basename) and a Dirty marker, and carries its own close control. Always visible in every Layout Mode; clicking a Tab makes it Active. A `+` affordance creates a New (Untitled) Tab. Tab shortcuts: Cmd/Ctrl+T New Tab, Cmd/Ctrl+W Close Tab, Ctrl+Tab / Ctrl+Shift+Tab next / previous Tab.
+The strip at the very top of the window, above the toolbar, showing every open Tab in the user's chosen order (initially insertion order). Each Tab is labelled with its Document's filename (with the parent folder added when two open Documents share a basename) and a Dirty marker, and carries its own close control. Always visible in every Layout Mode; clicking a Tab makes it Active. A `+` affordance creates a New (Untitled) Tab. Tab shortcuts: Cmd/Ctrl+T New Tab, Cmd/Ctrl+W Close Tab, Ctrl+Tab / Ctrl+Shift+Tab next / previous Tab, Cmd/Ctrl+Shift+PageUp/PageDown move Tab left / right.
 _Avoid_: Tab strip, tabs row
 
 **Active Document**:

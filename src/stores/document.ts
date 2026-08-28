@@ -407,6 +407,39 @@ export const useDocumentStore = defineStore("document", () => {
     syncAssetRoot();
   }
 
+  /// Moves the Tab at `from` to `to` (0-based, both into the current list),
+  /// shifting the Tabs between. The Active Document follows its own Tab: the
+  /// Tab that was Active stays Active, only its index changes. Equal or
+  /// out-of-range indices are ignored (single-Tab drags included) so the
+  /// Active index always stays a valid Tab index. Returns whether the move
+  /// happened. No `asset://` re-scope: the Active Document — and with it the
+  /// asset root — is unchanged by a reorder. Called once per crossed Tab
+  /// boundary during a drag and once per keyboard move, so it is safe to call
+  /// at dragover rate.
+  function moveTab(from: number, to: number): boolean {
+    if (
+      from === to ||
+      from < 0 ||
+      to < 0 ||
+      from >= tabs.value.length ||
+      to >= tabs.value.length
+    ) {
+      return false;
+    }
+    const [tab] = tabs.value.splice(from, 1);
+    tabs.value.splice(to, 0, tab);
+    if (activeIndex.value === from) {
+      activeIndex.value = to;
+    } else if (from < to) {
+      if (activeIndex.value > from && activeIndex.value <= to) {
+        activeIndex.value -= 1;
+      }
+    } else if (activeIndex.value >= to && activeIndex.value < from) {
+      activeIndex.value += 1;
+    }
+    return true;
+  }
+
   /// Switches the Active Tab to `index`. Indices outside the Tab list are
   /// ignored so the Active index always stays a valid Tab index. Returns
   /// whether the switch happened. The `asset://` scope follows the Active
@@ -436,6 +469,7 @@ export const useDocumentStore = defineStore("document", () => {
     tabs,
     activeIndex,
     activeTab,
+    moveTab,
     switchTab,
     cycleTab,
     closeTab,

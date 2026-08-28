@@ -12,16 +12,24 @@ describe("Markdown Hexer Tab Bar", () => {
     `markdownhexer-e2e-tabs-a-${Date.now()}.md`,
   );
   const firstFilename = path.basename(firstPath);
+  const secondPath = path.join(
+    os.tmpdir(),
+    `markdownhexer-e2e-tabs-b-${Date.now()}.md`,
+  );
+  const secondFilename = path.basename(secondPath);
 
   before(() => {
     fs.writeFileSync(firstPath, "# Tab A content");
+    fs.writeFileSync(secondPath, "# Tab B content");
   });
 
   after(() => {
-    try {
-      fs.unlinkSync(firstPath);
-    } catch {
-      // already removed
+    for (const p of [firstPath, secondPath]) {
+      try {
+        fs.unlinkSync(p);
+      } catch {
+        // already removed
+      }
     }
   });
 
@@ -119,5 +127,35 @@ describe("Markdown Hexer Tab Bar", () => {
 
     expect(await $$('[data-testid="tab"]')).toHaveLength(1);
     expect(await browser.getTitle()).toBe(activeTitle);
+  });
+
+  it("moves the Active Tab with Ctrl+Shift+PageUp/PageDown", async () => {
+    // [a.md], a.md Active — opening b.md stacks it after and activates it:
+    // [a.md, b.md], b.md Active.
+    await triggerFileOpen(secondPath);
+    await browser.waitUntil(
+      async () =>
+        (await browser.getTitle()) === `${secondFilename} — Markdown Hexer`,
+      { timeout: 10000, timeoutMsg: "opening the second file did not activate it" },
+    );
+
+    // Move the Active Tab (b.md) left: its order slot changes, its Active
+    // status follows it.
+    await browser.keys(["Control", "Shift", "PageUp"]);
+    await browser.waitUntil(
+      async () =>
+        (await (await $$('[data-testid="tab"]')[0]).getAttribute("aria-label")).includes(secondFilename),
+      { timeout: 10000, timeoutMsg: "Ctrl+Shift+PageUp did not move the Tab left" },
+    );
+    expect(await browser.getTitle()).toBe(`${secondFilename} — Markdown Hexer`);
+
+    // And back right, restoring the original order.
+    await browser.keys(["Control", "Shift", "PageDown"]);
+    await browser.waitUntil(
+      async () =>
+        (await (await $$('[data-testid="tab"]')[1]).getAttribute("aria-label")).includes(secondFilename),
+      { timeout: 10000, timeoutMsg: "Ctrl+Shift+PageDown did not move the Tab right" },
+    );
+    expect(await browser.getTitle()).toBe(`${secondFilename} — Markdown Hexer`);
   });
 });
