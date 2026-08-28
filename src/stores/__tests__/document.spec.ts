@@ -585,6 +585,50 @@ describe("document store", () => {
     expect(document.activeIndex).toBe(0);
   });
 
+  it("moves a background Tab and keeps the Active Document on its own Tab", () => {
+    const document = useDocumentStore();
+    document.newTab();
+    document.newTab();
+    document.switchTab(1);
+    // [Untitled.md, Untitled 2.md, Untitled 3.md], Untitled 2.md Active.
+
+    expect(document.moveTab(0, 2)).toBe(true);
+
+    expect(document.tabs[0].untitledNumber).toBe(2);
+    expect(document.tabs[1].untitledNumber).toBe(3);
+    expect(document.tabs[2].untitledNumber).toBe(1);
+    // Untitled 2.md moved from index 1 to index 0 and is still Active.
+    expect(document.activeIndex).toBe(0);
+  });
+
+  it("moves the Active Tab and keeps the Active Document Active", () => {
+    const document = useDocumentStore();
+    document.newTab();
+    document.newTab();
+    // [Untitled.md, Untitled 2.md, Untitled 3.md], Untitled 3.md Active.
+
+    expect(document.moveTab(2, 0)).toBe(true);
+
+    expect(document.tabs[0].untitledNumber).toBe(3);
+    expect(document.tabs[1].untitledNumber).toBe(1);
+    expect(document.tabs[2].untitledNumber).toBe(2);
+    expect(document.activeIndex).toBe(0);
+    expect(document.filename).toBe("Untitled 3.md");
+  });
+
+  it("rejects no-op and out-of-range moves", () => {
+    const document = useDocumentStore();
+    document.newTab();
+
+    expect(document.moveTab(1, 1)).toBe(false);
+    expect(document.moveTab(-1, 0)).toBe(false);
+    expect(document.moveTab(0, 5)).toBe(false);
+    expect(document.moveTab(0, 2)).toBe(false);
+    expect(document.moveTab(2, 0)).toBe(false);
+    expect(document.tabs).toHaveLength(2);
+    expect(document.activeIndex).toBe(1);
+  });
+
   it("re-scopes the asset protocol to the Document that becomes Active on a cycle", async () => {
     const document = useDocumentStore();
     invokeMock.mockImplementation((command: string) => {

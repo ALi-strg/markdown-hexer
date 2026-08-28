@@ -11,6 +11,7 @@
       :active-index="document.activeIndex"
       @activate="onTabActivate"
       @close="onTabClose"
+      @move="onTabMove"
       @new="runNewDocument"
     />
     <Toolbar
@@ -271,6 +272,13 @@ async function runDocumentControl(operation: DocumentControlOperation) {
   }
 }
 
+/// Applies a Tab reorder from the Tab Bar's drag: the Tab Bar tracks the
+/// drag position and emits one move per crossed boundary; the store owns the
+/// order and the Active Document's stability.
+function onTabMove(from: number, to: number) {
+  document.moveTab(from, to);
+}
+
 /// Tab Controls dispatch order. `previousTab` must be matched before `nextTab`:
 /// Next Tab's combo (Ctrl+Tab) also fires when Shift is held, so the more
 /// specific Previous Tab combo wins when both would match.
@@ -279,6 +287,8 @@ const TAB_SHORTCUT_ORDER: TabControlOperation[] = [
   "newTab",
   "closeTab",
   "nextTab",
+  "moveTabLeft",
+  "moveTabRight",
 ];
 
 async function runTabControl(operation: TabControlOperation) {
@@ -294,6 +304,12 @@ async function runTabControl(operation: TabControlOperation) {
       break;
     case "previousTab":
       onTabCycle(-1);
+      break;
+    case "moveTabLeft":
+      document.moveTab(document.activeIndex, document.activeIndex - 1);
+      break;
+    case "moveTabRight":
+      document.moveTab(document.activeIndex, document.activeIndex + 1);
       break;
   }
 }
