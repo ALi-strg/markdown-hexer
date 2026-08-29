@@ -3,8 +3,9 @@
     class="tab-bar"
     data-testid="tab-bar"
     aria-label="Open Documents"
-    @dragover.prevent
-    @drop.prevent="onDropAtEnd"
+    @pointermove="onPointerMove"
+    @pointerup="onPointerUp"
+    @pointercancel="onPointerCancel"
   >
     <div
       v-for="(tab, index) in tabs"
@@ -12,11 +13,9 @@
       class="tab"
       :class="{ active: index === activeIndex, dragging: index === dragIndex }"
       :title="tab.canonicalPath ?? undefined"
-      draggable="true"
-      @dragstart="onDragStart(index, $event)"
-      @dragover.prevent.stop="onDragOver(index)"
-      @drop.prevent.stop
-      @dragend="dragIndex = null"
+      :data-tab-index="index"
+      @pointerdown="onPointerDown(index, $event)"
+      @click.capture="onClickCapture"
     >
       <button
         type="button"
@@ -49,10 +48,9 @@
     >
       +
     </button>
-    <!-- The nav itself is the drop zone for the empty strip right of the
-         last Tab (and the `+` button): a drop there moves the dragged Tab
-         to the end. The per-Tab handlers stop propagation, so these nav
-         handlers only fire over the strip. -->
+  <!-- Pointer events are re-attached here because the drag handler
+       setPointerCapture()s the pressed Tab: the move/up events retarget to
+       that Tab and bubble through the nav. -->
   </nav>
 </template>
 
@@ -74,40 +72,122 @@ const emit = defineEmits<{
   new: [];
 }>();
 
-/// The 0-based index of the Tab being dragged, or null between drags. The
-/// store reorders live on every crossed boundary (the `move` emit), so this
-/// tracks where the dragged Tab currently sits, never where it started.
+/// Tab reordering uses pointer events, not HTML5 drag-and-drop: Tauri's
+/// native file-drop handler (needed for drop-a-file-to-open) blocks HTML5
+/// DnD inside the webview on Windows, so HTML5 drags die with a
+/// not-allowed cursor. Pointer events are unaffected by that interception.
+
+/// Pointer movement (px) before a press on a Tab turns into a drag; below it
+/// the press is a click and must keep activating the Tab.
+const DRAG_THRESHOLD = 5;
+
+/// The 0-based index of the Tab being dragged, or null while a press has not
+/// yet crossed the threshold and between drags. The store reorders live on
+/// every crossed boundary (the `move` emit), so this tracks where the dragged
+/// Tab currently sits, never where it started.
 const dragIndex = ref<number | null>(null);
 
-/// Starts a drag of the Tab at `index`. A dataTransfer entry is required for
-/// Firefox to fire any drag events at all; the content is irrelevant because
-/// the reorder is positional.
-function onDragStart(index: number, event: DragEvent) {
-  dragIndex.value = index;
-  event.dataTransfer?.setData("text/plain", "");
-  if (event.dataTransfer) {
-    event.dataTransfer.effectAllowed = "move";
+/// The pending drag: where the pointer went down, before the movement
+/// threshold turns it into a real drag. Null between presses.
+let pointerStart: {
+  x: number;
+  y: number;
+  index: number;
+  el: HTMLElement;
+} | null = null;
+
+/// A drag that crossed the threshold swallows the click that follows its
+/// pointerup, so dragging never activates a Tab. Reset on the next press.
+let suppressClick = false;
+
+function onPointerDown(index: number, event: PointerEvent) {
+  if (event.button !== 0) {
+    return;
   }
+  suppressClick = false;
+  pointerStart = {
+    x: event.clientX,
+    y: event.clientY,
+    index,
+    el: event.currentTarget as HTMLElement,
+  };
 }
 
 /// Reorders live while dragging: crossing onto another Tab emits one `move`
-/// (the store's no-op guard swallows repeats at dragover rate). Dropping is
+/// (the store's no-op guard swallows repeats at pointermove rate). Dropping is
 /// deliberately not a separate step — the order is already correct, and an
-/// aborted drag (Esc, drop outside) leaves it where the drag left it.
-function onDragOver(index: number) {
-  if (dragIndex.value === null || dragIndex.value === index) {
+/// aborted drag (drop outside the bar) leaves it where the drag left it.
+function onPointerMove(event: PointerEvent) {
+  if (!pointerStart) {
     return;
   }
-  emit("move", dragIndex.value, index);
-  dragIndex.value = index;
+  if (dragIndex.value === null) {
+    const moved = Math.hypot(
+      event.clientX - pointerStart.x,
+      event.clientY - pointerStart.y,
+    );
+    if (moved < DRAG_THRESHOLD) {
+      return;
+    }
+    dragIndex.value = pointerStart.index;
+    suppressClick = true;
+    // Capture so the drag keeps tracking outside the Tab and the window.
+    pointerStart.el.setPointerCapture?.(event.pointerId);
+  }
+  const target = tabAt(event.clientX, event.clientY);
+  if (target !== null && target !== dragIndex.value) {
+    emit("move", dragIndex.value, target);
+    dragIndex.value = target;
+  }
 }
 
-function onDropAtEnd() {
-  const last = props.tabs.length - 1;
-  if (dragIndex.value !== null && dragIndex.value !== last) {
-    emit("move", dragIndex.value, last);
-    dragIndex.value = last;
+function onPointerUp(event: PointerEvent) {
+  const start = pointerStart;
+  pointerStart = null;
+  if (!start || dragIndex.value === null) {
+    return;
   }
+  // Over the empty strip right of the last Tab (still inside the bar) the
+  // drop moves the dragged Tab to the end; releasing anywhere else outside
+  // the Tabs aborts without a reorder, like an HTML5 drop outside would.
+  if (tabAt(event.clientX, event.clientY) === null) {
+    const bar = start.el.closest(".tab-bar")?.getBoundingClientRect();
+    const inBar =
+      bar !== undefined &&
+      event.clientX >= bar.left &&
+      event.clientX <= bar.right &&
+      event.clientY >= bar.top &&
+      event.clientY <= bar.bottom;
+    const last = props.tabs.length - 1;
+    if (inBar && dragIndex.value !== last) {
+      emit("move", dragIndex.value, last);
+    }
+  }
+  start.el.releasePointerCapture?.(event.pointerId);
+  dragIndex.value = null;
+}
+
+function onPointerCancel() {
+  pointerStart = null;
+  dragIndex.value = null;
+}
+
+function onClickCapture(event: MouseEvent) {
+  if (suppressClick) {
+    event.stopPropagation();
+    event.preventDefault();
+    suppressClick = false;
+  }
+}
+
+/// The Tab under a pointer position, by its current index — null over the
+/// strip, the `+` button, or anywhere outside the Tabs.
+function tabAt(x: number, y: number): number | null {
+  const el = document
+    .elementFromPoint?.(x, y)
+    ?.closest<HTMLElement>(".tab[data-tab-index]");
+  const index = el?.dataset.tabIndex;
+  return index === undefined ? null : Number(index);
 }
 
 /// The name of the parent folder of the Document, e.g. `drafts` for
@@ -158,6 +238,9 @@ function tabLabel(tab: Tab): string {
   display: inline-flex;
   align-items: stretch;
   max-width: 220px;
+  /* Pointer-drag reordering must not text-select or scroll-steal. */
+  user-select: none;
+  touch-action: none;
   border: 1px solid transparent;
   border-bottom: none;
   border-radius: 0;
