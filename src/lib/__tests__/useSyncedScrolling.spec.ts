@@ -102,6 +102,86 @@ describe("useSyncedScrolling", () => {
     expect(host.scrollTop).toBe(7);
   });
 
+  it("auto-expands collapsed Sections wrapping the target block and reports their keys", () => {
+    const host = document.createElement("div");
+    host.scrollTop = 0;
+    Object.defineProperty(host, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({ top: 20 } as DOMRect),
+    });
+    const section = document.createElement("div");
+    section.className = "md-section md-section-collapsed";
+    section.setAttribute("data-section-key", "h1:A#1");
+    const head = document.createElement("div");
+    head.setAttribute("data-block-index", "0");
+    const body = document.createElement("div");
+    body.className = "md-section-body";
+    const target = document.createElement("div");
+    target.setAttribute("data-block-index", "1");
+    Object.defineProperty(target, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({ top: 120 } as DOMRect),
+    });
+    body.appendChild(target);
+    section.append(head, body);
+    host.appendChild(section);
+
+    const expandSections = vi.fn();
+    const view = fakeView(3);
+    const { sync } = useSyncedScrolling({
+      ...depsWith(host, view),
+      expandSections,
+    });
+
+    sync(view);
+
+    expect(section.classList.contains("md-section-collapsed")).toBe(false);
+    expect(expandSections).toHaveBeenCalledWith(["h1:A#1"]);
+    expect(host.scrollTop).toBe(100);
+  });
+
+  it("does not report expanded Sections when none are collapsed", () => {
+    const host = fakeHost({ 0: 40, 1: 120, 2: 200 });
+    const expandSections = vi.fn();
+    const view = fakeView(3);
+    const { sync } = useSyncedScrolling({
+      ...depsWith(host, view),
+      expandSections,
+    });
+
+    sync(view);
+
+    expect(expandSections).not.toHaveBeenCalled();
+  });
+  it("expandToPos expands the collapsed Section containing the position without scrolling the preview", () => {
+    const host = document.createElement("div");
+    host.scrollTop = 5;
+    const section = document.createElement("div");
+    section.className = "md-section md-section-collapsed";
+    section.setAttribute("data-section-key", "h1:A#1");
+    const head = document.createElement("div");
+    head.setAttribute("data-block-index", "0");
+    const body = document.createElement("div");
+    body.className = "md-section-body";
+    const target = document.createElement("div");
+    target.setAttribute("data-block-index", "1");
+    body.appendChild(target);
+    section.append(head, body);
+    host.appendChild(section);
+
+    const expandSections = vi.fn();
+    const view = fakeView(3);
+    const { expandToPos } = useSyncedScrolling({
+      ...depsWith(host, view),
+      expandSections,
+    });
+
+    expandToPos(view, 42);
+
+    expect(section.classList.contains("md-section-collapsed")).toBe(false);
+    expect(expandSections).toHaveBeenCalledWith(["h1:A#1"]);
+    expect(host.scrollTop).toBe(5);
+  });
   it("attaches and detaches a passive scroll listener on the editor scroller", () => {
     const host = fakeHost({ 0: 40 });
     const view = fakeView(1);

@@ -39,6 +39,7 @@
       v-if="ui.findOverlayOpen"
       ref="findPanelRef"
       :get-view="getEditorView"
+      :on-match-visible="onMatchVisible"
     />
     <AboutDialog
       v-if="aboutOpen"
@@ -95,6 +96,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { openSearchPanel } from "@codemirror/search";
 import { redo as redoCommand, undo as undoCommand } from "@codemirror/commands";
 import type { EditorView } from "@codemirror/view";
+import type { MatchRange } from "./lib/findReplace";
 import EditorPane from "./components/EditorPane.vue";
 import FindReplacePanel from "./components/FindReplacePanel.vue";
 import PreviewPane from "./components/PreviewPane.vue";
@@ -227,7 +229,22 @@ const syncedScrolling = useSyncedScrolling({
   getPreviewHost: () => previewPane.value?.getPreviewHost() ?? null,
   getLayoutMode: () => ui.layoutMode,
   getSource: () => document.content,
+  /// Synced Scrolling (and Find & Replace through it) auto-expanded Sections;
+  /// drop them from the Active Tab's collapsed state so they stay open.
+  expandSections: (keys) => {
+    const tab = document.activeTab();
+    tab.collapsedSections = tab.collapsedSections.filter(
+      (key) => !keys.includes(key),
+    );
+  },
 });
+
+/// Surfaces the Section containing a Find & Replace match: the editor's own
+/// scrollIntoView often fires no scroll event (the match was already visible),
+/// so Synced Scrolling alone would leave a collapsed Section hiding the match.
+function onMatchVisible(view: EditorView, match: MatchRange) {
+  syncedScrolling.expandToPos(view, match.from);
+}
 
 function getEditorView(): EditorView | null {
   return editorPane.value?.getView() ?? null;

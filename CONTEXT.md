@@ -39,7 +39,7 @@ _Avoid_: Save copy, export
 ## Tabs
 
 **Tab**:
-The slot in the Tab Bar holding one Document. Each Tab keeps its own Document state — content, Dirty state, canonical path, Layout Mode, Find & Replace state, and the editor's cursor, scroll, and undo history — for the session. `New` inserts the new Tab after the active one and makes it Active. Tabs can be reordered within the Tab Bar by dragging (Tabs shift aside as the drag crosses them; a drop right of the last Tab moves it to the end) or with Cmd/Ctrl+Shift+PageUp/PageDown, which move the Active Tab one position left or right. Dragging never makes a Tab Active. Order is session-only.
+The slot in the Tab Bar holding one Document. Each Tab keeps its own Document state — content, Dirty state, canonical path, Layout Mode, Find & Replace state, collapsed Sections, and the editor's cursor, scroll, and undo history — for the session. `New` inserts the new Tab after the active one and makes it Active. Tabs can be reordered within the Tab Bar by dragging (Tabs shift aside as the drag crosses them; a drop right of the last Tab moves it to the end) or with Cmd/Ctrl+Shift+PageUp/PageDown, which move the Active Tab one position left or right. Dragging never makes a Tab Active. Order is session-only.
 _Avoid_: File tab, buffer
 
 **Tab Bar**:
@@ -83,6 +83,12 @@ The toolbar's Bold, Italic, Heading, List, Link, and Code controls. Visible in S
 _Avoid_: Edit buttons, markup buttons
 
 Each Document carries its own Layout Mode. When a Tab is created, the mode is auto-chosen (Open → Preview Only, New → Split View); afterwards the Layout Switcher sets only the Active Document's mode, remembered for that Tab's session. Save As does not change the Layout Mode. Modes are not persisted across launches (the app does not restore the previous session).
+
+## Sections
+
+**Section**:
+A collapsible region of the Preview Pane spanning one heading and everything under it until the next heading of the same or higher level. Every heading of any level — ATX (`#`) or Setext — starts a Section; content before the first heading belongs to no Section and is never collapsible. Headings nested inside lists or blockquotes do not start a Section. A Section is collapsed or expanded via a chevron in the heading's left margin; a heading with no content under it has no chevron. Collapsing a Section hides its entire subtree, including nested Sections. Collapse state is session-only per Tab, survives edits and re-renders, and is not persisted across launches. Synced Scrolling and Find & Replace auto-expand a collapsed Section when they target content inside it.
+_Avoid_: fold, block group, outline
 
 ## Appearance
 

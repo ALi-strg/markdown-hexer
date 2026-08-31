@@ -36,6 +36,7 @@ function pushTab(document: ReturnType<typeof useDocumentStore>, path: string) {
     layoutMode: "preview",
     findQuery: "draft",
     currentMatch: { from: 0, to: 5 },
+    collapsedSections: [],
     untitledNumber: null,
   };
   document.tabs.push(tab);
