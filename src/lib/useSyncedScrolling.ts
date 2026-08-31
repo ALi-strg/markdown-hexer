@@ -4,6 +4,7 @@ import {
   findBlockIndexForLine,
   type BlockRange,
 } from "./blockMap";
+import { setSectionCollapsed } from "./sections";
 
 export interface SyncedScrollingView {
   lineBlockAtHeight(height: number): { from: number };
@@ -16,6 +17,9 @@ export interface SyncedScrollingDeps {
   getPreviewHost: () => HTMLElement | null;
   getLayoutMode: () => LayoutMode;
   getSource: () => string;
+  /// Reports the Sections that were auto-expanded so the caller can drop them
+  /// from the Tab's collapsed state.
+  expandSections?: (keys: string[]) => void;
 }
 
 export function useSyncedScrolling(deps: SyncedScrollingDeps) {
@@ -33,6 +37,49 @@ export function useSyncedScrolling(deps: SyncedScrollingDeps) {
     return lastRanges;
   }
 
+  /// Auto-expands every collapsed Section wrapping `block` — a scroll target
+  /// inside a collapsed Section is invisible, so its Sections open first — and
+  /// reports the expanded keys so the Tab's state stays in step.
+  function expandCollapsedAncestors(block: HTMLElement) {
+    const keys: string[] = [];
+    let section =
+      block.parentElement?.closest<HTMLElement>(".md-section") ?? null;
+    while (section !== null) {
+      if (section.classList.contains("md-section-collapsed")) {
+        setSectionCollapsed(section, false);
+        const key = section.dataset.sectionKey;
+        if (key !== undefined) {
+          keys.push(key);
+        }
+      }
+      section = section.parentElement?.closest<HTMLElement>(".md-section") ?? null;
+    }
+    if (keys.length > 0) {
+      deps.expandSections?.(keys);
+    }
+  }
+
+  /// Expands every collapsed Section wrapping the block containing the editor
+  /// position `pos` — Find & Replace navigates to matches, and a match inside
+  /// a collapsed Section must surface even when the editor's own
+  /// scrollIntoView is a no-op (already visible) and fires no scroll event.
+  /// Does not scroll the Preview Pane: the editor scroll drives Synced
+  /// Scrolling as usual.
+  function expandToPos(view: SyncedScrollingView, pos: number) {
+    const host = deps.getPreviewHost();
+    if (!host) return;
+
+    const ranges = getRanges();
+    if (ranges.length === 0) return;
+
+    const line = view.state.doc.lineAt(pos).number - 1;
+    const blockIndex = findBlockIndexForLine(ranges, line);
+    const block = host.querySelector(`[data-block-index="${blockIndex}"]`);
+    if (!(block instanceof HTMLElement)) return;
+
+    expandCollapsedAncestors(block);
+  }
+
   function sync(view: SyncedScrollingView | null = deps.getView()) {
     const host = deps.getPreviewHost();
     if (!view || !host) return;
@@ -46,6 +93,8 @@ export function useSyncedScrolling(deps: SyncedScrollingDeps) {
     const blockIndex = findBlockIndexForLine(ranges, line);
     const block = host.querySelector(`[data-block-index="${blockIndex}"]`);
     if (!(block instanceof HTMLElement)) return;
+
+    expandCollapsedAncestors(block);
 
     host.scrollTop =
       block.getBoundingClientRect().top -
@@ -69,5 +118,5 @@ export function useSyncedScrolling(deps: SyncedScrollingDeps) {
     scrollHandler = null;
   }
 
-  return { attach, detach, sync };
+  return { attach, detach, sync, expandToPos };
 }

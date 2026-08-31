@@ -22,6 +22,7 @@ function pushTab(path: string): Tab {
     layoutMode: "preview",
     findQuery: "",
     currentMatch: null,
+    collapsedSections: [],
     untitledNumber: null,
   };
   useDocumentStore().tabs.push(tab);

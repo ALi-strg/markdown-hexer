@@ -94,7 +94,10 @@ import {
 import { useDocumentStore } from "../stores/document";
 import { useUiStore } from "../stores/ui";
 
-const props = defineProps<{ getView: () => EditorView | null }>();
+const props = defineProps<{
+  getView: () => EditorView | null;
+  onMatchVisible?: (view: EditorView, match: MatchRange) => void;
+}>();
 
 const ui = useUiStore();
 const document = useDocumentStore();
@@ -148,7 +151,13 @@ function setCurrentMatch(view: EditorView, match: MatchRange | null) {
   }
   ui.showSource();
   currentMatch.value = match;
-  nextTick(() => dispatchSelectionToEditor(view, match));
+  nextTick(() => {
+    dispatchSelectionToEditor(view, match);
+    // The match may sit inside a collapsed Section (the editor's own
+    // scrollIntoView is then often a no-op and fires no scroll event), so the
+    // Section is surfaced directly instead of relying on Synced Scrolling.
+    props.onMatchVisible?.(view, match);
+  });
 }
 
 /// Selects the first match of the current query so the match count is

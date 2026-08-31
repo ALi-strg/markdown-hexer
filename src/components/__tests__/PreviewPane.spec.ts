@@ -34,6 +34,7 @@ describe("PreviewPane", () => {
     openUrlMock.mockReset();
     (globalThis as Record<string, unknown>).__TAURI_INTERNALS__ = {
       convertFileSrc: (path: string) => `asset://localhost/${encodeURIComponent(path)}`,
+      invoke: vi.fn(),
     };
   });
 
@@ -263,6 +264,89 @@ describe("PreviewPane", () => {
     expect(openUrlMock).not.toHaveBeenCalled();
   });
 
+  it("collapses a Section from its chevron and records it on the Tab", async () => {
+    const wrapper = mount(PreviewPane, {
+      global: { plugins: [createPinia()] },
+    });
+    const document = useDocumentStore();
+    document.mirrorContent("# A\n\ntext\n\n## B\n\nmore");
+    await nextTick();
+    vi.advanceTimersByTime(200);
+
+    const chevron = wrapper.find(".md-chevron");
+    expect(chevron.attributes("aria-expanded")).toBe("true");
+    await chevron.trigger("click");
+
+    const section = wrapper.find(".md-section");
+    expect(section.classes()).toContain("md-section-collapsed");
+    expect(chevron.attributes("aria-expanded")).toBe("false");
+    expect(document.activeTab().collapsedSections).toEqual(["h1:A#1"]);
+    // Collapsing marks the Section; CSS hides the body, never the heading.
+    expect(section.find("h1").isVisible()).toBe(true);
+  });
+
+  it("expands a collapsed Section from its chevron", async () => {
+    const wrapper = mount(PreviewPane, {
+      global: { plugins: [createPinia()] },
+    });
+    const document = useDocumentStore();
+    document.mirrorContent("# A\n\ntext");
+    await nextTick();
+    vi.advanceTimersByTime(200);
+
+    await wrapper.find(".md-chevron").trigger("click");
+    await wrapper.find(".md-chevron").trigger("click");
+
+    expect(wrapper.find(".md-section").classes()).not.toContain("md-section-collapsed");
+    expect(document.activeTab().collapsedSections).toEqual([]);
+  });
+  it("keeps a Section collapsed across re-renders as the Document changes", async () => {
+    const wrapper = mount(PreviewPane, {
+      global: { plugins: [createPinia()] },
+    });
+    const document = useDocumentStore();
+    document.mirrorContent("# A\n\ntext\n\n## B\n\nmore");
+    await nextTick();
+    vi.advanceTimersByTime(200);
+
+    await wrapper.find(".md-chevron").trigger("click");
+
+    document.mirrorContent("# A\n\ntext edited\n\n## B\n\nmore");
+    await nextTick();
+    vi.advanceTimersByTime(200);
+
+    const sections = wrapper.findAll(".md-section");
+    expect(sections[0].classes()).toContain("md-section-collapsed");
+    expect(sections[1].classes()).not.toContain("md-section-collapsed");
+    expect(wrapper.find(".md-section-body").text()).toContain("text edited");
+  });
+
+  it("swaps collapsed Sections with the Active Tab", async () => {
+    const wrapper = mount(PreviewPane, {
+      global: { plugins: [createPinia()] },
+    });
+    const document = useDocumentStore();
+    document.mirrorContent("# A\n\ntext");
+    await nextTick();
+    vi.advanceTimersByTime(200);
+    await wrapper.find(".md-chevron").trigger("click");
+
+    document.newTab();
+    document.mirrorContent("## Other\n\nstuff");
+    await nextTick();
+    vi.advanceTimersByTime(200);
+
+    const incoming = wrapper.find(".md-section");
+    expect(incoming.classes()).not.toContain("md-section-collapsed");
+    expect(incoming.attributes("data-section-key")).toBe("h2:Other#1");
+
+    document.switchTab(0);
+    await nextTick();
+    vi.advanceTimersByTime(200);
+
+    expect(wrapper.find(".md-section").classes()).toContain("md-section-collapsed");
+    expect(wrapper.find(".md-section").attributes("data-section-key")).toBe("h1:A#1");
+  });
   it("leaves the preview text selectable", async () => {
     const wrapper = mount(PreviewPane, {
       global: { plugins: [createPinia()] },

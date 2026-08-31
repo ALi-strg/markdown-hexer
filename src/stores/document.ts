@@ -27,6 +27,9 @@ export interface Tab {
   layoutMode: LayoutMode;
   findQuery: string;
   currentMatch: MatchRange | null;
+  /// Keys of the Preview Pane Sections the user collapsed this session
+  /// (`h<level>:<heading text>#<occurrence>`). Session-only, like Tab order.
+  collapsedSections: string[];
   /// The per-session Untitled number of a pathless Document; `null` once the
   /// Document has a canonical path. Numbers are handed out from the currently
   /// open Untitled Tabs: the next number is one past the highest open one, or
@@ -66,6 +69,7 @@ function createUntitledTab(number: number): Tab {
     layoutMode: "split",
     findQuery: "",
     currentMatch: null,
+    collapsedSections: [],
     untitledNumber: number,
   };
 }
@@ -277,6 +281,7 @@ export const useDocumentStore = defineStore("document", () => {
       layoutMode: "preview",
       findQuery: "",
       currentMatch: null,
+      collapsedSections: [],
       untitledNumber: null,
     };
     // A sole empty Untitled Tab is a placeholder the workspace holds until a

@@ -13,6 +13,7 @@ function makeTab(canonicalPath: string): Tab {
     layoutMode: "split",
     findQuery: "",
     currentMatch: null,
+    collapsedSections: [],
     untitledNumber: null,
   };
 }

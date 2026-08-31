@@ -9,6 +9,7 @@ import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { debounce } from "../lib/debounce";
 import { renderMarkdown } from "../lib/renderer";
+import { setSectionCollapsed, SECTION_COLLAPSED_CLASS } from "../lib/sections";
 import { resolveAssetSrc, toAssetUrl } from "../lib/assetUrl";
 import { useDocumentStore } from "../stores/document";
 
@@ -48,14 +49,49 @@ function rewriteAssetSrcs(host: HTMLElement) {
   }
 }
 
-const render = debounce(() => {
+function renderNow() {
   const host = previewHost.value;
   if (host) {
     host.innerHTML = renderMarkdown(document.content, { wrapBlocks: true });
     rewriteAssetSrcs(host);
+    applyCollapsedSections(host);
     props.onRender?.();
   }
-}, RENDER_DEBOUNCE_MS);
+}
+
+const render = debounce(renderNow, RENDER_DEBOUNCE_MS);
+
+/// Re-applies the Active Tab's collapsed Sections after a render. Sections are
+/// matched by key, so state survives edits that shift block positions.
+function applyCollapsedSections(host: HTMLElement) {
+  for (const key of document.activeTab().collapsedSections) {
+    const section = host.querySelector(
+      `.md-section[data-section-key="${CSS.escape(key)}"]`,
+    );
+    if (section instanceof HTMLElement) {
+      setSectionCollapsed(section, true);
+    }
+  }
+}
+
+/// Toggles a Section from its chevron: flips the collapsed class on the
+/// Section and records the state on the Active Tab so it survives re-renders.
+function toggleSection(chevron: HTMLElement) {
+  const section = chevron.closest(".md-section");
+  if (!(section instanceof HTMLElement)) {
+    return;
+  }
+  const collapsed = !section.classList.contains(SECTION_COLLAPSED_CLASS);
+  setSectionCollapsed(section, collapsed);
+  const key = section.dataset.sectionKey;
+  if (key === undefined) {
+    return;
+  }
+  const tab = document.activeTab();
+  tab.collapsedSections = collapsed
+    ? [...tab.collapsedSections, key]
+    : tab.collapsedSections.filter((existing) => existing !== key);
+}
 
 function containsNode(node: Node | null, other: Node): boolean {
   return (
@@ -85,6 +121,11 @@ function selectionOverlapsAnchor(anchor: HTMLElement): boolean {
 /// Text selection and copy keep working: a click that lands on a selection in
 /// progress is left alone.
 function onPreviewClick(event: MouseEvent) {
+  const chevron = (event.target as HTMLElement | null)?.closest(".md-chevron");
+  if (chevron instanceof HTMLElement) {
+    toggleSection(chevron);
+    return;
+  }
   const anchor = (event.target as HTMLElement | null)?.closest("a");
   if (anchor === null || anchor === undefined) {
     return;
@@ -110,6 +151,17 @@ watch(
   () => [document.content, document.canonicalPath],
   render,
   { immediate: true },
+);
+
+/// A Tab switch must swap the Preview Pane to the incoming Tab's content and
+/// collapsed Sections immediately, so the debounced render is cancelled and
+/// replaced by a synchronous one.
+watch(
+  () => document.activeIndex,
+  () => {
+    render.cancel();
+    renderNow();
+  },
 );
 
 onMounted(() => {
@@ -271,5 +323,44 @@ defineExpose({ getPreviewHost: () => previewHost.value });
 
 .preview-host :deep(input[type="checkbox"]) {
   margin-right: 0.4rem;
+}
+
+/* Sections: a chevron sits in the heading's left margin; collapsing hides
+   the Section body (the whole subtree, nested Sections included). */
+.preview-host :deep(.md-section-head) {
+  position: relative;
+}
+
+.preview-host :deep(.md-chevron) {
+  position: absolute;
+  left: -1.1rem;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1rem;
+  height: 1.4rem;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  opacity: 0.7;
+}
+
+.preview-host :deep(.md-chevron::before) {
+  content: "\u25B8";
+  font-size: 0.7em;
+  transition: transform 0.12s ease;
+}
+
+.preview-host :deep(
+    .md-section:not(.md-section-collapsed) > .md-section-head .md-chevron::before
+  ) {
+  transform: rotate(90deg);
+}
+
+.preview-host :deep(.md-section-collapsed > .md-section-body) {
+  display: none;
 }
 </style>
