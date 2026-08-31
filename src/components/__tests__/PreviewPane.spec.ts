@@ -1,8 +1,9 @@
-﻿import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { nextTick } from "vue";
 import PreviewPane from "../PreviewPane.vue";
+import previewPaneSource from "../PreviewPane.vue?raw";
 import { useDocumentStore } from "../../stores/document";
 
 vi.mock("@tauri-apps/plugin-opener", () => ({
@@ -354,5 +355,64 @@ describe("PreviewPane", () => {
     const host = wrapper.find(".preview-host").element as HTMLElement;
     const style = globalThis.getComputedStyle(host);
     expect(style.userSelect).not.toBe("none");
+  });
+});
+
+/// Decodes the body of a CSS string token the way every browser must, per
+/// CSS Syntax Level 3 §4.3.7 "consume an escaped code point": a `\` followed
+/// by 1-6 hex digits is a code point escape (one optional whitespace after it
+/// is consumed); a `\` followed by any other character escapes that character
+/// literally. This is why `"\25B8"` is the ▸ glyph while the JS-style
+/// `"\u25B8"` is the literal text `u25B8` — `\u` escapes `u`, and the rest is
+/// ordinary characters.
+function cssStringDecode(raw: string): string {
+  let out = "";
+  for (let i = 0; i < raw.length; ) {
+    if (raw[i] !== "\\") {
+      out += raw[i];
+      i += 1;
+      continue;
+    }
+    const hex = /^[0-9a-fA-F]{1,6}/.exec(raw.slice(i + 1));
+    if (hex) {
+      const cp = parseInt(hex[0], 16);
+      out +=
+        cp === 0 || cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff)
+          ? "\uFFFD"
+          : String.fromCodePoint(cp);
+      i += 1 + hex[0].length;
+      if (raw[i] === " " || raw[i] === "\t" || raw[i] === "\n" || raw[i] === "\f") {
+        i += 1;
+      } else if (raw[i] === "\r") {
+        i += raw[i + 1] === "\n" ? 2 : 1;
+      }
+      continue;
+    }
+    if (i + 1 >= raw.length) {
+      out += "\uFFFD"; // a lone `\` at EOF
+      i += 1;
+      continue;
+    }
+    out += raw[i + 1];
+    i += 2;
+  }
+  return out;
+}
+
+describe("Section chevron glyph", () => {
+  // The seam is the source: jsdom cannot compute pseudo-element styles and
+  // Vitest skips CSS processing, so the glyph contract is pinned where it is
+  // authored — the `content` declaration inside PreviewPane.vue, fetched
+  // exactly as Vite hands it to the compiler — and checked with the exact
+  // algorithm a browser applies to it.
+  const declaration = previewPaneSource.match(
+    /\.md-chevron::before\s*\)?\s*\{[^}]*?content:\s*"((?:[^"\\]|\\.)*)"/,
+  );
+
+  it("encodes the chevron as the CSS escape for U+25B8, not a JS \\u escape", () => {
+    if (!declaration) {
+      throw new Error(".md-chevron::before content declaration not found in PreviewPane.vue");
+    }
+    expect(cssStringDecode(declaration[1])).toBe("\u25B8");
   });
 });

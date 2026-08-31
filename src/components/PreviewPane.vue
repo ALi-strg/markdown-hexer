@@ -349,7 +349,8 @@ defineExpose({ getPreviewHost: () => previewHost.value });
 }
 
 .preview-host :deep(.md-chevron::before) {
-  content: "\u25B8";
+  /* U+25B8 ▸ in CSS escape form; a JS-style "\u25B8" renders as literal text. */
+  content: "\25B8";
   font-size: 0.7em;
   transition: transform 0.12s ease;
 }
