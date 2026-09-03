@@ -56,6 +56,8 @@
         class="pane editor-pane"
         data-testid="editor-pane"
         :style="editorBasisStyle"
+        :on-switched="onTabSwitched"
+        :on-restored="checkActiveTabExternalModification"
       />
       <div
         v-if="ui.layoutMode === 'split'"
@@ -97,6 +99,7 @@ import { openSearchPanel } from "@codemirror/search";
 import { redo as redoCommand, undo as undoCommand } from "@codemirror/commands";
 import type { EditorView } from "@codemirror/view";
 import type { MatchRange } from "./lib/findReplace";
+import type { TabSession } from "./lib/tabEditorState";
 import EditorPane from "./components/EditorPane.vue";
 import FindReplacePanel from "./components/FindReplacePanel.vue";
 import PreviewPane from "./components/PreviewPane.vue";
@@ -133,9 +136,7 @@ const ui = useUiStore();
 
 const editorPane = ref<{
   getView: () => EditorView | null;
-  replaceContent: (text: string) => void;
-  captureActiveTabState: () => void;
-  restoreActiveTabState: () => void;
+  tabSession: TabSession;
   canUndo: boolean;
   canRedo: boolean;
 } | null>(null);
@@ -486,11 +487,21 @@ function closeAbout() {
 /// so returning to it lands where the user left off; the new Tab starts with
 /// a destructive rebuild (empty content, cleared undo history) and the Split
 /// View mode its record was created with.
-function runNewDocument() {
-  editorPane.value?.captureActiveTabState();
-  document.newTab();
+/// Joins the Tab-switch session protocol: every successful swap closes the
+/// Find & Replace overlay — the panel is Tab-scoped, so it must not carry the
+/// outgoing Tab's state onto the incoming one.
+function onTabSwitched() {
   ui.findOverlayOpen = false;
-  editorPane.value?.replaceContent(document.content);
+}
+
+async function runNewDocument() {
+  await editorPane.value?.tabSession.runTabSwitch({
+    swap: () => {
+      document.newTab();
+      return true;
+    },
+    after: () => "rebuild",
+  });
 }
 
 /// Opens the file at `path` in a Tab: a new Tab is added and made Active, or —
@@ -507,21 +518,10 @@ function runNewDocument() {
 /// Tab starts with a destructive rebuild (fresh content, cleared undo history)
 /// as today.
 async function openPath(path: string) {
-  editorPane.value?.captureActiveTabState();
-  const result = await document.openPathInTab(path);
-  if (result === null) {
-    return;
-  }
-  ui.findOverlayOpen = false;
-  if (result === "opened") {
-    editorPane.value?.replaceContent(document.content);
-  } else {
-    // The path was already open: its background Tab became Active again, so it
-    // is checked for external changes now. A freshly opened Tab is skipped — its
-    // content was just read from disk, so an immediate check could never differ.
-    editorPane.value?.restoreActiveTabState();
-    void checkActiveTabExternalModification();
-  }
+  await editorPane.value?.tabSession.runTabSwitch({
+    swap: () => document.openPathInTab(path),
+    after: (result) => (result === "opened" ? "rebuild" : "restore"),
+  });
 }
 
 async function runOpenDocument() {
@@ -534,37 +534,26 @@ async function runOpenDocument() {
   await openPath(path);
 }
 
-/// The shared Tab-switch core: captures the outgoing Tab's editor state, swaps
-/// the Active Tab, restores the incoming Tab's state, and checks it for
-/// external changes. `performSwitch` runs the store-level swap (by index or by
-/// cycle step) and reports whether the Active Tab changed.
-function onTabSwitch(performSwitch: () => boolean) {
-  editorPane.value?.captureActiveTabState();
-  if (!performSwitch()) {
-    return;
-  }
-  ui.findOverlayOpen = false;
-  editorPane.value?.restoreActiveTabState();
-  void checkActiveTabExternalModification();
-}
-
-/// Activates the Tab at `index` (from the Tab Bar): the outgoing Tab's editor
-/// state is captured into its record, the workspace switches the Active Tab,
-/// and the editor restores the incoming Tab's preserved state — cursor and
-/// undo history travel with the EditorState — plus its scroll offset. The
-/// preview and window title follow through their reactive bindings, and the
-/// store re-points the `asset://` scope at the Active Document. The now-Active
-/// Tab is then checked for external changes (a background Tab is only ever
-/// checked the moment it becomes Active).
+/// The shared Tab-switch core lives in the Editor Pane's tab session: capture
+/// the outgoing Tab's editor state, swap the Active Tab, close the Find &
+/// Replace overlay, restore the incoming Tab's state, and check it for
+/// external changes (a background Tab is only ever checked the moment it
+/// becomes Active).
 function onTabActivate(index: number) {
-  onTabSwitch(() => document.switchTab(index));
+  void editorPane.value?.tabSession.runTabSwitch({
+    swap: () => (document.switchTab(index) ? true : null),
+    after: () => "restore",
+  });
 }
 
 /// Activates the Tab `delta` steps through the Tab list (wrapping at both
 /// ends) via the same path as clicking a Tab. A single-Tab workspace stays
 /// put.
 function onTabCycle(delta: number) {
-  onTabSwitch(() => document.cycleTab(delta));
+  void editorPane.value?.tabSession.runTabSwitch({
+    swap: () => (document.cycleTab(delta) ? true : null),
+    after: () => "restore",
+  });
 }
 
 /// Closes the Tab at `index` (from the Tab Bar's close control). A Dirty Tab
@@ -588,14 +577,16 @@ async function onTabClose(index: number) {
     return;
   }
   const wasActive = index === document.activeIndex;
-  document.closeTab(index);
-  if (wasActive) {
-    // A neighbour Tab became Active in the closed Tab's place; it is checked
-    // for external changes now, like any Tab that becomes Active.
-    ui.findOverlayOpen = false;
-    editorPane.value?.restoreActiveTabState();
-    void checkActiveTabExternalModification();
-  }
+  await editorPane.value?.tabSession.runTabSwitch({
+    // The outgoing Tab is being closed: its editor state dies with it, so
+    // nothing is captured.
+    capture: false,
+    swap: () => {
+      document.closeTab(index);
+      return wasActive ? true : null;
+    },
+    after: () => "restore",
+  });
 }
 
 const appWindow = getCurrentWindow();
@@ -645,7 +636,7 @@ async function checkActiveTabExternalModification() {
   const replaced = await document.checkExternalModification();
   if (replaced && document.activeIndex === activeIndex) {
     ui.findOverlayOpen = false;
-    editorPane.value?.replaceContent(document.content);
+    editorPane.value?.tabSession.rebuild();
   }
 }
 

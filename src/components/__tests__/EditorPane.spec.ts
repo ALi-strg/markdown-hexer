@@ -11,6 +11,7 @@ import { applyFormatting } from "../../lib/editorFormatting";
 import {
   clearPreservedTabEditorState,
   getPreservedTabEditorState,
+  type TabSession,
 } from "../../lib/tabEditorState";
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -52,29 +53,29 @@ describe("EditorPane", () => {
     expect(view.state.doc.toString()).toBe("Hello");
   });
 
-  it("replaces the editor content on a Document swap", async () => {
+  it("replaces the editor content on a Document swap (rebuild)", async () => {
     const { wrapper, view } = await mountWithView();
     const document = useDocumentStore();
     document.mirrorContent("# Draft");
     document.canonicalPath = "C:\\notes\\a.md";
 
-    (wrapper.vm as unknown as { replaceContent: (text: string) => void }).replaceContent(
-      document.content,
-    );
+    (
+      wrapper.vm as unknown as { tabSession: TabSession }
+    ).tabSession.rebuild();
 
     expect(view.state.doc.toString()).toBe("# Draft");
   });
 
-  it("replaces the editor content on a swap to an Untitled Document", async () => {
+  it("replaces the editor content on a swap to an Untitled Document (rebuild)", async () => {
     const { wrapper, view } = await mountWithView();
 
     view.dispatch({ changes: { from: 0, insert: "# Draft" } });
     const document = useDocumentStore();
     document.newTab();
 
-    (wrapper.vm as unknown as { replaceContent: (text: string) => void }).replaceContent(
-      document.content,
-    );
+    (
+      wrapper.vm as unknown as { tabSession: TabSession }
+    ).tabSession.rebuild();
 
     expect(view.state.doc.toString()).toBe("");
   });
@@ -82,28 +83,36 @@ describe("EditorPane", () => {
   it("preserves cursor and undo history across a capture/restore round trip", async () => {
     const { wrapper, view } = await mountWithView();
     const document = useDocumentStore();
-    const pane = wrapper.vm as unknown as {
-      captureActiveTabState: () => void;
-      restoreActiveTabState: () => void;
-    };
+    const pane = wrapper.vm as unknown as { tabSession: TabSession };
 
     view.dispatch({ changes: { from: 0, insert: "# Draft\n\nBody" } });
     view.dispatch({ selection: { anchor: 8 } });
     expect(undoDepth(view.state)).toBe(1);
 
-    // Switch away: the launch Tab's live state is preserved for it.
-    pane.captureActiveTabState();
+    // Switch away: the launch Tab's live state is preserved for it (a refused
+    // swap captures without touching the workspace).
+    pane.tabSession.runTabSwitch({
+      swap: () => null,
+      after: () => "restore",
+    });
     expect(getPreservedTabEditorState(document.tabs[0])).not.toBeNull();
 
     // A fresh Tab becomes Active: restore rebuilds it with no history.
-    document.newTab();
-    pane.restoreActiveTabState();
+    pane.tabSession.runTabSwitch({
+      swap: () => {
+        document.newTab();
+        return true;
+      },
+      after: () => "rebuild",
+    });
     expect(view.state.doc.toString()).toBe("");
     expect(undoDepth(view.state)).toBe(0);
 
     // Switch back: the preserved state restores cursor and undo history.
-    document.switchTab(0);
-    pane.restoreActiveTabState();
+    pane.tabSession.runTabSwitch({
+      swap: () => (document.switchTab(0), true),
+      after: () => "restore",
+    });
     expect(view.state.doc.toString()).toBe("# Draft\n\nBody");
     expect(view.state.selection.main.head).toBe(8);
     expect(undoDepth(view.state)).toBe(1);
@@ -112,18 +121,20 @@ describe("EditorPane", () => {
   it("restores the captured scroll offset on restore", async () => {
     const { wrapper, view } = await mountWithView();
     const document = useDocumentStore();
-    const pane = wrapper.vm as unknown as {
-      captureActiveTabState: () => void;
-      restoreActiveTabState: () => void;
-    };
+    const pane = wrapper.vm as unknown as { tabSession: TabSession };
 
     view.scrollDOM.scrollTop = 240;
-    pane.captureActiveTabState();
+    pane.tabSession.runTabSwitch({
+      swap: () => null,
+      after: () => "restore",
+    });
     expect(getPreservedTabEditorState(document.tabs[0])?.scrollTop).toBe(240);
 
     document.newTab();
-    document.switchTab(0);
-    pane.restoreActiveTabState();
+    pane.tabSession.runTabSwitch({
+      swap: () => (document.switchTab(0), true),
+      after: () => "restore",
+    });
     await nextTick();
 
     expect(view.scrollDOM.scrollTop).toBe(240);
@@ -132,9 +143,7 @@ describe("EditorPane", () => {
   it("rebuilds from the store with cleared undo when the Tab has no preserved state", async () => {
     const { wrapper, view } = await mountWithView();
     const document = useDocumentStore();
-    const pane = wrapper.vm as unknown as {
-      restoreActiveTabState: () => void;
-    };
+    const pane = wrapper.vm as unknown as { tabSession: TabSession };
 
     view.dispatch({ changes: { from: 0, insert: "# Draft" } });
     // The Document's content was replaced from disk without the editor (an
@@ -143,7 +152,11 @@ describe("EditorPane", () => {
     document.mirrorContent("# Rebuilt");
     clearPreservedTabEditorState(document.tabs[0]);
 
-    pane.restoreActiveTabState();
+    pane.tabSession.runTabSwitch({
+      capture: false,
+      swap: () => true,
+      after: () => "restore",
+    });
 
     expect(view.state.doc.toString()).toBe("# Rebuilt");
     expect(undoDepth(view.state)).toBe(0);

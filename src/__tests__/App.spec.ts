@@ -3467,9 +3467,9 @@ describe("App shell", () => {
     expect((undo.element as HTMLButtonElement).disabled).toBe(false);
 
     document.mirrorContent("");
-    (pane.vm as unknown as { replaceContent: (text: string) => void }).replaceContent(
-      "",
-    );
+    (
+      pane.vm as unknown as { tabSession: { rebuild: () => void } }
+    ).tabSession.rebuild();
     await nextTick();
 
     expect((undo.element as HTMLButtonElement).disabled).toBe(true);
