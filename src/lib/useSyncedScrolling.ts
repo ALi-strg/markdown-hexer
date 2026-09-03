@@ -4,7 +4,7 @@ import {
   findBlockIndexForLine,
   type BlockRange,
 } from "./blockMap";
-import { setSectionCollapsed } from "./sections";
+import { setSectionCollapsed, SECTION_COLLAPSED_CLASS } from "./sections";
 
 export interface SyncedScrollingView {
   lineBlockAtHeight(height: number): { from: number };
@@ -45,7 +45,7 @@ export function useSyncedScrolling(deps: SyncedScrollingDeps) {
     let section =
       block.parentElement?.closest<HTMLElement>(".md-section") ?? null;
     while (section !== null) {
-      if (section.classList.contains("md-section-collapsed")) {
+      if (section.classList.contains(SECTION_COLLAPSED_CLASS)) {
         setSectionCollapsed(section, false);
         const key = section.dataset.sectionKey;
         if (key !== undefined) {
