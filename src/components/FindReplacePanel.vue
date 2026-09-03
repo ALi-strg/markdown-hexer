@@ -140,31 +140,45 @@ function dispatchSelectionToEditor(view: EditorView, match: MatchRange) {
   });
 }
 
-/// Moves the current match onto `match` and drives the editor's selection to
-/// it. Preview Only surfaces the source first: its hidden Editor Pane cannot
-/// show highlights or scroll to the match. The selection dispatch waits for
-/// the next tick, since the pane's `v-show` only becomes visible after Vue
-/// flushes the layout change.
-function setCurrentMatch(view: EditorView, match: MatchRange | null) {
-  if (match === null) {
+/// The never-edit-blind gate, phase one: Preview Only surfaces the source
+/// first — its hidden Editor Pane cannot show highlights or scroll to a
+/// match — and the work runs once the pane's `v-show` has settled and Vue
+/// has flushed the layout change. Every tracked-match change and every
+/// replace flows through here.
+function withVisibleSource(run: (view: EditorView) => void) {
+  const view = props.getView();
+  if (view === null) {
     return;
   }
   ui.showSource();
+  nextTick(() => run(view));
+}
+
+/// Moves the tracked match onto `match` and drives the editor's selection to
+/// it: records the match on the Active Tab immediately, then dispatches the
+/// selection through the gate. The match may sit inside a collapsed Section
+/// (the editor's own scrollIntoView is then often a no-op and fires no scroll
+/// event), so the Section is surfaced directly instead of relying on Synced
+/// Scrolling.
+function setTrackedMatch(match: MatchRange | null) {
+  if (match === null) {
+    return;
+  }
   currentMatch.value = match;
-  nextTick(() => {
+  withVisibleSource((view) => {
     dispatchSelectionToEditor(view, match);
-    // The match may sit inside a collapsed Section (the editor's own
-    // scrollIntoView is then often a no-op and fires no scroll event), so the
-    // Section is surfaced directly instead of relying on Synced Scrolling.
     props.onMatchVisible?.(view, match);
   });
 }
 
 /// Selects the first match of the current query so the match count is
 /// meaningful from the moment the user types.
-function moveToFirstMatch(view: EditorView) {
-  const first = nextMatchAfter(view.state, 0);
-  setCurrentMatch(view, first);
+function moveToFirstMatch() {
+  const view = props.getView();
+  if (!view) {
+    return;
+  }
+  setTrackedMatch(nextMatchAfter(view.state, 0));
 }
 
 /// Pushes the tracked match into the editor selection, used right before a
@@ -191,7 +205,7 @@ function dispatchQuery() {
   // A new query lands on its first match, so next/previous and the match count
   // are meaningful from the moment the user types.
   if (searchChanged && query.value !== "") {
-    moveToFirstMatch(view);
+    moveToFirstMatch();
   }
   updateMatchInfo();
 }
@@ -216,7 +230,7 @@ function restoreCurrentMatch(view: EditorView) {
     document.activeTab().currentMatch = null;
     return;
   }
-  setCurrentMatch(view, match);
+  setTrackedMatch(match);
 }
 
 function syncFromView() {
@@ -237,6 +251,15 @@ function focusQuery() {
     queryInput.value?.focus();
     queryInput.value?.select();
   });
+}
+
+/// Opens (or re-focuses) the panel. Opening Find never edits blind: Preview
+/// Only surfaces the source first, whether or not a query exists yet. Every
+/// entry — toolbar button, shortcut, re-focus — routes here, so `showSource`
+/// is called from this component alone.
+function open() {
+  ui.showSource();
+  focusQuery();
 }
 
 function onQueryInput(event: Event) {
@@ -269,7 +292,7 @@ function goNext() {
     return;
   }
   const from = currentMatch.value?.to ?? view.state.selection.main.to;
-  setCurrentMatch(view, nextMatchAfter(view.state, from));
+  setTrackedMatch(nextMatchAfter(view.state, from));
   updateMatchInfo();
 }
 
@@ -279,37 +302,29 @@ function goPrevious() {
     return;
   }
   const from = currentMatch.value?.from ?? view.state.selection.main.from;
-  setCurrentMatch(view, prevMatchBefore(view.state, from));
+  setTrackedMatch(prevMatchBefore(view.state, from));
   updateMatchInfo();
 }
 
-/// Replacing must never edit hidden text: Preview Only switches to Split View
-/// first, the tracked match becomes the editor's selection once the pane is
-/// visible, then the replacement applies in place.
+/// Replacing must never edit hidden text: both replace handlers route through
+/// the gate, so Preview Only switches to Split View first and the replacement
+/// applies in place once the pane is visible. The match replaceNext lands on
+/// is recorded through the same gate navigation uses — there is no second,
+/// direct match write.
 function doReplaceNext() {
-  const view = props.getView();
-  if (!view) {
-    return;
-  }
-  ui.showSource();
-  nextTick(() => {
+  withVisibleSource((view) => {
     syncSelectionToEditor(view);
     replaceNext(view);
     // replaceNext lands the selection on the next match; mirror it so the
     // count stays in step.
     const selection = view.state.selection.main;
-    currentMatch.value = { from: selection.from, to: selection.to };
+    setTrackedMatch({ from: selection.from, to: selection.to });
     updateMatchInfo();
   });
 }
 
 function doReplaceAll() {
-  const view = props.getView();
-  if (!view) {
-    return;
-  }
-  ui.showSource();
-  nextTick(() => {
+  withVisibleSource((view) => {
     syncSelectionToEditor(view);
     replaceAll(view);
     updateMatchInfo();
@@ -330,8 +345,8 @@ const stopDocumentWatch = watch(
 );
 
 onMounted(() => {
+  open();
   syncFromView();
-  focusQuery();
 });
 
 onBeforeUnmount(() => {
@@ -342,7 +357,7 @@ onBeforeUnmount(() => {
   }
 });
 
-defineExpose({ focusQuery });
+defineExpose({ open });
 </script>
 
 <style scoped>

@@ -143,7 +143,7 @@ const editorPane = ref<{
 const previewPane = ref<{
   getPreviewHost: () => HTMLElement | null;
 } | null>(null);
-const findPanelRef = ref<{ focusQuery: () => void } | null>(null);
+const findPanelRef = ref<{ open: () => void } | null>(null);
 const aboutOpen = ref(false);
 const workspaceRef = ref<HTMLElement | null>(null);
 const dividerRef = ref<HTMLElement | null>(null);
@@ -385,12 +385,13 @@ function onFind() {
   if (!view) {
     return;
   }
-  ui.showSource();
   if (!ui.findOverlayOpen) {
     ui.findOverlayOpen = true;
     openSearchPanel(view);
   }
-  nextTick(() => findPanelRef.value?.focusQuery());
+  // The panel owns the never-edit-blind gate: opening (or re-focusing) Find
+  // surfaces the source in Preview Only from inside the panel.
+  nextTick(() => findPanelRef.value?.open());
 }
 
 /// Applies a toolbar formatting operation to the Editor Pane. In Preview Only
