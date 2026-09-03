@@ -8,27 +8,36 @@ export interface BlockRange {
   endLine: number;
 }
 
-export function computeBlockRanges(source: string): BlockRange[] {
+/// The single lex pass shared by every block-anchored consumer: filters the
+/// skipped token types once and yields both the kept tokens (the renderer
+/// numbers its `data-block-index` anchors by their position here) and the
+/// source line ranges Synced Scrolling maps editor lines onto. The two views
+/// agree by construction — a filtering change on either side is impossible.
+export function deriveBlocks(source: string): {
+  keptTokens: Token[];
+  ranges: BlockRange[];
+} {
   const tokens = marked.lexer(source);
-  const blockTokens: Token[] = [];
+  const keptTokens: Token[] = [];
   const startLines = new Map<Token, number>();
   let line = 0;
   for (const token of tokens) {
     if (!SKIP_BLOCK_TOKEN_TYPES.has(token.type)) {
       startLines.set(token, line);
-      blockTokens.push(token);
+      keptTokens.push(token);
     }
     line += countNewlines(token.raw);
   }
   const totalLines = line + 1;
-  return blockTokens.map((token, index) => ({
+  const ranges = keptTokens.map((token, index) => ({
     index,
     startLine: startLines.get(token)!,
     endLine:
-      index + 1 < blockTokens.length
-        ? startLines.get(blockTokens[index + 1])!
+      index + 1 < keptTokens.length
+        ? startLines.get(keptTokens[index + 1])!
         : totalLines,
   }));
+  return { keptTokens, ranges };
 }
 
 export function findBlockIndexForLine(

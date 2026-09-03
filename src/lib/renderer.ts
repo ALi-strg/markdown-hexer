@@ -2,7 +2,7 @@ import { Marked } from "marked";
 import { markedHighlight } from "marked-highlight";
 import DOMPurify from "dompurify";
 import Prism from "prismjs";
-import { SKIP_BLOCK_TOKEN_TYPES } from "./blockMap";
+import { deriveBlocks } from "./blockMap";
 import { wrapSections } from "./sections";
 import "prismjs/components/prism-typescript";
 import "prismjs/components/prism-python";
@@ -50,8 +50,8 @@ export interface RenderOptions {
 }
 
 function renderBlockAnchored(source: string): string {
-  const tokens = marked.lexer(source);
-  for (const token of tokens) {
+  const { keptTokens } = deriveBlocks(source);
+  for (const token of keptTokens) {
     if (token.type === "code") {
       const highlighted = highlightCode(token.text, token.lang);
       if (highlighted !== token.text) {
@@ -60,11 +60,8 @@ function renderBlockAnchored(source: string): string {
       }
     }
   }
-  const blockTokens = tokens.filter(
-    (token) => !SKIP_BLOCK_TOKEN_TYPES.has(token.type),
-  );
   return DOMPurify.sanitize(
-    wrapSections(blockTokens, (token) => marked.parser([token])),
+    wrapSections(keptTokens, (token) => marked.parser([token])),
   );
 }
 

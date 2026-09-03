@@ -1,6 +1,6 @@
 import type { LayoutMode } from "../stores/ui";
 import {
-  computeBlockRanges,
+  deriveBlocks,
   findBlockIndexForLine,
   type BlockRange,
 } from "./blockMap";
@@ -31,7 +31,7 @@ export function useSyncedScrolling(deps: SyncedScrollingDeps) {
   function getRanges(): BlockRange[] {
     const source = deps.getSource();
     if (source !== lastSource) {
-      lastRanges = computeBlockRanges(source);
+      lastRanges = deriveBlocks(source).ranges;
       lastSource = source;
     }
     return lastRanges;
