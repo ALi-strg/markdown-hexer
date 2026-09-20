@@ -177,6 +177,12 @@ describe("Sections (block-anchored)", () => {
     expect(doc.querySelector(".md-chevron")).not.toBeNull();
   });
 
+  it("emits the chevron glyph as a real text node, not a CSS pseudo-element", () => {
+    const doc = sectionHtml("# A\n\ntext");
+    const chevron = doc.querySelector(".md-chevron");
+    expect(chevron?.textContent).toBe("\u25B8");
+  });
+
   it("disambiguates duplicate headings by occurrence", () => {
     const doc = sectionHtml("## Setup\n\none\n\n## Setup\n\ntwo");
     const keys = [...doc.querySelectorAll(".md-section")].map((el) =>

@@ -1,6 +1,15 @@
 <template>
   <section class="preview-pane" data-testid="preview-pane">
     <div ref="previewHost" class="preview-host"></div>
+    <div
+      v-if="copyToast"
+      class="copy-toast"
+      :style="{ left: `${copyToast.x}px`, top: `${copyToast.y}px` }"
+      role="status"
+      data-testid="copy-toast"
+    >
+      Copied to clipboard
+    </div>
   </section>
 </template>
 
@@ -9,16 +18,115 @@ import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { debounce } from "../lib/debounce";
 import { renderMarkdown } from "../lib/renderer";
-import { setSectionCollapsed, SECTION_COLLAPSED_CLASS } from "../lib/sections";
+import { applyCollapsedSections, toggleSection } from "../lib/sections";
 import { resolveAssetSrc, toAssetUrl } from "../lib/assetUrl";
 import { useDocumentStore } from "../stores/document";
+import { useUiStore } from "../stores/ui";
 
 const props = defineProps<{ onRender?: () => void }>();
 
 const RENDER_DEBOUNCE_MS = 200;
 
 const document = useDocumentStore();
+const ui = useUiStore();
 const previewHost = ref<HTMLElement | null>(null);
+
+const COPY_TOAST_MS = 1500;
+
+/// Overlapping-rectangles copy icon; empty textContent keeps it out of
+/// Selection.toString() so a Copy-on-Select drag over it copies nothing extra.
+const COPY_ICON =
+  '<svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><rect x="3.5" y="0.5" width="8" height="8" rx="1"/><rect x="0.5" y="3.5" width="8" height="8" rx="1"/></svg>';
+
+/// Position of the Copy Toast, or null while it is hidden.
+const copyToast = ref<{ x: number; y: number } | null>(null);
+let copyToastTimer: ReturnType<typeof setTimeout> | undefined;
+
+/// Writes text to the clipboard, falling back to the legacy execCommand path
+/// for webviews without the async Clipboard API. Throws when both fail.
+async function writeClipboard(text: string): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    const textarea = globalThis.document.createElement("textarea");
+    textarea.value = text;
+    textarea.style.position = "fixed";
+    textarea.style.opacity = "0";
+    globalThis.document.body.appendChild(textarea);
+    textarea.select();
+    const ok = globalThis.document.execCommand("copy");
+    textarea.remove();
+    if (!ok) {
+      throw new Error("copy failed");
+    }
+  }
+}
+
+/// Shows the Copy Toast below-right of the cursor, clamped to the viewport
+/// (+12/+16 offsets below-right; 160/40 = toast footprint for the clamp).
+/// Re-anchors (replaces, never stacks) on repeated copies.
+function showCopyToast(x: number, y: number) {
+  copyToast.value = {
+    x: Math.max(8, Math.min(x + 12, window.innerWidth - 160)),
+    y: Math.max(8, Math.min(y + 16, window.innerHeight - 40)),
+  };
+  clearTimeout(copyToastTimer);
+  copyToastTimer = setTimeout(() => {
+    copyToast.value = null;
+    copyToastTimer = undefined;
+  }, COPY_TOAST_MS);
+}
+
+/// Copies text and confirms it: Copy Toast on success, app-wide error toast
+/// on failure. The single seam shared by Copy-on-Select and the Code Copy
+/// Button.
+async function copyAndConfirm(text: string, x: number, y: number) {
+  try {
+    await writeClipboard(text);
+    showCopyToast(x, y);
+  } catch {
+    ui.showToast("Copy to clipboard failed");
+  }
+}
+
+/// Copy-on-Select: a mouse selection that ends in the Preview Pane is copied
+/// as plain text and confirmed with the Copy Toast. Mouse-up is the only
+/// trigger — a double-click's word selection is already in place at its
+/// second mouse-up, so a dblclick hook would only double-fire. Keyboard copy
+/// stays silent; the WebView handles it natively.
+function onSelectionMouseup(event: MouseEvent) {
+  if (event.button !== 0) {
+    return; // only a primary-button mouse-up ends a selection gesture
+  }
+  const host = previewHost.value;
+  const selection = globalThis.getSelection();
+  if (!host || !selection || selection.isCollapsed) {
+    return;
+  }
+  if (selection.anchorNode === null || !containsNode(host, selection.anchorNode)) {
+    return;
+  }
+  const text = selection.toString();
+  if (text.length === 0) {
+    return;
+  }
+  void copyAndConfirm(text, event.clientX, event.clientY);
+}
+
+/// Adds a Code Copy Button to every fenced code block. Buttons are attached
+/// after sanitization (they never come from the Markdown pipeline) and are
+/// recreated on every render together with the rest of the content.
+function addCodeCopyButtons(host: HTMLElement) {
+  for (const pre of host.querySelectorAll("pre")) {
+    const button = globalThis.document.createElement("button");
+    button.type = "button";
+    button.className = "code-copy-btn";
+    button.title = "Copy code";
+    button.setAttribute("aria-label", "Copy code");
+    button.innerHTML = COPY_ICON;
+    pre.appendChild(button);
+  }
+}
 
 /// The directory a relative image resolves against: the directory holding the
 /// Document. An Untitled Document has no directory, so nothing is rewritten.
@@ -54,43 +162,25 @@ function renderNow() {
   if (host) {
     host.innerHTML = renderMarkdown(document.content, { wrapBlocks: true });
     rewriteAssetSrcs(host);
-    applyCollapsedSections(host);
+    addCodeCopyButtons(host);
+    applyCollapsedSections(host, document.activeTab().collapsedSections);
     props.onRender?.();
   }
 }
 
 const render = debounce(renderNow, RENDER_DEBOUNCE_MS);
 
-/// Re-applies the Active Tab's collapsed Sections after a render. Sections are
-/// matched by key, so state survives edits that shift block positions.
-function applyCollapsedSections(host: HTMLElement) {
-  for (const key of document.activeTab().collapsedSections) {
-    const section = host.querySelector(
-      `.md-section[data-section-key="${CSS.escape(key)}"]`,
-    );
-    if (section instanceof HTMLElement) {
-      setSectionCollapsed(section, true);
-    }
-  }
-}
-
-/// Toggles a Section from its chevron: flips the collapsed class on the
-/// Section and records the state on the Active Tab so it survives re-renders.
-function toggleSection(chevron: HTMLElement) {
-  const section = chevron.closest(".md-section");
-  if (!(section instanceof HTMLElement)) {
-    return;
-  }
-  const collapsed = !section.classList.contains(SECTION_COLLAPSED_CLASS);
-  setSectionCollapsed(section, collapsed);
-  const key = section.dataset.sectionKey;
-  if (key === undefined) {
+/// Toggles a Section from its chevron (the DOM flip lives in the Section seam)
+/// and records the state on the Active Tab so it survives re-renders.
+function onToggleSection(chevron: HTMLElement) {
+  const result = toggleSection(chevron);
+  if (result === null) {
     return;
   }
   const tab = document.activeTab();
-  tab.collapsedSections = collapsed
-    ? [...tab.collapsedSections, key]
-    : tab.collapsedSections.filter((existing) => existing !== key);
+  tab.collapsedSections = result.collapsed
+    ? [...tab.collapsedSections, result.key]
+    : tab.collapsedSections.filter((existing) => existing !== result.key);
 }
 
 function containsNode(node: Node | null, other: Node): boolean {
@@ -121,9 +211,28 @@ function selectionOverlapsAnchor(anchor: HTMLElement): boolean {
 /// Text selection and copy keep working: a click that lands on a selection in
 /// progress is left alone.
 function onPreviewClick(event: MouseEvent) {
+  const copyButton = (event.target as HTMLElement | null)?.closest(
+    ".code-copy-btn",
+  );
+  if (copyButton instanceof HTMLElement) {
+    const pre = copyButton.closest("pre");
+    const text = (pre?.querySelector("code") ?? pre)?.textContent ?? "";
+    if (text.length > 0) {
+      // Keyboard activation (Enter/Space) clicks with no pointer position;
+      // anchor the toast at the button instead of (0, 0).
+      let { clientX: x, clientY: y } = event;
+      if (event.detail === 0) {
+        const rect = copyButton.getBoundingClientRect();
+        x = rect.left;
+        y = rect.top;
+      }
+      void copyAndConfirm(text.replace(/\n$/, ""), x, y);
+    }
+    return;
+  }
   const chevron = (event.target as HTMLElement | null)?.closest(".md-chevron");
   if (chevron instanceof HTMLElement) {
-    toggleSection(chevron);
+    onToggleSection(chevron);
     return;
   }
   const anchor = (event.target as HTMLElement | null)?.closest("a");
@@ -166,11 +275,15 @@ watch(
 
 onMounted(() => {
   previewHost.value?.addEventListener("click", onPreviewClick);
+  previewHost.value?.addEventListener("mouseup", onSelectionMouseup);
 });
 
 onBeforeUnmount(() => {
   render.cancel();
-  previewHost.value?.removeEventListener("click", onPreviewClick);
+  const host = previewHost.value;
+  host?.removeEventListener("click", onPreviewClick);
+  host?.removeEventListener("mouseup", onSelectionMouseup);
+  clearTimeout(copyToastTimer);
 });
 
 defineExpose({ getPreviewHost: () => previewHost.value });
@@ -253,6 +366,7 @@ defineExpose({ getPreviewHost: () => previewHost.value });
 }
 
 .preview-host :deep(pre) {
+  position: relative;
   background: var(--code-background);
   border: 1px solid var(--code-border);
   border-radius: 0;
@@ -325,6 +439,47 @@ defineExpose({ getPreviewHost: () => previewHost.value });
   margin-right: 0.4rem;
 }
 
+/* Code Copy Button: hover-revealed in the block's top-right corner; stays
+   reachable via keyboard focus. Inherits pre's absolute positioning. */
+.preview-host :deep(.code-copy-btn) {
+  position: absolute;
+  top: 0.35rem;
+  right: 0.35rem;
+  padding: 0.25rem 0.35rem;
+  border: 1px solid var(--code-border);
+  background: var(--surface-color);
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: opacity 0.1s;
+}
+
+.preview-host :deep(pre:hover .code-copy-btn),
+.preview-host :deep(.code-copy-btn:focus-visible) {
+  opacity: 1;
+}
+
+.preview-host :deep(.code-copy-btn svg) {
+  display: block;
+  stroke: currentColor;
+  fill: none;
+}
+
+/* Copy Toast: transient copy confirmation near the cursor; never intercepts
+   clicks. Reuses the theme's toast tokens (distinct from the app-wide toast). */
+.copy-toast {
+  position: fixed;
+  padding: 6px 10px;
+  background: var(--toast-background, #333);
+  color: var(--toast-color, #fff);
+  font-size: 0.8rem;
+  z-index: 100;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
 /* Sections: a chevron sits in the heading's left margin; collapsing hides
    the Section body (the whole subtree, nested Sections included). */
 .preview-host :deep(.md-section-head) {
@@ -346,17 +501,12 @@ defineExpose({ getPreviewHost: () => previewHost.value });
   color: inherit;
   cursor: pointer;
   opacity: 0.7;
-}
-
-.preview-host :deep(.md-chevron::before) {
-  /* U+25B8 ▸ in CSS escape form; a JS-style "\u25B8" renders as literal text. */
-  content: "\25B8";
   font-size: 0.7em;
   transition: transform 0.12s ease;
 }
 
 .preview-host :deep(
-    .md-section:not(.md-section-collapsed) > .md-section-head .md-chevron::before
+    .md-section:not(.md-section-collapsed) > .md-section-head .md-chevron
   ) {
   transform: rotate(90deg);
 }

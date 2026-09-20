@@ -236,7 +236,8 @@
   --accent-color: #8fa98f;
   --accent-contrast-color: #26302a;
   --hover-background: rgba(143, 169, 143, 0.12);
-  --selection-background: #dce9e5;
+  --selection-background: #c2d4c2; /* must differ from --code-background so
+                                      selections inside code stay visible */
   --selection-color: #26302a;
   --caret-color: #66816f;
   --gutter-background: transparent;

@@ -3,7 +3,6 @@ import { mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { nextTick } from "vue";
 import PreviewPane from "../PreviewPane.vue";
-import previewPaneSource from "../PreviewPane.vue?raw";
 import { useDocumentStore } from "../../stores/document";
 
 vi.mock("@tauri-apps/plugin-opener", () => ({
@@ -28,6 +27,24 @@ function renderContent(text: string): Promise<void> {
   });
 }
 
+function stubClipboard(): ReturnType<typeof vi.fn> {
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  Object.defineProperty(globalThis.navigator, "clipboard", {
+    value: { writeText },
+    configurable: true,
+  });
+  return writeText;
+}
+
+function stubSelection(anchorNode: Node, text: string) {
+  vi.stubGlobal("getSelection", () => ({
+    isCollapsed: false,
+    anchorNode,
+    focusNode: anchorNode,
+    toString: () => text,
+  }));
+}
+
 describe("PreviewPane", () => {
   beforeEach(() => {
     setActivePinia(createPinia());
@@ -41,6 +58,7 @@ describe("PreviewPane", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.unstubAllGlobals();
   });
 
   it("renders the current Document after the debounce window", async () => {
@@ -356,63 +374,131 @@ describe("PreviewPane", () => {
     const style = globalThis.getComputedStyle(host);
     expect(style.userSelect).not.toBe("none");
   });
-});
 
-/// Decodes the body of a CSS string token the way every browser must, per
-/// CSS Syntax Level 3 §4.3.7 "consume an escaped code point": a `\` followed
-/// by 1-6 hex digits is a code point escape (one optional whitespace after it
-/// is consumed); a `\` followed by any other character escapes that character
-/// literally. This is why `"\25B8"` is the ▸ glyph while the JS-style
-/// `"\u25B8"` is the literal text `u25B8` — `\u` escapes `u`, and the rest is
-/// ordinary characters.
-function cssStringDecode(raw: string): string {
-  let out = "";
-  for (let i = 0; i < raw.length; ) {
-    if (raw[i] !== "\\") {
-      out += raw[i];
-      i += 1;
-      continue;
-    }
-    const hex = /^[0-9a-fA-F]{1,6}/.exec(raw.slice(i + 1));
-    if (hex) {
-      const cp = parseInt(hex[0], 16);
-      out +=
-        cp === 0 || cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff)
-          ? "\uFFFD"
-          : String.fromCodePoint(cp);
-      i += 1 + hex[0].length;
-      if (raw[i] === " " || raw[i] === "\t" || raw[i] === "\n" || raw[i] === "\f") {
-        i += 1;
-      } else if (raw[i] === "\r") {
-        i += raw[i + 1] === "\n" ? 2 : 1;
-      }
-      continue;
-    }
-    if (i + 1 >= raw.length) {
-      out += "\uFFFD"; // a lone `\` at EOF
-      i += 1;
-      continue;
-    }
-    out += raw[i + 1];
-    i += 2;
-  }
-  return out;
-}
+  it("copies selected text on mouse-up and shows the Copy Toast", async () => {
+    const writeText = stubClipboard();
+    const wrapper = mount(PreviewPane, {
+      global: { plugins: [createPinia()] },
+    });
+    await renderContent("Hello preview");
 
-describe("Section chevron glyph", () => {
-  // The seam is the source: jsdom cannot compute pseudo-element styles and
-  // Vitest skips CSS processing, so the glyph contract is pinned where it is
-  // authored — the `content` declaration inside PreviewPane.vue, fetched
-  // exactly as Vite hands it to the compiler — and checked with the exact
-  // algorithm a browser applies to it.
-  const declaration = previewPaneSource.match(
-    /\.md-chevron::before\s*\)?\s*\{[^}]*?content:\s*"((?:[^"\\]|\\.)*)"/,
-  );
+    const host = wrapper.find(".preview-host").element as HTMLElement;
+    stubSelection(host.querySelector("p")!.firstChild!, "Hello preview");
 
-  it("encodes the chevron as the CSS escape for U+25B8, not a JS \\u escape", () => {
-    if (!declaration) {
-      throw new Error(".md-chevron::before content declaration not found in PreviewPane.vue");
-    }
-    expect(cssStringDecode(declaration[1])).toBe("\u25B8");
+    host.dispatchEvent(
+      new MouseEvent("mouseup", { bubbles: true, clientX: 40, clientY: 40 }),
+    );
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(writeText).toHaveBeenCalledWith("Hello preview");
+    const toast = wrapper.find('[data-testid="copy-toast"]');
+    expect(toast.text()).toContain("Copied to clipboard");
+    // Anchored below-right of the cursor (40+12, 40+16).
+    expect(toast.attributes("style")).toContain("left: 52px");
+    expect(toast.attributes("style")).toContain("top: 56px");
+
+    vi.advanceTimersByTime(1500);
+    await nextTick();
+    expect(wrapper.find('[data-testid="copy-toast"]').exists()).toBe(false);
+  });
+
+  it("does not copy a selection outside the Preview Pane", async () => {
+    const writeText = stubClipboard();
+    const wrapper = mount(PreviewPane, {
+      global: { plugins: [createPinia()] },
+    });
+    await renderContent("Hello preview");
+
+    stubSelection(globalThis.document.body, "Hello preview");
+    (wrapper.find(".preview-host").element as HTMLElement).dispatchEvent(
+      new MouseEvent("mouseup", { bubbles: true }),
+    );
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(writeText).not.toHaveBeenCalled();
+    expect(wrapper.find('[data-testid="copy-toast"]').exists()).toBe(false);
+  });
+
+  it("copies a code block from its Code Copy Button", async () => {
+    const writeText = stubClipboard();
+    const wrapper = mount(PreviewPane, {
+      global: { plugins: [createPinia()] },
+    });
+    await renderContent("```js\nconst a = 1;\n```");
+
+    const button = wrapper.find(".code-copy-btn");
+    expect(button.exists()).toBe(true);
+    await button.trigger("click", { clientX: 10, clientY: 10 });
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(writeText).toHaveBeenCalledWith("const a = 1;");
+    expect(wrapper.find('[data-testid="copy-toast"]').exists()).toBe(true);
+  });
+
+  it("copies only once across a double-click", async () => {
+    const writeText = stubClipboard();
+    const wrapper = mount(PreviewPane, {
+      global: { plugins: [createPinia()] },
+    });
+    await renderContent("Hello preview");
+
+    const host = wrapper.find(".preview-host").element as HTMLElement;
+
+    // Real double-click sequence: mouse-up (selection collapsed), mouse-up
+    // (word selection applied), then dblclick. The copy must happen exactly
+    // once — on the second mouse-up, nothing after it.
+    vi.stubGlobal("getSelection", () => ({
+      isCollapsed: true,
+      anchorNode: null,
+      toString: () => "",
+    }));
+    host.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+    stubSelection(host.querySelector("p")!.firstChild!, "Hello preview");
+    host.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+    host.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(writeText).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not copy on a non-primary mouse-up", async () => {
+    const writeText = stubClipboard();
+    const wrapper = mount(PreviewPane, {
+      global: { plugins: [createPinia()] },
+    });
+    await renderContent("Hello preview");
+
+    const host = wrapper.find(".preview-host").element as HTMLElement;
+    stubSelection(host.querySelector("p")!.firstChild!, "Hello preview");
+
+    host.dispatchEvent(
+      new MouseEvent("mouseup", { bubbles: true, button: 2 }),
+    );
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(writeText).not.toHaveBeenCalled();
+    expect(wrapper.find('[data-testid="copy-toast"]').exists()).toBe(false);
+  });
+
+  it("anchors the Copy Toast at the button on keyboard activation", async () => {
+    stubClipboard();
+    const wrapper = mount(PreviewPane, {
+      global: { plugins: [createPinia()] },
+    });
+    await renderContent("```js\nconst a = 1;\n```");
+
+    const button = wrapper.find(".code-copy-btn");
+    // Keyboard clicks carry no pointer position; with the button's rect away
+    // from the origin, the toast must anchor there rather than at (0, 0).
+    button.element.getBoundingClientRect = () =>
+      ({ left: 100, top: 200, width: 20, height: 20 }) as DOMRect;
+    button.element.dispatchEvent(
+      new MouseEvent("click", { bubbles: true, cancelable: true, detail: 0 }),
+    );
+    await vi.advanceTimersByTimeAsync(1);
+
+    const toast = wrapper.find('[data-testid="copy-toast"]');
+    expect(toast.exists()).toBe(true);
+    expect(toast.attributes("style")).toContain("left: 112px");
   });
 });
