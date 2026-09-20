@@ -90,6 +90,20 @@ Each Document carries its own Layout Mode. When a Tab is created, the mode is au
 A collapsible region of the Preview Pane spanning one heading and everything under it until the next heading of the same or higher level. Every heading of any level — ATX (`#`) or Setext — starts a Section; content before the first heading belongs to no Section and is never collapsible. Headings nested inside lists or blockquotes do not start a Section. A Section is collapsed or expanded via a chevron in the heading's left margin; a heading with no content under it has no chevron. Collapsing a Section hides its entire subtree, including nested Sections. Collapse state is session-only per Tab, survives edits and re-renders, and is not persisted across launches. Synced Scrolling and Find & Replace auto-expand a collapsed Section when they target content inside it.
 _Avoid_: fold, block group, outline
 
+## Copying
+
+**Copy-on-Select**:
+The always-on Preview Pane behavior: when a mouse selection gesture ends (mouse-up after a drag, or a double-click selecting a word), the selected text is copied to the clipboard as plain text and confirmed by the Copy Toast near the cursor. Preview Pane only — selecting in the Editor Pane is an editing gesture and never copies. Keyboard copy (Ctrl/Cmd+C) copies natively and stays silent. No setting exists to turn it off.
+_Avoid_: auto-copy, select-to-copy
+
+**Copy Toast**:
+The small transient label confirming a mouse-driven copy, shown near the cursor (below-right), fading after about 1.5 seconds, never intercepting clicks, and re-anchoring (not stacking) on repeated copies. Triggered by Copy-on-Select and the Code Copy Button; distinct from the app-wide bottom-center toast used for errors and status.
+_Avoid_: notification, tooltip, popup
+
+**Code Copy Button**:
+The hover-revealed control in the top-right corner of every fenced code block in the Preview Pane. Copies the block's text content (trailing newline trimmed) as plain text and shows the Copy Toast at the click position. Keyboard-focusable.
+_Avoid_: copy icon, clipboard button
+
 ## Appearance
 
 **Theme**:

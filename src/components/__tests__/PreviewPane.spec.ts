@@ -27,6 +27,24 @@ function renderContent(text: string): Promise<void> {
   });
 }
 
+function stubClipboard(): ReturnType<typeof vi.fn> {
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  Object.defineProperty(globalThis.navigator, "clipboard", {
+    value: { writeText },
+    configurable: true,
+  });
+  return writeText;
+}
+
+function stubSelection(anchorNode: Node, text: string) {
+  vi.stubGlobal("getSelection", () => ({
+    isCollapsed: false,
+    anchorNode,
+    focusNode: anchorNode,
+    toString: () => text,
+  }));
+}
+
 describe("PreviewPane", () => {
   beforeEach(() => {
     setActivePinia(createPinia());
@@ -40,6 +58,7 @@ describe("PreviewPane", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.unstubAllGlobals();
   });
 
   it("renders the current Document after the debounce window", async () => {
@@ -354,5 +373,132 @@ describe("PreviewPane", () => {
     const host = wrapper.find(".preview-host").element as HTMLElement;
     const style = globalThis.getComputedStyle(host);
     expect(style.userSelect).not.toBe("none");
+  });
+
+  it("copies selected text on mouse-up and shows the Copy Toast", async () => {
+    const writeText = stubClipboard();
+    const wrapper = mount(PreviewPane, {
+      global: { plugins: [createPinia()] },
+    });
+    await renderContent("Hello preview");
+
+    const host = wrapper.find(".preview-host").element as HTMLElement;
+    stubSelection(host.querySelector("p")!.firstChild!, "Hello preview");
+
+    host.dispatchEvent(
+      new MouseEvent("mouseup", { bubbles: true, clientX: 40, clientY: 40 }),
+    );
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(writeText).toHaveBeenCalledWith("Hello preview");
+    const toast = wrapper.find('[data-testid="copy-toast"]');
+    expect(toast.text()).toContain("Copied to clipboard");
+    // Anchored below-right of the cursor (40+12, 40+16).
+    expect(toast.attributes("style")).toContain("left: 52px");
+    expect(toast.attributes("style")).toContain("top: 56px");
+
+    vi.advanceTimersByTime(1500);
+    await nextTick();
+    expect(wrapper.find('[data-testid="copy-toast"]').exists()).toBe(false);
+  });
+
+  it("does not copy a selection outside the Preview Pane", async () => {
+    const writeText = stubClipboard();
+    const wrapper = mount(PreviewPane, {
+      global: { plugins: [createPinia()] },
+    });
+    await renderContent("Hello preview");
+
+    stubSelection(globalThis.document.body, "Hello preview");
+    (wrapper.find(".preview-host").element as HTMLElement).dispatchEvent(
+      new MouseEvent("mouseup", { bubbles: true }),
+    );
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(writeText).not.toHaveBeenCalled();
+    expect(wrapper.find('[data-testid="copy-toast"]').exists()).toBe(false);
+  });
+
+  it("copies a code block from its Code Copy Button", async () => {
+    const writeText = stubClipboard();
+    const wrapper = mount(PreviewPane, {
+      global: { plugins: [createPinia()] },
+    });
+    await renderContent("```js\nconst a = 1;\n```");
+
+    const button = wrapper.find(".code-copy-btn");
+    expect(button.exists()).toBe(true);
+    await button.trigger("click", { clientX: 10, clientY: 10 });
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(writeText).toHaveBeenCalledWith("const a = 1;");
+    expect(wrapper.find('[data-testid="copy-toast"]').exists()).toBe(true);
+  });
+
+  it("copies only once across a double-click", async () => {
+    const writeText = stubClipboard();
+    const wrapper = mount(PreviewPane, {
+      global: { plugins: [createPinia()] },
+    });
+    await renderContent("Hello preview");
+
+    const host = wrapper.find(".preview-host").element as HTMLElement;
+
+    // Real double-click sequence: mouse-up (selection collapsed), mouse-up
+    // (word selection applied), then dblclick. The copy must happen exactly
+    // once — on the second mouse-up, nothing after it.
+    vi.stubGlobal("getSelection", () => ({
+      isCollapsed: true,
+      anchorNode: null,
+      toString: () => "",
+    }));
+    host.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+    stubSelection(host.querySelector("p")!.firstChild!, "Hello preview");
+    host.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+    host.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(writeText).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not copy on a non-primary mouse-up", async () => {
+    const writeText = stubClipboard();
+    const wrapper = mount(PreviewPane, {
+      global: { plugins: [createPinia()] },
+    });
+    await renderContent("Hello preview");
+
+    const host = wrapper.find(".preview-host").element as HTMLElement;
+    stubSelection(host.querySelector("p")!.firstChild!, "Hello preview");
+
+    host.dispatchEvent(
+      new MouseEvent("mouseup", { bubbles: true, button: 2 }),
+    );
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(writeText).not.toHaveBeenCalled();
+    expect(wrapper.find('[data-testid="copy-toast"]').exists()).toBe(false);
+  });
+
+  it("anchors the Copy Toast at the button on keyboard activation", async () => {
+    stubClipboard();
+    const wrapper = mount(PreviewPane, {
+      global: { plugins: [createPinia()] },
+    });
+    await renderContent("```js\nconst a = 1;\n```");
+
+    const button = wrapper.find(".code-copy-btn");
+    // Keyboard clicks carry no pointer position; with the button's rect away
+    // from the origin, the toast must anchor there rather than at (0, 0).
+    button.element.getBoundingClientRect = () =>
+      ({ left: 100, top: 200, width: 20, height: 20 }) as DOMRect;
+    button.element.dispatchEvent(
+      new MouseEvent("click", { bubbles: true, cancelable: true, detail: 0 }),
+    );
+    await vi.advanceTimersByTimeAsync(1);
+
+    const toast = wrapper.find('[data-testid="copy-toast"]');
+    expect(toast.exists()).toBe(true);
+    expect(toast.attributes("style")).toContain("left: 112px");
   });
 });
