@@ -2,6 +2,7 @@ mod asset;
 mod confirm;
 mod encoding;
 mod external;
+mod image;
 mod inspect;
 mod instance;
 mod open;
@@ -49,6 +50,19 @@ fn save_document(path: String, content: String) -> Result<(), String> {
 #[tauri::command]
 fn open_document(path: String) -> Result<String, String> {
     open::read_document(&path)
+}
+
+/// Reads an image file as a base64 data URL for HTML Export image inlining.
+///
+/// The frontend resolves the image path (relative `<img>` src against the
+/// Document's directory) and calls this per image. The read is scoped through
+/// [`asset::resolve_asset_path`] — the same Document-directory enforcement the
+/// `asset://` protocol uses — so an export can never embed a file from outside
+/// the Document's directory. A missing or unreadable image surfaces as an
+/// error, which the frontend treats as "omit the image".
+#[tauri::command]
+fn read_image_data_url(document_path: String, image_path: String) -> Result<String, String> {
+    image::read_image_data_url(&document_path, &image_path)
 }
 
 /// Inspects the Document's file on disk for Externally-Modified detection.
@@ -104,6 +118,7 @@ pub fn run() {
             set_document_title,
             save_document,
             open_document,
+            read_image_data_url,
             inspect_document,
             get_pending_file,
             get_app_version,

@@ -41,3 +41,24 @@ describe("pickSavePath", () => {
     await expect(pickSavePath()).resolves.toBeNull();
   });
 });
+
+describe("pickSavePath options", () => {
+  beforeEach(() => {
+    saveMock.mockReset();
+  });
+
+  it("passes a custom title and filters through (HTML Export)", async () => {
+    saveMock.mockResolvedValue("C:\\notes\\out.html");
+
+    await pickSavePath({
+      title: "Export HTML",
+      filters: [{ name: "HTML", extensions: ["html"] }],
+    });
+
+    expect(saveMock).toHaveBeenCalledWith({
+      title: "Export HTML",
+      defaultPath: undefined,
+      filters: [{ name: "HTML", extensions: ["html"] }],
+    });
+  });
+});

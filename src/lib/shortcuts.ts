@@ -117,6 +117,23 @@ export const SIZE_CONTROL: ShortcutEntry = {
   combo: null,
 };
 
+/// The Export Controls: Print Export hands the Print Render to the OS print
+/// dialog (the OS offers Save-as-PDF there; ADR 0012). HTML Export arrives with
+/// its own control in a later slice and is not part of this registry yet.
+export const PRINT_EXPORT_SHORTCUT: ShortcutEntry = {
+  label: "Export PDF",
+  combo: { key: "p", ctrlCmd: true, shift: false },
+};
+
+/// The Export Controls: Print Export hands the Print Render to the OS print
+/// dialog (the OS offers Save-as-PDF there; ADR 0012). HTML Export has no
+/// keyboard combo — tooltip-only, like the Theme/Font controls; not listed in
+/// the Shortcuts Reference, which collects keyboard combos.
+export const HTML_EXPORT_SHORTCUT: ShortcutEntry = {
+  label: "Export HTML",
+  combo: null,
+};
+
 export type DocumentControlOperation =
   | "new"
   | "open"
@@ -239,6 +256,7 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
       DOCUMENT_SHORTCUTS.open,
       DOCUMENT_SHORTCUTS.save,
       DOCUMENT_SHORTCUTS.saveAs,
+      PRINT_EXPORT_SHORTCUT,
     ],
   },
   {

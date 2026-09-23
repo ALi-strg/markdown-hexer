@@ -397,3 +397,173 @@ textarea {
 #app {
   height: 100%;
 }
+
+/* Shared content typography for every renderer of a Document — the Preview
+   Pane's host and the Print Render — keyed on the shared .md-content class
+   both hosts carry. The Print Render must reuse the preview look, not fork it
+   (ADR 0012). Spacing uses rem (root-relative) so block offsets stay integer
+   device pixels across DPI scales — em margins on resized heading fonts
+   produce fractional offsets that drift under subpixel scroll. */
+.md-content {
+  box-sizing: border-box;
+  padding: var(--pane-padding);
+  font-family: var(--preview-font-family);
+  font-size: var(--preview-font-size);
+  line-height: 1.7;
+  color: var(--text-color);
+}
+
+.md-content h1,
+.md-content h2,
+.md-content h3,
+.md-content h4,
+.md-content h5,
+.md-content h6 {
+  color: var(--text-color);
+  font-weight: 600;
+  line-height: 1.3;
+  margin-top: 1.25rem;
+  margin-bottom: 0.5rem;
+}
+
+.md-content h1 {
+  font-size: 1.7em;
+}
+
+.md-content h2 {
+  font-size: 1.4em;
+}
+
+.md-content h3 {
+  font-size: 1.2em;
+}
+
+.md-content h4,
+.md-content h5,
+.md-content h6 {
+  font-size: 1.05em;
+}
+
+.md-content p {
+  margin: 0.5rem 0;
+}
+
+.md-content a {
+  color: var(--link-color);
+  text-decoration: none;
+}
+
+.md-content a:hover {
+  text-decoration: underline;
+}
+
+.md-content code {
+  background: var(--code-background);
+  border: 1px solid var(--code-border);
+  border-radius: 0;
+  padding: 0.1em 0.3em;
+  font-size: 0.9em;
+}
+
+.md-content pre {
+  position: relative;
+  background: var(--code-background);
+  border: 1px solid var(--code-border);
+  border-radius: 0;
+  padding: 0.8rem 1rem;
+  overflow-x: auto;
+  line-height: 1.5;
+}
+
+.md-content pre code {
+  background: transparent;
+  border: none;
+  padding: 0;
+  font-size: 0.9em;
+}
+
+.md-content blockquote {
+  margin: 0.75rem 0;
+  padding: 0.15rem 0.9rem;
+  border-left: 3px solid var(--blockquote-border);
+  color: var(--blockquote-text);
+}
+
+.md-content blockquote p {
+  margin: 0.25rem 0;
+}
+
+.md-content ul,
+.md-content ol {
+  margin: 0.5rem 0;
+  padding-left: 1.6rem;
+}
+
+.md-content li {
+  margin: 0.15rem 0;
+}
+
+.md-content table {
+  border-collapse: collapse;
+  margin: 0.75rem 0;
+  width: 100%;
+}
+
+.md-content th,
+.md-content td {
+  border: 1px solid var(--border-color);
+  padding: 0.4rem 0.7rem;
+  text-align: left;
+}
+
+.md-content th {
+  background: var(--surface-color);
+  font-weight: 600;
+}
+
+.md-content tbody tr:nth-child(even) {
+  background: var(--table-stripe-background);
+}
+
+.md-content hr {
+  border: none;
+  border-top: 1px solid var(--border-color);
+  margin: 1rem 0;
+}
+
+.md-content img {
+  max-width: 100%;
+}
+
+.md-content input[type="checkbox"] {
+  margin-right: 0.4rem;
+}
+
+/* Code Copy Button: hover-revealed in the block's top-right corner; stays
+   reachable via keyboard focus. Inherits pre's absolute positioning, which the
+   Preview Pane's scoped .preview-host pre rule carries. */
+.preview-host .code-copy-btn {
+  position: absolute;
+  top: 0.35rem;
+  right: 0.35rem;
+  padding: 0.25rem 0.35rem;
+  border: 1px solid var(--code-border);
+  background: var(--surface-color);
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: opacity 0.1s;
+}
+
+.preview-host pre:hover .code-copy-btn,
+.preview-host .code-copy-btn:focus-visible {
+  opacity: 1;
+}
+
+.preview-host .code-copy-btn svg {
+  display: block;
+  stroke: currentColor;
+  fill: none;
+}

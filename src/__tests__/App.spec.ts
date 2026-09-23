@@ -75,6 +75,10 @@ const DOCUMENT_CONTROL_IDS = [
   "toolbar-find",
 ] as const;
 
+/// The Export Controls' data-testid ids, reused across the render, visibility,
+/// and print assertions.
+const EXPORT_CONTROL_IDS = ["toolbar-export-pdf", "toolbar-export-html"] as const;
+
 interface MockWindow {
   getCloseHandler: () => (event: { preventDefault: () => void }) => Promise<void>;
   getFocusHandler: () => (event: { payload: boolean }) => void;
@@ -2968,6 +2972,224 @@ describe("App shell", () => {
         title,
       );
     }
+  });
+
+  it("keeps the Export Controls visible in every Layout Mode", async () => {
+    const wrapper = mount(App);
+    const ui = useUiStore();
+
+    for (let cycle = 0; cycle < 3; cycle += 1) {
+      await nextTick();
+      for (const id of EXPORT_CONTROL_IDS) {
+        expect(wrapper.find(`[data-testid="${id}"]`).isVisible()).toBe(true);
+      }
+      ui.cycleLayoutMode();
+    }
+  });
+
+  it("renders the Export Control with its shortcut tooltip", () => {
+    const wrapper = mount(App);
+    expect(wrapper.find('[data-testid="toolbar-export-pdf"]').attributes("title")).toBe(
+      "Export PDF (Ctrl/Cmd+P)",
+    );
+    expect(wrapper.find('[data-testid="toolbar-export-html"]').attributes("title")).toBe(
+      "Export HTML",
+    );
+  });
+
+  it("exports a self-contained HTML file beside the Document through the Export HTML button", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    document.canonicalPath = "C:\\notes\\a.md";
+    document.mirrorContent("# Dirty work");
+    pickSavePathMock.mockResolvedValue("C:\\notes\\a.html");
+    invokeMock.mockClear();
+
+    await wrapper.find('[data-testid="toolbar-export-html"]').trigger("click");
+    await flushPromises();
+
+    expect(pickSavePathMock).toHaveBeenCalledWith({
+      title: "Export HTML",
+      defaultPath: "C:\\notes\\a.html",
+      filters: [{ name: "HTML", extensions: ["html"] }],
+    });
+    const write = invokeMock.mock.calls.find(
+      (call) => call[0] === "save_document",
+    );
+    expect(write).toBeDefined();
+    const content = (write?.[1] as { content: string }).content;
+    expect(content).toContain("<!doctype html>");
+    expect(content).toContain("<style>");
+    expect(content).toContain("Dirty work");
+  });
+
+  it("exports local images as embedded data URLs through the scoped read command", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    document.canonicalPath = "C:\\notes\\a.md";
+    document.mirrorContent("![pic](pic.png)\n\n![remote](https://example.com/r.png)");
+    pickSavePathMock.mockResolvedValue("C:\\notes\\a.html");
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "read_image_data_url") {
+        return "data:image/png;base64,QUJD";
+      }
+      return undefined;
+    });
+
+    await wrapper.find('[data-testid="toolbar-export-html"]').trigger("click");
+    await flushPromises();
+
+    expect(invokeMock).toHaveBeenCalledWith("read_image_data_url", {
+      documentPath: "C:\\notes\\a.md",
+      imagePath: "C:\\notes\\pic.png",
+    });
+    const write = invokeMock.mock.calls.find(
+      (call) => call[0] === "save_document",
+    );
+    const content = (write?.[1] as { content: string }).content;
+    // The local image is embedded; the remote one passes through untouched.
+    expect(content).toContain('src="data:image/png;base64,QUJD"');
+    expect(content).toContain('src="https://example.com/r.png"');
+  });
+
+  it("aborts HTML Export without writing when the save dialog is cancelled", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    document.canonicalPath = "C:\\notes\\a.md";
+    document.mirrorContent("# Work");
+    pickSavePathMock.mockResolvedValue(null);
+    invokeMock.mockClear();
+
+    await wrapper.find('[data-testid="toolbar-export-html"]').trigger("click");
+    await flushPromises();
+
+    expect(invokeMock).not.toHaveBeenCalledWith(
+      "save_document",
+      expect.anything(),
+    );
+    expect(document.dirty).toBe(true);
+  });
+
+  it("toasts on an HTML export write failure and keeps the Document untouched", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    const ui = useUiStore();
+    document.canonicalPath = "C:\\notes\\a.md";
+    document.mirrorContent("# Work");
+    pickSavePathMock.mockResolvedValue("C:\\denied\\a.html");
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === "save_document") {
+        throw new Error("disk error");
+      }
+      return undefined;
+    });
+
+    await wrapper.find('[data-testid="toolbar-export-html"]').trigger("click");
+    await flushPromises();
+
+    expect(ui.toast).toContain("Export failed");
+    expect(document.dirty).toBe(true);
+    expect(document.canonicalPath).toBe("C:\\notes\\a.md");
+  });
+
+  it("pre-fills <stem>.html for an Untitled Document from the last-used directory", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const ui = useUiStore();
+    ui.setLastDirectory("C:\\docs\\out.md");
+    const document = useDocumentStore();
+    document.mirrorContent("# Work");
+    pickSavePathMock.mockResolvedValue("C:\\docs\\Untitled.html");
+    invokeMock.mockClear();
+
+    await wrapper.find('[data-testid="toolbar-export-html"]').trigger("click");
+    await flushPromises();
+
+    expect(pickSavePathMock).toHaveBeenCalledWith(
+      expect.objectContaining({ defaultPath: "C:/docs/Untitled.html" }),
+    );
+  });
+
+  it("runs Print Export on Ctrl/Cmd+P from any Layout Mode", async () => {
+    mount(App);
+    await flushPromises();
+    const ui = useUiStore();
+    const document = useDocumentStore();
+    document.mirrorContent("# Heading\n\nParagraph.");
+    const printMock = vi.fn();
+    globalThis.window.print = printMock;
+
+    for (const mode of ["split", "preview", "focus"] as const) {
+      printMock.mockClear();
+      ui.setLayoutMode(mode);
+      await nextTick();
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "P", ctrlKey: true }),
+      );
+      await nextTick();
+      expect(printMock).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it("prints a chrome-free render: no Sections, no code-copy buttons, Dirty content included", async () => {
+    mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    document.mirrorContent("# A\n\ntext\n\n# B\n\nmore text");
+    document.activeTab().collapsedSections = ["0"];
+    let printedHtml = "";
+    globalThis.window.print = vi.fn(() => {
+      printedHtml =
+        globalThis.document.querySelector(".print-render")?.innerHTML ?? "";
+    });
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "P", ctrlKey: true }));
+    await nextTick();
+
+    expect(printedHtml).toContain("<h1>");
+    expect(printedHtml).not.toContain("md-section");
+    expect(printedHtml).not.toContain("code-copy-btn");
+    expect(printedHtml).toContain("more text");
+  });
+
+  it("tears the print container down on afterprint (dialog closed)", async () => {
+    mount(App);
+    await flushPromises();
+    globalThis.window.print = vi.fn();
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "P", ctrlKey: true }));
+    await nextTick();
+    // While the dialog is open the container is still mounted (WebKit's
+    // window.print() returns before the dialog closes).
+    expect(globalThis.document.querySelector(".print-render")).not.toBeNull();
+    window.dispatchEvent(new Event("afterprint"));
+    await nextTick();
+    expect(globalThis.document.querySelector(".print-render")).toBeNull();
+  });
+
+  it("leaves the Document untouched by Print Export", async () => {
+    mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    document.canonicalPath = "C:\\notes\\a.md";
+    document.mirrorContent("# Dirty work");
+    globalThis.window.print = vi.fn();
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "P", ctrlKey: true }));
+    await nextTick();
+    await flushPromises();
+
+    expect(document.dirty).toBe(true);
+    expect(document.canonicalPath).toBe("C:\\notes\\a.md");
+    expect(document.content).toBe("# Dirty work");
+    expect(invokeMock).not.toHaveBeenCalledWith(
+      "save_document",
+      expect.anything(),
+    );
   });
 
   it("hides the Document Controls in Preview Only", async () => {

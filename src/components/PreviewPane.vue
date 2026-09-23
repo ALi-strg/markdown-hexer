@@ -1,6 +1,6 @@
 <template>
   <section class="preview-pane" data-testid="preview-pane">
-    <div ref="previewHost" class="preview-host"></div>
+    <div ref="previewHost" class="preview-host md-content"></div>
     <div
       v-if="copyToast"
       class="copy-toast"
@@ -19,7 +19,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { debounce } from "../lib/debounce";
 import { renderMarkdown } from "../lib/renderer";
 import { applyCollapsedSections, toggleSection } from "../lib/sections";
-import { resolveAssetSrc, toAssetUrl } from "../lib/assetUrl";
+import { rewriteAssetSrcs } from "../lib/assetUrl";
 import { useDocumentStore } from "../stores/document";
 import { useUiStore } from "../stores/ui";
 
@@ -128,40 +128,11 @@ function addCodeCopyButtons(host: HTMLElement) {
   }
 }
 
-/// The directory a relative image resolves against: the directory holding the
-/// Document. An Untitled Document has no directory, so nothing is rewritten.
-function assetBase(): string | null {
-  if (document.canonicalPath === null) {
-    return null;
-  }
-  return document.canonicalPath.replace(/[\\/][^\\/]+$/, "");
-}
-
-/// Rewrites relative `<img>` srcs in the rendered output to the scoped
-/// `asset://` URLs that resolve against the Document's directory. External
-/// srcs (absolute URLs, data URIs, ...) are left untouched.
-function rewriteAssetSrcs(host: HTMLElement) {
-  const base = assetBase();
-  if (base === null) {
-    return;
-  }
-  for (const img of host.querySelectorAll("img")) {
-    const src = img.getAttribute("src");
-    if (src === null) {
-      continue;
-    }
-    const absolute = resolveAssetSrc(src, base);
-    if (absolute !== null) {
-      img.setAttribute("src", toAssetUrl(absolute));
-    }
-  }
-}
-
 function renderNow() {
   const host = previewHost.value;
   if (host) {
     host.innerHTML = renderMarkdown(document.content, { wrapBlocks: true });
-    rewriteAssetSrcs(host);
+    rewriteAssetSrcs(host, document.canonicalPath);
     addCodeCopyButtons(host);
     applyCollapsedSections(host, document.activeTab().collapsedSections);
     props.onRender?.();
@@ -300,171 +271,8 @@ defineExpose({ getPreviewHost: () => previewHost.value });
   height: 100%;
   overflow-y: auto;
   padding: var(--pane-padding);
-  font-family: var(--preview-font-family);
-  font-size: var(--preview-font-size);
-  line-height: 1.7;
-  color: var(--text-color);
   -webkit-user-select: text;
   user-select: text;
-}
-
-/* Clean minimal typography for the rendered Markdown. The preview HTML is
-   injected into .preview-host, so every element needs :deep() to be styled.
-   Spacing uses rem (root-relative) so block offsets stay integer device
-   pixels across DPI scales — em margins on resized heading fonts produce
-   fractional offsets that drift under subpixel scroll. */
-.preview-host :deep(h1),
-.preview-host :deep(h2),
-.preview-host :deep(h3),
-.preview-host :deep(h4),
-.preview-host :deep(h5),
-.preview-host :deep(h6) {
-  color: var(--text-color);
-  font-weight: 600;
-  line-height: 1.3;
-  margin-top: 1.25rem;
-  margin-bottom: 0.5rem;
-}
-
-.preview-host :deep(h1) {
-  font-size: 1.7em;
-}
-
-.preview-host :deep(h2) {
-  font-size: 1.4em;
-}
-
-.preview-host :deep(h3) {
-  font-size: 1.2em;
-}
-
-.preview-host :deep(h4),
-.preview-host :deep(h5),
-.preview-host :deep(h6) {
-  font-size: 1.05em;
-}
-
-.preview-host :deep(p) {
-  margin: 0.5rem 0;
-}
-
-.preview-host :deep(a) {
-  color: var(--link-color);
-  text-decoration: none;
-}
-
-.preview-host :deep(a:hover) {
-  text-decoration: underline;
-}
-
-.preview-host :deep(code) {
-  background: var(--code-background);
-  border: 1px solid var(--code-border);
-  border-radius: 0;
-  padding: 0.1em 0.3em;
-  font-size: 0.9em;
-}
-
-.preview-host :deep(pre) {
-  position: relative;
-  background: var(--code-background);
-  border: 1px solid var(--code-border);
-  border-radius: 0;
-  padding: 0.8rem 1rem;
-  overflow-x: auto;
-  line-height: 1.5;
-}
-
-.preview-host :deep(pre code) {
-  background: transparent;
-  border: none;
-  padding: 0;
-  font-size: 0.9em;
-}
-
-.preview-host :deep(blockquote) {
-  margin: 0.75rem 0;
-  padding: 0.15rem 0.9rem;
-  border-left: 3px solid var(--blockquote-border);
-  color: var(--blockquote-text);
-}
-
-.preview-host :deep(blockquote p) {
-  margin: 0.25rem 0;
-}
-
-.preview-host :deep(ul),
-.preview-host :deep(ol) {
-  margin: 0.5rem 0;
-  padding-left: 1.6rem;
-}
-
-.preview-host :deep(li) {
-  margin: 0.15rem 0;
-}
-
-.preview-host :deep(table) {
-  border-collapse: collapse;
-  margin: 0.75rem 0;
-  width: 100%;
-}
-
-.preview-host :deep(th),
-.preview-host :deep(td) {
-  border: 1px solid var(--border-color);
-  padding: 0.4rem 0.7rem;
-  text-align: left;
-}
-
-.preview-host :deep(th) {
-  background: var(--surface-color);
-  font-weight: 600;
-}
-
-.preview-host :deep(tbody tr:nth-child(even)) {
-  background: var(--table-stripe-background);
-}
-
-.preview-host :deep(hr) {
-  border: none;
-  border-top: 1px solid var(--border-color);
-  margin: 1rem 0;
-}
-
-.preview-host :deep(img) {
-  max-width: 100%;
-}
-
-.preview-host :deep(input[type="checkbox"]) {
-  margin-right: 0.4rem;
-}
-
-/* Code Copy Button: hover-revealed in the block's top-right corner; stays
-   reachable via keyboard focus. Inherits pre's absolute positioning. */
-.preview-host :deep(.code-copy-btn) {
-  position: absolute;
-  top: 0.35rem;
-  right: 0.35rem;
-  padding: 0.25rem 0.35rem;
-  border: 1px solid var(--code-border);
-  background: var(--surface-color);
-  color: var(--text-muted);
-  cursor: pointer;
-  opacity: 0;
-  user-select: none;
-  -webkit-user-select: none;
-  transition: opacity 0.1s;
-}
-
-.preview-host :deep(pre:hover .code-copy-btn),
-.preview-host :deep(.code-copy-btn:focus-visible) {
-  opacity: 1;
-}
-
-.preview-host :deep(.code-copy-btn svg) {
-  display: block;
-  stroke: currentColor;
-  fill: none;
 }
 
 /* Copy Toast: transient copy confirmation near the cursor; never intercepts
