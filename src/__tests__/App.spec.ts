@@ -3024,6 +3024,36 @@ describe("App shell", () => {
     expect(content).toContain("Dirty work");
   });
 
+  it("exports local images as embedded data URLs through the scoped read command", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    document.canonicalPath = "C:\\notes\\a.md";
+    document.mirrorContent("![pic](pic.png)\n\n![remote](https://example.com/r.png)");
+    pickSavePathMock.mockResolvedValue("C:\\notes\\a.html");
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "read_image_data_url") {
+        return "data:image/png;base64,QUJD";
+      }
+      return undefined;
+    });
+
+    await wrapper.find('[data-testid="toolbar-export-html"]').trigger("click");
+    await flushPromises();
+
+    expect(invokeMock).toHaveBeenCalledWith("read_image_data_url", {
+      documentPath: "C:\\notes\\a.md",
+      imagePath: "C:\\notes\\pic.png",
+    });
+    const write = invokeMock.mock.calls.find(
+      (call) => call[0] === "save_document",
+    );
+    const content = (write?.[1] as { content: string }).content;
+    // The local image is embedded; the remote one passes through untouched.
+    expect(content).toContain('src="data:image/png;base64,QUJD"');
+    expect(content).toContain('src="https://example.com/r.png"');
+  });
+
   it("aborts HTML Export without writing when the save dialog is cancelled", async () => {
     const wrapper = mount(App);
     await flushPromises();

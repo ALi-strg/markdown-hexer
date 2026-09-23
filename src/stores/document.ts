@@ -229,10 +229,14 @@ export const useDocumentStore = defineStore("document", () => {
     if (path === null) {
       return false;
     }
-    return writeToDisk(path, buildExportHtml(tab.content, tabDisplayName(tab)), {
-      label: "Export failed",
-      fallback: EXPORT_FAILED_MESSAGE,
-    });
+    return writeToDisk(
+      path,
+      await buildExportHtml(tab.content, tabDisplayName(tab), tab.canonicalPath),
+      {
+        label: "Export failed",
+        fallback: EXPORT_FAILED_MESSAGE,
+      },
+    );
   }
 
   /// The dialog's default path for an HTML Export: `<stem>.html` beside a

@@ -147,7 +147,7 @@ An Export that renders a Print Render of the Active Document and hands it to the
 _Avoid_: PDF export (the PDF is one outcome of printing, not the feature), direct PDF export
 
 **HTML Export**:
-An Export that writes a self-contained `.html` file through the Save As flow — native save dialog, then the same write path as Save. Styles are embedded so the file renders correctly on its own.
+An Export that writes a self-contained `.html` file through the Save As flow — native save dialog, then the same write path as Save. Styles are embedded so the file renders correctly on its own. Local images are inlined as base64 data URLs at export time, read through the same Document-directory scope the `asset://` protocol enforces; remote image URLs pass through untouched; an unreadable or missing image is omitted, never failing the export.
 _Avoid_: export page, HTML preview
 
 **Print Render**:
