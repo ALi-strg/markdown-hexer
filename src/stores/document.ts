@@ -2,6 +2,7 @@ import { defineStore } from "pinia";
 import { computed, ref } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { pickSavePath } from "../lib/saveDialog";
+import { buildExportHtml } from "../lib/exportHtml";
 import { pickExternalModificationChoice } from "../lib/externalDialog";
 import { clearPreservedTabEditorState } from "../lib/tabEditorState";
 import type { GuardDocument } from "../lib/confirmDiscard";
@@ -14,6 +15,7 @@ const SAVE_FAILED_MESSAGE = "Save failed — your changes are not on disk";
 const OPEN_FAILED_MESSAGE = "Open failed — the file could not be read";
 const SAVE_AS_COLLISION_MESSAGE =
   "Save As refused — that file is already open in another Tab";
+const EXPORT_FAILED_MESSAGE = "Export failed — the file could not be written";
 
 /// One open Document's full session state. The workspace owns an ordered list
 /// of these plus an Active index; the Active-Document surface the app already
@@ -138,8 +140,14 @@ export const useDocumentStore = defineStore("document", () => {
   }
 
   /// Writes `text` to `path`, surfacing a failure as a toast. Does not update
-  /// the Document's path, Dirty state, or Externally-Modified baseline.
-  async function writeToDisk(path: string, text: string): Promise<boolean> {
+  /// the Document's path, Dirty state, or Externally-Modified baseline. The
+  /// failure wording is parameterized so flows that are not a Save (HTML
+  /// Export) report their own verb.
+  async function writeToDisk(
+    path: string,
+    text: string,
+    failedMessage = SAVE_FAILED_MESSAGE,
+  ): Promise<boolean> {
     try {
       await invoke("save_document", { path, content: text });
       return true;
@@ -147,8 +155,8 @@ export const useDocumentStore = defineStore("document", () => {
       const ui = useUiStore();
       ui.showToast(
         typeof error === "string" && error.length > 0
-          ? `Save failed: ${error}`
-          : SAVE_FAILED_MESSAGE,
+          ? `${failedMessage.split(" — ")[0]}: ${error}`
+          : failedMessage,
       );
       return false;
     }
@@ -200,6 +208,41 @@ export const useDocumentStore = defineStore("document", () => {
       return false;
     }
     return writeToPath(path, tab);
+  }
+
+  /// Exports the Tab's in-memory content as a self-contained `.html` file
+  /// through the Save As flow — native save dialog, then the same write path
+  /// as Save. Export never modifies the Document and never triggers the
+  /// Confirm-Discard Guard (CONTEXT.md, ## Export).
+  async function exportHtml(tab: Tab = activeTab()): Promise<boolean> {
+    const ui = useUiStore();
+    const defaultPath = exportDefaultPath(tab, ui.lastDirectory);
+    const path = await pickSavePath({
+      title: "Export HTML",
+      defaultPath,
+      filters: [{ name: "HTML", extensions: ["html"] }],
+    });
+    if (path === null) {
+      return false;
+    }
+    return writeToDisk(
+      path,
+      buildExportHtml(tab.content, tabDisplayName(tab)),
+      EXPORT_FAILED_MESSAGE,
+    );
+  }
+
+  /// The dialog's default path for an HTML Export: `<stem>.html` beside a
+  /// Document with a canonical path; from the last-used directory for an
+  /// Untitled one; none when there is no location hint at all.
+  function exportDefaultPath(tab: Tab, lastDirectory: string | null): string | undefined {
+    if (tab.canonicalPath !== null) {
+      return `${tab.canonicalPath.replace(/\.[^.\\/]+$/, "")}.html`;
+    }
+    if (lastDirectory !== null) {
+      return `${lastDirectory}/Untitled.html`;
+    }
+    return undefined;
   }
 
   /// The Confirm-Discard Guard's view of a Tab: its Dirty flag and filename,
@@ -487,6 +530,7 @@ export const useDocumentStore = defineStore("document", () => {
     mirrorContent,
     save,
     saveAs,
+    exportHtml,
     newTab,
     openPathInTab,
     checkExternalModification,

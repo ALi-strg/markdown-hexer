@@ -28,6 +28,7 @@
       @save-as="onSaveAs"
       @find="onFind"
       @export-pdf="onExportPdf"
+      @export-html="document.exportHtml()"
       @undo="onUndo"
       @redo="onRedo"
       @theme-change="onThemeChange"

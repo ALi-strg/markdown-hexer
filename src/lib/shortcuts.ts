@@ -125,6 +125,15 @@ export const PRINT_EXPORT_SHORTCUT: ShortcutEntry = {
   combo: { key: "p", ctrlCmd: true, shift: false },
 };
 
+/// The Export Controls: Print Export hands the Print Render to the OS print
+/// dialog (the OS offers Save-as-PDF there; ADR 0012). HTML Export has no
+/// keyboard combo — tooltip-only, like the Theme/Font controls; not listed in
+/// the Shortcuts Reference, which collects keyboard combos.
+export const HTML_EXPORT_SHORTCUT: ShortcutEntry = {
+  label: "Export HTML",
+  combo: null,
+};
+
 export type DocumentControlOperation =
   | "new"
   | "open"

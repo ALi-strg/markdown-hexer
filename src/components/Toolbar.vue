@@ -65,6 +65,15 @@
       >
         Export PDF
       </button>
+      <button
+        type="button"
+        class="toolbar-button"
+        data-testid="toolbar-export-html"
+        :title="tooltipText(HTML_EXPORT_SHORTCUT)"
+        @click="emit('exportHtml')"
+      >
+        Export HTML
+      </button>
     </div>
     <span
       class="toolbar-separator"
@@ -245,6 +254,7 @@ import {
   THEME_CONTROL,
   UNDO_SHORTCUT,
   PRINT_EXPORT_SHORTCUT,
+  HTML_EXPORT_SHORTCUT,
   tooltipText,
   tooltipWithCombo,
 } from "../lib/shortcuts";
@@ -287,6 +297,7 @@ const emit = defineEmits<{
   saveAs: [];
   find: [];
   exportPdf: [];
+  exportHtml: [];
   undo: [];
   redo: [];
   themeChange: [theme: Theme];

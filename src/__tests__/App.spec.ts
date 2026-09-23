@@ -77,7 +77,7 @@ const DOCUMENT_CONTROL_IDS = [
 
 /// The Export Controls' data-testid ids, reused across the render, visibility,
 /// and print assertions.
-const EXPORT_CONTROL_IDS = ["toolbar-export-pdf"] as const;
+const EXPORT_CONTROL_IDS = ["toolbar-export-pdf", "toolbar-export-html"] as const;
 
 interface MockWindow {
   getCloseHandler: () => (event: { preventDefault: () => void }) => Promise<void>;
@@ -2991,6 +2991,96 @@ describe("App shell", () => {
     const wrapper = mount(App);
     expect(wrapper.find('[data-testid="toolbar-export-pdf"]').attributes("title")).toBe(
       "Export PDF (Ctrl/Cmd+P)",
+    );
+    expect(wrapper.find('[data-testid="toolbar-export-html"]').attributes("title")).toBe(
+      "Export HTML",
+    );
+  });
+
+  it("exports a self-contained HTML file beside the Document through the Export HTML button", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    document.canonicalPath = "C:\\notes\\a.md";
+    document.mirrorContent("# Dirty work");
+    pickSavePathMock.mockResolvedValue("C:\\notes\\a.html");
+    invokeMock.mockClear();
+
+    await wrapper.find('[data-testid="toolbar-export-html"]').trigger("click");
+    await flushPromises();
+
+    expect(pickSavePathMock).toHaveBeenCalledWith({
+      title: "Export HTML",
+      defaultPath: "C:\\notes\\a.html",
+      filters: [{ name: "HTML", extensions: ["html"] }],
+    });
+    const write = invokeMock.mock.calls.find(
+      (call) => call[0] === "save_document",
+    );
+    expect(write).toBeDefined();
+    const content = (write?.[1] as { content: string }).content;
+    expect(content).toContain("<!doctype html>");
+    expect(content).toContain("<style>");
+    expect(content).toContain("Dirty work");
+  });
+
+  it("aborts HTML Export without writing when the save dialog is cancelled", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    document.canonicalPath = "C:\\notes\\a.md";
+    document.mirrorContent("# Work");
+    pickSavePathMock.mockResolvedValue(null);
+    invokeMock.mockClear();
+
+    await wrapper.find('[data-testid="toolbar-export-html"]').trigger("click");
+    await flushPromises();
+
+    expect(invokeMock).not.toHaveBeenCalledWith(
+      "save_document",
+      expect.anything(),
+    );
+    expect(document.dirty).toBe(true);
+  });
+
+  it("toasts on an HTML export write failure and keeps the Document untouched", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    const ui = useUiStore();
+    document.canonicalPath = "C:\\notes\\a.md";
+    document.mirrorContent("# Work");
+    pickSavePathMock.mockResolvedValue("C:\\denied\\a.html");
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === "save_document") {
+        throw new Error("disk error");
+      }
+      return undefined;
+    });
+
+    await wrapper.find('[data-testid="toolbar-export-html"]').trigger("click");
+    await flushPromises();
+
+    expect(ui.toast).toContain("Export failed");
+    expect(document.dirty).toBe(true);
+    expect(document.canonicalPath).toBe("C:\\notes\\a.md");
+  });
+
+  it("pre-fills <stem>.html for an Untitled Document from the last-used directory", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const ui = useUiStore();
+    ui.setLastDirectory("C:\\docs\\out.md");
+    const document = useDocumentStore();
+    document.mirrorContent("# Work");
+    pickSavePathMock.mockResolvedValue("C:\\docs\\Untitled.html");
+    invokeMock.mockClear();
+
+    await wrapper.find('[data-testid="toolbar-export-html"]').trigger("click");
+    await flushPromises();
+
+    expect(pickSavePathMock).toHaveBeenCalledWith(
+      expect.objectContaining({ defaultPath: "C:/docs/Untitled.html" }),
     );
   });
 

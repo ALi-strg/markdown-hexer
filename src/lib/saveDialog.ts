@@ -1,7 +1,16 @@
 import { save } from "@tauri-apps/plugin-dialog";
 
+export interface SaveDialogFilter {
+  name: string;
+  extensions: string[];
+}
+
 export interface SaveDialogOptions {
   defaultPath?: string;
+  /// The dialog title (defaults to "Save As") and the file-type filters
+  /// (defaults to the Markdown/Text set). HTML Export passes its own.
+  title?: string;
+  filters?: SaveDialogFilter[];
 }
 
 const E2E_SAVE_PATH_KEY = "markdownhexer:e2e:save-path";
@@ -25,13 +34,14 @@ export async function pickSavePath(
     }
   }
   const result = await save({
-    title: "Save As",
+    title: options.title ?? "Save As",
     defaultPath: options.defaultPath,
-    filters: [
-      { name: "Markdown", extensions: ["md", "markdown", "mdown"] },
-      { name: "Text", extensions: ["txt"] },
-      { name: "All files", extensions: ["*"] },
-    ],
+    filters:
+      options.filters ?? [
+        { name: "Markdown", extensions: ["md", "markdown", "mdown"] },
+        { name: "Text", extensions: ["txt"] },
+        { name: "All files", extensions: ["*"] },
+      ],
   });
   return result ?? null;
 }
