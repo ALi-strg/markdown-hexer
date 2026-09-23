@@ -48,7 +48,7 @@ describe("pickSavePath options", () => {
   });
 
   it("passes a custom title and filters through (HTML Export)", async () => {
-    saveMock.mockResolvedValue("C:\notes\out.html");
+    saveMock.mockResolvedValue("C:\\notes\\out.html");
 
     await pickSavePath({
       title: "Export HTML",

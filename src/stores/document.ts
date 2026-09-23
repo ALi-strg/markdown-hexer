@@ -142,11 +142,15 @@ export const useDocumentStore = defineStore("document", () => {
   /// Writes `text` to `path`, surfacing a failure as a toast. Does not update
   /// the Document's path, Dirty state, or Externally-Modified baseline. The
   /// failure wording is parameterized so flows that are not a Save (HTML
-  /// Export) report their own verb.
+  /// Export) report their own verb: `label` prefixes the OS error detail,
+  /// `fallback` covers a failure without one.
   async function writeToDisk(
     path: string,
     text: string,
-    failedMessage = SAVE_FAILED_MESSAGE,
+    failed: { label: string; fallback: string } = {
+      label: "Save failed",
+      fallback: SAVE_FAILED_MESSAGE,
+    },
   ): Promise<boolean> {
     try {
       await invoke("save_document", { path, content: text });
@@ -155,8 +159,8 @@ export const useDocumentStore = defineStore("document", () => {
       const ui = useUiStore();
       ui.showToast(
         typeof error === "string" && error.length > 0
-          ? `${failedMessage.split(" — ")[0]}: ${error}`
-          : failedMessage,
+          ? `${failed.label}: ${error}`
+          : failed.fallback,
       );
       return false;
     }
@@ -225,22 +229,25 @@ export const useDocumentStore = defineStore("document", () => {
     if (path === null) {
       return false;
     }
-    return writeToDisk(
-      path,
-      buildExportHtml(tab.content, tabDisplayName(tab)),
-      EXPORT_FAILED_MESSAGE,
-    );
+    return writeToDisk(path, buildExportHtml(tab.content, tabDisplayName(tab)), {
+      label: "Export failed",
+      fallback: EXPORT_FAILED_MESSAGE,
+    });
   }
 
   /// The dialog's default path for an HTML Export: `<stem>.html` beside a
   /// Document with a canonical path; from the last-used directory for an
   /// Untitled one; none when there is no location hint at all.
-  function exportDefaultPath(tab: Tab, lastDirectory: string | null): string | undefined {
+  function exportDefaultPath(
+    tab: Tab,
+    lastDirectory: string | null,
+  ): string | undefined {
     if (tab.canonicalPath !== null) {
       return `${tab.canonicalPath.replace(/\.[^.\\/]+$/, "")}.html`;
     }
     if (lastDirectory !== null) {
-      return `${lastDirectory}/Untitled.html`;
+      const stem = tabDisplayName(tab).replace(/\.[^.\\/]+$/, "");
+      return `${lastDirectory}/${stem}.html`;
     }
     return undefined;
   }

@@ -38,7 +38,7 @@ export function buildExportHtml(content: string, title: string): string {
     EXPORT_STYLES,
     "</style>",
     "</head>",
-    '<body><div class="md-content" style="padding: var(--pane-padding);">',
+    '<body><div class="md-content">',
     renderMarkdown(content),
     "</div></body>",
     "</html>",

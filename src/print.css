@@ -1,0 +1,23 @@
+/* Print Export overlay: the Print Render mounts on <body> — outside the themed
+   .app root — so it always resolves the :root (light) Palette tokens: light ink
+   on paper no matter which Palette the app is showing. It mounts offscreen
+   while the print dialog is open and is the only thing on the page in print
+   media. Kept out of styles.css so an HTML Export never ships these rules: the
+   exported document has no .print-render element, and a verbatim `body > *:
+   not(.print-render)` would blank its page when the recipient prints it.
+   Sections are never part of a Print Render (plain render, no wrapping), so
+   there is nothing to un-collapse here. */
+.print-render {
+  display: none;
+  overflow: visible;
+}
+
+@media print {
+  body > *:not(.print-render) {
+    display: none;
+  }
+
+  .print-render {
+    display: block;
+  }
+}

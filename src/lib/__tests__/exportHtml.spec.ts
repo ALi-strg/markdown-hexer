@@ -33,6 +33,11 @@ describe("buildExportHtml", () => {
     expect(html).toContain("more");
   });
 
+  it("escapes the filename in the title", () => {
+    const html = buildExportHtml("# Hello", 'a & <b> "c".md');
+    expect(html).toContain("<title>a &amp; &lt;b&gt; &quot;c&quot;.md</title>");
+  });
+
   it("uses the filename as the document title", () => {
     expect(buildExportHtml("# Hello", "note.md")).toContain(
       "<title>note.md</title>",

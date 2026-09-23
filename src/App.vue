@@ -28,7 +28,7 @@
       @save-as="onSaveAs"
       @find="onFind"
       @export-pdf="onExportPdf"
-      @export-html="document.exportHtml()"
+      @export-html="onExportHtml"
       @undo="onUndo"
       @redo="onRedo"
       @theme-change="onThemeChange"
@@ -302,6 +302,10 @@ async function runDocumentControl(operation: DocumentControlOperation) {
 /// engine (WebKit returns before the dialog closes).
 function onExportPdf() {
   printDocument(document.content, document.canonicalPath);
+}
+
+function onExportHtml() {
+  void document.exportHtml();
 }
 
 /// Applies a Tab reorder from the Tab Bar's drag: the Tab Bar tracks the

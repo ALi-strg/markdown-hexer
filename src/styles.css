@@ -406,6 +406,7 @@ textarea {
    produce fractional offsets that drift under subpixel scroll. */
 .md-content {
   box-sizing: border-box;
+  padding: var(--pane-padding);
   font-family: var(--preview-font-family);
   font-size: var(--preview-font-size);
   line-height: 1.7;
@@ -565,30 +566,4 @@ textarea {
   display: block;
   stroke: currentColor;
   fill: none;
-}
-
-/* Print Export: the Print Render mounts offscreen while the print dialog is
-   open and is the only thing on the page in print media. Sections are never
-   part of a Print Render (plain render, no wrapping), so there is nothing to
-   un-collapse here. */
-/* Print Export: the Print Render mounts on <body> — outside the themed .app
-   root — so it always resolves the :root (light) Palette tokens: light ink on
-   paper no matter which Palette the app is showing. It mounts offscreen while
-   the print dialog is open and is the only thing on the page in print media.
-   Sections are never part of a Print Render (plain render, no wrapping), so
-   there is nothing to un-collapse here. */
-.print-render {
-  display: none;
-  padding: var(--pane-padding);
-  overflow: visible;
-}
-
-@media print {
-  body > *:not(.print-render) {
-    display: none;
-  }
-
-  .print-render {
-    display: block;
-  }
 }
