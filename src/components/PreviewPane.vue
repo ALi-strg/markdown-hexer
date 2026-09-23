@@ -1,6 +1,6 @@
 <template>
   <section class="preview-pane" data-testid="preview-pane">
-    <div ref="previewHost" class="preview-host"></div>
+    <div ref="previewHost" class="preview-host md-content"></div>
     <div
       v-if="copyToast"
       class="copy-toast"

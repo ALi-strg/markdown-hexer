@@ -94,10 +94,7 @@ import {
   watch,
 } from "vue";
 import { invoke } from "@tauri-apps/api/core";
-import {
-  printDocument,
-  teardownPrintRender,
-} from "./lib/printExport";
+import { printDocument } from "./lib/printExport";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { openSearchPanel } from "@codemirror/search";
@@ -299,13 +296,11 @@ async function runDocumentControl(operation: DocumentControlOperation) {
 /// Print Export: the Active Document's in-memory content (Dirty included) as a
 /// chrome-free Print Render handed to the OS print dialog. Never touches the
 /// Document; never triggers the Confirm-Discard Guard (CONTEXT.md, ## Export).
+/// The container is torn down by the print dialog's `afterprint` signal in the
+/// printExport module — not here, since window.print() does not block on every
+/// engine (WebKit returns before the dialog closes).
 function onExportPdf() {
-  printDocument(
-    document.content,
-    document.canonicalPath,
-    globalThis.document,
-  );
-  teardownPrintRender();
+  printDocument(document.content, document.canonicalPath);
 }
 
 /// Applies a Tab reorder from the Tab Bar's drag: the Tab Bar tracks the

@@ -1,4 +1,4 @@
-# PDF Export via the OS print dialog
+# Print Export via the OS print dialog
 
 Technical authors want PDF output of a rendered Document. Programmatic PDF
 generation in Rust (headless renderer or a PDF-writing crate) would mean new

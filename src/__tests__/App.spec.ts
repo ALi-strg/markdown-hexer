@@ -3036,14 +3036,18 @@ describe("App shell", () => {
     expect(printedHtml).toContain("more text");
   });
 
-  it("tears the print container down after the print dialog", async () => {
+  it("tears the print container down on afterprint (dialog closed)", async () => {
     mount(App);
     await flushPromises();
     globalThis.window.print = vi.fn();
 
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "P", ctrlKey: true }));
     await nextTick();
-
+    // While the dialog is open the container is still mounted (WebKit's
+    // window.print() returns before the dialog closes).
+    expect(globalThis.document.querySelector(".print-render")).not.toBeNull();
+    window.dispatchEvent(new Event("afterprint"));
+    await nextTick();
     expect(globalThis.document.querySelector(".print-render")).toBeNull();
   });
 
