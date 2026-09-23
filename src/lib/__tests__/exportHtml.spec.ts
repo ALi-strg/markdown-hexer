@@ -82,7 +82,7 @@ describe("buildExportHtml", () => {
     const html = await buildExportHtml(
       "![alt](https://example.com/pic.png)",
       "note.md",
-      "C:\notes\note.md",
+      "C:\\notes\\note.md",
     );
     expect(invokeMock).not.toHaveBeenCalled();
     expect(html).toContain('src="https://example.com/pic.png"');
@@ -92,7 +92,7 @@ describe("buildExportHtml", () => {
     const html = await buildExportHtml(
       "![alt](data:image/png;base64,AA==)",
       "note.md",
-      "C:\notes\note.md",
+      "C:\\notes\\note.md",
     );
     expect(invokeMock).not.toHaveBeenCalled();
     expect(html).toContain('src="data:image/png;base64,AA=="');

@@ -69,6 +69,7 @@ npm run tauri build -- --debug --no-bundle   # what test:e2e uses to build the a
 | `open_document` | `open_document` | Read UTF-8, strip leading BOM (`open.rs` → `encoding.rs`) |
 | `inspect_document` | `inspect_document` | Content+mtime for Externally-Modified detection (`inspect.rs`) |
 | `set_asset_root` | `asset::set_asset_root` | Update `asset://` scope root on path change (`asset.rs`) |
+| `read_image_data_url` | `image::read_image_data_url` | Read one local image as a base64 data URL for HTML Export, scoped to the Document's directory (`image.rs`) |
 | `get_pending_file` | `get_pending_file` | Pull+clear launch/forwarded file path (`instance.rs`) |
 | `show_confirm_discard` | `confirm::show_confirm_discard` | Native Save/Don't Save/Cancel dialog (`confirm.rs`) |
 | `show_external_modified` | `external::show_external_modified` | Native Reload/Overwrite/Cancel dialog (`external.rs`) |
