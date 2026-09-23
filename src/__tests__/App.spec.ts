@@ -75,6 +75,10 @@ const DOCUMENT_CONTROL_IDS = [
   "toolbar-find",
 ] as const;
 
+/// The Export Controls' data-testid ids, reused across the render, visibility,
+/// and print assertions.
+const EXPORT_CONTROL_IDS = ["toolbar-export-pdf"] as const;
+
 interface MockWindow {
   getCloseHandler: () => (event: { preventDefault: () => void }) => Promise<void>;
   getFocusHandler: () => (event: { payload: boolean }) => void;
@@ -2968,6 +2972,100 @@ describe("App shell", () => {
         title,
       );
     }
+  });
+
+  it("keeps the Export Controls visible in every Layout Mode", async () => {
+    const wrapper = mount(App);
+    const ui = useUiStore();
+
+    for (let cycle = 0; cycle < 3; cycle += 1) {
+      await nextTick();
+      for (const id of EXPORT_CONTROL_IDS) {
+        expect(wrapper.find(`[data-testid="${id}"]`).isVisible()).toBe(true);
+      }
+      ui.cycleLayoutMode();
+    }
+  });
+
+  it("renders the Export Control with its shortcut tooltip", () => {
+    const wrapper = mount(App);
+    expect(wrapper.find('[data-testid="toolbar-export-pdf"]').attributes("title")).toBe(
+      "Export PDF (Ctrl/Cmd+P)",
+    );
+  });
+
+  it("runs Print Export on Ctrl/Cmd+P from any Layout Mode", async () => {
+    mount(App);
+    await flushPromises();
+    const ui = useUiStore();
+    const document = useDocumentStore();
+    document.mirrorContent("# Heading\n\nParagraph.");
+    const printMock = vi.fn();
+    globalThis.window.print = printMock;
+
+    for (const mode of ["split", "preview", "focus"] as const) {
+      printMock.mockClear();
+      ui.setLayoutMode(mode);
+      await nextTick();
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "P", ctrlKey: true }),
+      );
+      await nextTick();
+      expect(printMock).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it("prints a chrome-free render: no Sections, no code-copy buttons, Dirty content included", async () => {
+    mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    document.mirrorContent("# A\n\ntext\n\n# B\n\nmore text");
+    document.activeTab().collapsedSections = ["0"];
+    let printedHtml = "";
+    globalThis.window.print = vi.fn(() => {
+      printedHtml =
+        globalThis.document.querySelector(".print-render")?.innerHTML ?? "";
+    });
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "P", ctrlKey: true }));
+    await nextTick();
+
+    expect(printedHtml).toContain("<h1>");
+    expect(printedHtml).not.toContain("md-section");
+    expect(printedHtml).not.toContain("code-copy-btn");
+    expect(printedHtml).toContain("more text");
+  });
+
+  it("tears the print container down after the print dialog", async () => {
+    mount(App);
+    await flushPromises();
+    globalThis.window.print = vi.fn();
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "P", ctrlKey: true }));
+    await nextTick();
+
+    expect(globalThis.document.querySelector(".print-render")).toBeNull();
+  });
+
+  it("leaves the Document untouched by Print Export", async () => {
+    mount(App);
+    await flushPromises();
+    const document = useDocumentStore();
+    document.canonicalPath = "C:\\notes\\a.md";
+    document.mirrorContent("# Dirty work");
+    globalThis.window.print = vi.fn();
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "P", ctrlKey: true }));
+    await nextTick();
+    await flushPromises();
+
+    expect(document.dirty).toBe(true);
+    expect(document.canonicalPath).toBe("C:\\notes\\a.md");
+    expect(document.content).toBe("# Dirty work");
+    expect(invokeMock).not.toHaveBeenCalledWith(
+      "save_document",
+      expect.anything(),
+    );
   });
 
   it("hides the Document Controls in Preview Only", async () => {

@@ -397,3 +397,224 @@ textarea {
 #app {
   height: 100%;
 }
+
+/* Shared content typography for the Preview Pane's host and the Print Render.
+   Both carry the .preview-host / .print-render classes over injected HTML, so
+   the rules here are global: the Print Render must reuse the preview look, not
+   fork it (ADR 0012). Spacing uses rem (root-relative) so block offsets stay
+   integer device pixels across DPI scales — em margins on resized heading
+   fonts produce fractional offsets that drift under subpixel scroll. */
+.preview-host,
+.print-render {
+  box-sizing: border-box;
+  font-family: var(--preview-font-family);
+  font-size: var(--preview-font-size);
+  line-height: 1.7;
+  color: var(--text-color);
+}
+
+.preview-host h1,
+.preview-host h2,
+.preview-host h3,
+.preview-host h4,
+.preview-host h5,
+.preview-host h6,
+.print-render h1,
+.print-render h2,
+.print-render h3,
+.print-render h4,
+.print-render h5,
+.print-render h6 {
+  color: var(--text-color);
+  font-weight: 600;
+  line-height: 1.3;
+  margin-top: 1.25rem;
+  margin-bottom: 0.5rem;
+}
+
+.preview-host h1,
+.print-render h1 {
+  font-size: 1.7em;
+}
+
+.preview-host h2,
+.print-render h2 {
+  font-size: 1.4em;
+}
+
+.preview-host h3,
+.print-render h3 {
+  font-size: 1.2em;
+}
+
+.preview-host h4,
+.preview-host h5,
+.preview-host h6,
+.print-render h4,
+.print-render h5,
+.print-render h6 {
+  font-size: 1.05em;
+}
+
+.preview-host p,
+.print-render p {
+  margin: 0.5rem 0;
+}
+
+.preview-host a,
+.print-render a {
+  color: var(--link-color);
+  text-decoration: none;
+}
+
+.preview-host a:hover,
+.print-render a:hover {
+  text-decoration: underline;
+}
+
+.preview-host code,
+.print-render code {
+  background: var(--code-background);
+  border: 1px solid var(--code-border);
+  border-radius: 0;
+  padding: 0.1em 0.3em;
+  font-size: 0.9em;
+}
+
+.preview-host pre,
+.print-render pre {
+  position: relative;
+  background: var(--code-background);
+  border: 1px solid var(--code-border);
+  border-radius: 0;
+  padding: 0.8rem 1rem;
+  overflow-x: auto;
+  line-height: 1.5;
+}
+
+.preview-host pre code,
+.print-render pre code {
+  background: transparent;
+  border: none;
+  padding: 0;
+  font-size: 0.9em;
+}
+
+.preview-host blockquote,
+.print-render blockquote {
+  margin: 0.75rem 0;
+  padding: 0.15rem 0.9rem;
+  border-left: 3px solid var(--blockquote-border);
+  color: var(--blockquote-text);
+}
+
+.preview-host blockquote p,
+.print-render blockquote p {
+  margin: 0.25rem 0;
+}
+
+.preview-host ul,
+.preview-host ol,
+.print-render ul,
+.print-render ol {
+  margin: 0.5rem 0;
+  padding-left: 1.6rem;
+}
+
+.preview-host li,
+.print-render li {
+  margin: 0.15rem 0;
+}
+
+.preview-host table,
+.print-render table {
+  border-collapse: collapse;
+  margin: 0.75rem 0;
+  width: 100%;
+}
+
+.preview-host th,
+.preview-host td,
+.print-render th,
+.print-render td {
+  border: 1px solid var(--border-color);
+  padding: 0.4rem 0.7rem;
+  text-align: left;
+}
+
+.preview-host th,
+.print-render th {
+  background: var(--surface-color);
+  font-weight: 600;
+}
+
+.preview-host tbody tr:nth-child(even),
+.print-render tbody tr:nth-child(even) {
+  background: var(--table-stripe-background);
+}
+
+.preview-host hr,
+.print-render hr {
+  border: none;
+  border-top: 1px solid var(--border-color);
+  margin: 1rem 0;
+}
+
+.preview-host img,
+.print-render img {
+  max-width: 100%;
+}
+
+.preview-host input[type="checkbox"],
+.print-render input[type="checkbox"] {
+  margin-right: 0.4rem;
+}
+
+/* Code Copy Button: hover-revealed in the block's top-right corner; stays
+   reachable via keyboard focus. Inherits pre's absolute positioning, which the
+   Preview Pane's scoped .preview-host pre rule carries. */
+.preview-host .code-copy-btn {
+  position: absolute;
+  top: 0.35rem;
+  right: 0.35rem;
+  padding: 0.25rem 0.35rem;
+  border: 1px solid var(--code-border);
+  background: var(--surface-color);
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: opacity 0.1s;
+}
+
+.preview-host pre:hover .code-copy-btn,
+.preview-host .code-copy-btn:focus-visible {
+  opacity: 1;
+}
+
+.preview-host .code-copy-btn svg {
+  display: block;
+  stroke: currentColor;
+  fill: none;
+}
+
+/* Print Export: the Print Render mounts offscreen while the print dialog is
+   open and is the only thing on the page in print media. Sections are never
+   part of a Print Render (plain render, no wrapping), so there is nothing to
+   un-collapse here. */
+.print-render {
+  display: none;
+  padding: var(--pane-padding);
+  overflow: visible;
+}
+
+@media print {
+  body > *:not(.print-render) {
+    display: none;
+  }
+
+  .print-render {
+    display: block;
+  }
+}

@@ -136,6 +136,24 @@ _Avoid_: New file, nameless file
 The state where the file on disk changed (mtime or content) since the Document was loaded or last saved. Checked for the Active Document on window focus and on Tab activation; a background Tab is only checked when it becomes Active, one dialog at a time. If the Document is Dirty the user chooses Reload / Overwrite / Cancel; if clean it reloads silently.
 _Avoid_: File changed, stale file
 
+## Export
+
+**Export**:
+Producing a standalone artifact from the Active Document's in-memory content — including Dirty changes; what you see is what you export. Export never modifies the Document and never triggers the Confirm-Discard Guard. Available in every Layout Mode.
+_Avoid_: save as PDF, download, share
+
+**Print Export**:
+An Export that renders a Print Render of the Active Document and hands it to the OS print dialog, where the user chooses Save-as-PDF (or a physical printer). The app never writes the PDF itself.
+_Avoid_: PDF export (the PDF is one outcome of printing, not the feature), direct PDF export
+
+**HTML Export**:
+An Export that writes a self-contained `.html` file through the Save As flow — native save dialog, then the same write path as Save. Styles are embedded so the file renders correctly on its own.
+_Avoid_: export page, HTML preview
+
+**Print Render**:
+An offscreen, full rendering of a Document's content via the same renderer as the Preview Pane, free of Preview-specific chrome: no Sections, no collapse state, no copy affordances. Identical Markdown → identical Export output regardless of the Preview Pane's current state.
+_Avoid_: preview snapshot, printing the preview DOM
+
 ## Window Title
 
 The window title reads `<filename> — Markdown Hexer`, where `<filename>` is the Active Document's, with `*` inserted after it when the Active Document is Dirty (e.g., `notes.md * — Markdown Hexer`). Untitled Documents read `Untitled.md — Markdown Hexer` (or `Untitled 2.md`, …). The product name is **Markdown Hexer**.

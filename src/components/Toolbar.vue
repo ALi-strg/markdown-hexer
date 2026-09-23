@@ -55,6 +55,22 @@
       aria-hidden="true"
       v-show="layoutMode !== 'preview'"
     ></span>
+    <div class="toolbar-export-group">
+      <button
+        type="button"
+        class="toolbar-button"
+        data-testid="toolbar-export-pdf"
+        :title="tooltipText(PRINT_EXPORT_SHORTCUT)"
+        @click="emit('exportPdf')"
+      >
+        Export PDF
+      </button>
+    </div>
+    <span
+      class="toolbar-separator"
+      aria-hidden="true"
+      v-show="layoutMode !== 'preview'"
+    ></span>
     <div
       class="toolbar-format-group"
       v-show="layoutMode !== 'preview'"
@@ -228,6 +244,7 @@ import {
   SIZE_CONTROL,
   THEME_CONTROL,
   UNDO_SHORTCUT,
+  PRINT_EXPORT_SHORTCUT,
   tooltipText,
   tooltipWithCombo,
 } from "../lib/shortcuts";
@@ -269,6 +286,7 @@ const emit = defineEmits<{
   save: [];
   saveAs: [];
   find: [];
+  exportPdf: [];
   undo: [];
   redo: [];
   themeChange: [theme: Theme];
@@ -314,6 +332,7 @@ function onTextSizeChange(event: Event) {
 
 .toolbar-document-group,
 .toolbar-format-group,
+.toolbar-export-group,
 .toolbar-history-group {
   display: flex;
   align-items: center;

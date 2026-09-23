@@ -27,6 +27,7 @@
       @save="onSave"
       @save-as="onSaveAs"
       @find="onFind"
+      @export-pdf="onExportPdf"
       @undo="onUndo"
       @redo="onRedo"
       @theme-change="onThemeChange"
@@ -93,6 +94,10 @@ import {
   watch,
 } from "vue";
 import { invoke } from "@tauri-apps/api/core";
+import {
+  printDocument,
+  teardownPrintRender,
+} from "./lib/printExport";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { openSearchPanel } from "@codemirror/search";
@@ -116,6 +121,7 @@ import {
   DOCUMENT_SHORTCUTS,
   FORMAT_SHORTCUTS,
   matchesCombo,
+  PRINT_EXPORT_SHORTCUT,
   TAB_SHORTCUTS,
   type DocumentControlOperation,
   type TabControlOperation,
@@ -290,6 +296,18 @@ async function runDocumentControl(operation: DocumentControlOperation) {
   }
 }
 
+/// Print Export: the Active Document's in-memory content (Dirty included) as a
+/// chrome-free Print Render handed to the OS print dialog. Never touches the
+/// Document; never triggers the Confirm-Discard Guard (CONTEXT.md, ## Export).
+function onExportPdf() {
+  printDocument(
+    document.content,
+    document.canonicalPath,
+    globalThis.document,
+  );
+  teardownPrintRender();
+}
+
 /// Applies a Tab reorder from the Tab Bar's drag: the Tab Bar tracks the
 /// drag position and emits one move per crossed boundary; the store owns the
 /// order and the Active Document's stability.
@@ -368,9 +386,19 @@ async function onKeydown(event: KeyboardEvent) {
       return;
     }
   }
+  // Cycle Layout must match before Print Export: a Shift-less combo also
+  // fires when Shift is held, so Ctrl/Cmd+Shift+P (Cycle Layout, the more
+  // specific combo) must be checked first — the same convention as saveAs
+  // before save.
   if (matchesCombo(event, CYCLE_LAYOUT_COMBO)) {
     event.preventDefault();
     ui.cycleLayoutMode();
+    return;
+  }
+  const exportCombo = PRINT_EXPORT_SHORTCUT.combo;
+  if (exportCombo !== null && matchesCombo(event, exportCombo)) {
+    event.preventDefault();
+    onExportPdf();
   }
 }
 
