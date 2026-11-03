@@ -1,3 +1,31 @@
+// Node 26 defines a built-in `localStorage` that is disabled without
+// --localstorage-file. Vitest only copies jsdom globals that Node does not
+// already define, so the browser Storage never reaches the tests there.
+const nativeStorage = (() => {
+  try {
+    return globalThis.localStorage;
+  } catch {
+    return undefined;
+  }
+})();
+if (!nativeStorage) {
+  const store = new Map<string, string>();
+  const storage: Storage = {
+    get length() {
+      return store.size;
+    },
+    key: (index) => [...store.keys()][index] ?? null,
+    getItem: (key) => store.get(key) ?? null,
+    setItem: (key, value) => void store.set(key, String(value)),
+    removeItem: (key) => void store.delete(key),
+    clear: () => store.clear(),
+  };
+  Object.defineProperty(globalThis, "localStorage", {
+    value: storage,
+    configurable: true,
+  });
+}
+
 const emptyRect: DOMRect = {
   x: 0,
   y: 0,
