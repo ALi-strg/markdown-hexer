@@ -112,6 +112,28 @@ pub fn run() {
         .setup(|app| {
             app.manage(asset::DocumentScope(std::sync::Mutex::new(None)));
             app.manage(instance::PendingFile::from_startup_args());
+            // The main window ships with `visible: false` to hide the WebView2
+            // white flash while the frontend boots (cold start). Non-Windows
+            // platforms are shown here immediately, keeping their old
+            // always-visible behavior. Windows is shown by the frontend on
+            // first paint; this watchdog is the fallback for the case where
+            // the frontend never gets that far (show on an already-shown
+            // window is a no-op).
+            #[cfg(target_os = "windows")]
+            {
+                const WATCHDOG_SHOW_AFTER: std::time::Duration =
+                    std::time::Duration::from_secs(5);
+                if let Some(window) = app.get_webview_window("main") {
+                    std::thread::spawn(move || {
+                        std::thread::sleep(WATCHDOG_SHOW_AFTER);
+                        let _ = window.show();
+                    });
+                }
+            }
+            #[cfg(not(target_os = "windows"))]
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

@@ -17,6 +17,33 @@ fn main() {
     markdown_editor_lib::run()
 }
 
+/// WebView2's GPU process is the documented source of hard, power-cycle-only
+/// OS freezes during window resize on some Intel iGPU machines
+/// (MicrosoftEdge/WebView2Feedback #3063 — see ADR 0013) and of blank-white
+/// content over RDP sessions (#1115, #1179). A text editor gains nothing worth those defects
+/// from GPU compositing, so `--disable-gpu` ships unconditionally via
+/// `additionalBrowserArgs` in tauri.conf.json. This guard keeps the flag from
+/// regressing out of the config.
+#[cfg(test)]
+mod conf_guard {
+    #[test]
+    fn webview_ships_disable_gpu() {
+        let conf: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tauri.conf.json"
+        ))
+        .unwrap())
+        .unwrap();
+        let args = conf["app"]["windows"][0]["additionalBrowserArgs"]
+            .as_str()
+            .expect("main window must keep additionalBrowserArgs set");
+        assert!(
+            args.contains("--disable-gpu"),
+            "additionalBrowserArgs in tauri.conf.json must keep --disable-gpu"
+        );
+    }
+}
+
 #[cfg(all(test, target_os = "linux"))]
 mod tests {
     use super::*;
