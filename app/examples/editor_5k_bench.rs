@@ -145,8 +145,8 @@ impl eframe::App for BenchApp {
 }
 
 fn main() -> eframe::Result {
-    let path = std::env::args_os().nth(1).map(PathBuf::from);
-    let startup = startup::launch(path, &markdown_hexer::platform::NativeFileSystem);
+    let paths = std::env::args_os().skip(1).map(PathBuf::from).collect();
+    let startup = startup::launch(paths, &markdown_hexer::platform::NativeFileSystem);
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("Markdown Hexer editor bench")
