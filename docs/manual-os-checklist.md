@@ -47,8 +47,8 @@ best-effort. macOS is borrowed-hardware best-effort.
       Tab appears.
 - [ ] Drop a folder or a non-Markdown file. It is ignored or reported, never
       crashes, and never navigates the preview to a local path.
-- [ ] Drag while a document is Dirty. The Guard dialog appears before the drop
-      is applied; Cancel leaves the workspace unchanged.
+- [ ] Drag while a document is Dirty. The dropped file opens as a new Tab;
+      the dirty document is unchanged and still Active until the drop opens.
 
 ## Native dialogs
 
