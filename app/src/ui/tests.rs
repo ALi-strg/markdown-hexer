@@ -553,6 +553,28 @@ fn new_button_inserts_after_active_and_focuses_the_editor() {
 }
 
 #[test]
+fn cmd_t_inserts_a_new_tab_after_active() {
+    let files = MemoryFiles::default();
+    let mut h = harness(untitled_app(&files, FakeDialogs::default()));
+    h.run_steps(1);
+
+    h.key_press_modifiers(Modifiers::COMMAND, Key::T);
+    h.step();
+    h.step();
+
+    assert_eq!(h.state().workspace.tabs().len(), 2);
+    assert_eq!(
+        h.state()
+            .workspace
+            .active_document()
+            .unwrap()
+            .untitled_number,
+        Some(2)
+    );
+    h.get_by_label("Untitled 2.md");
+}
+
+#[test]
 fn open_button_replaces_a_sole_empty_untitled() {
     let files = MemoryFiles::default();
     files.insert(notes_path(), "# Notes");

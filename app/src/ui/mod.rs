@@ -243,6 +243,7 @@ impl HexerApp {
             save,
             toggle,
             new,
+            new_tab,
             open,
             close,
             previous_tab,
@@ -254,6 +255,7 @@ impl HexerApp {
             let save = input.consume_key(Modifiers::COMMAND, Key::S);
             let toggle = input.consume_key(Modifiers::COMMAND, Key::E);
             let new = input.consume_key(Modifiers::COMMAND, Key::N);
+            let new_tab = input.consume_key(Modifiers::COMMAND, Key::T);
             let open = input.consume_key(Modifiers::COMMAND, Key::O);
             let close = input.consume_key(Modifiers::COMMAND, Key::W);
             // Tab cycling is Ctrl-only, never Cmd.
@@ -268,6 +270,7 @@ impl HexerApp {
                 save,
                 toggle,
                 new,
+                new_tab,
                 open,
                 close,
                 previous_tab,
@@ -295,6 +298,9 @@ impl HexerApp {
             commands.push(Command::ToggleMode);
         }
         if new {
+            commands.push(Command::NewUntitled);
+        }
+        if new_tab {
             commands.push(Command::NewUntitled);
         }
         if open {
