@@ -5,7 +5,7 @@ use crate::platform::{Clipboard, ReadError, WriteError};
 use crate::startup;
 use egui::accesskit::Role;
 use egui_kittest::Harness;
-use egui_kittest::kittest::Queryable;
+use egui_kittest::kittest::{NodeT, Queryable};
 use std::cell::{Cell, RefCell};
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -463,7 +463,7 @@ fn typing_marks_the_document_dirty_and_shows_the_star() {
             .is_dirty()
     );
     h.step();
-    h.get_by_label("Untitled.md *");
+    h.get_by_label("Untitled.md, unsaved changes");
     assert_eq!(
         h.state().workspace.window_title(),
         "Untitled.md * — Markdown Hexer"
@@ -1075,13 +1075,13 @@ fn tab_bar_shows_every_tab_dirty_marker_and_close_button_in_both_modes() {
     });
     h.step();
 
-    h.get_by_label("notes.md *");
+    h.get_by_label("notes.md, unsaved changes");
     h.get_by_label("other.md");
-    assert_eq!(h.get_all_by_label("×").count(), 2);
+    assert_eq!(h.get_all_by_label_contains("Close ").count(), 2);
 
     h.get_by_label("Edit").click();
     h.step();
-    h.get_by_label("notes.md *");
+    h.get_by_label("notes.md, unsaved changes");
     h.get_by_label("other.md");
 }
 
@@ -1158,7 +1158,7 @@ fn cursor_and_undo_survive_switching_away_and_back() {
     h.step();
     assert_eq!(document_content(&h), "x");
 
-    h.get_by_label("Untitled.md *").click();
+    h.get_by_label("Untitled.md, unsaved changes").click();
     h.step();
     h.step();
     h.input_mut().events.push(egui::Event::Text("Z".to_owned()));
@@ -1345,7 +1345,7 @@ fn tab_close_button_closes_the_last_tab_and_the_window() {
     ));
     h.step();
 
-    h.get_by_label("×").click();
+    h.get_by_label("Close notes.md").click();
     h.step();
 
     assert!(h.state().allow_close);
@@ -1576,7 +1576,7 @@ fn code_copy_button_writes_clipboard_and_shows_the_copy_toast() {
     let mut h = harness(app);
     h.run_steps(2);
 
-    h.get_by_label("Copy").click();
+    h.get_by_label("Copy code block 1").click();
     h.run_steps(1);
 
     assert_eq!(clipboard.copied().as_deref(), Some("fn main() {}"));
@@ -1595,9 +1595,9 @@ fn code_copy_button_is_keyboard_reachable() {
     let mut h = harness(app);
     h.run_steps(2);
 
-    h.get_by_label("Copy").focus();
+    h.get_by_label("Copy code block 1").focus();
     h.run_steps(1);
-    assert!(h.get_by_label("Copy").is_focused());
+    assert!(h.get_by_label("Copy code block 1").is_focused());
     h.key_press(Key::Enter);
     h.run_steps(1);
 
@@ -1618,7 +1618,7 @@ fn clipboard_failure_shows_a_toast_and_keeps_the_document() {
     let mut h = harness(app);
     h.run_steps(2);
 
-    h.get_by_label("Copy").click();
+    h.get_by_label("Copy code block 1").click();
     h.run_steps(1);
 
     assert!(clipboard.copied().is_none());
@@ -2370,4 +2370,202 @@ fn exported_css_reflects_the_current_theme_font_and_text_size() {
     assert!(html.contains(&format!("--bg: {}", css_hex(Palette::DARK.bg))));
     assert!(html.contains("font-family: Georgia"));
     assert!(html.contains("font-size: 17px"));
+}
+
+#[test]
+fn accessibility_tree_exposes_tab_state_and_close_names() {
+    let files = MemoryFiles::default();
+    let mut h = harness(file_app(
+        notes_path(),
+        "# Notes\n\nbody\n",
+        &files,
+        FakeDialogs::default(),
+    ));
+    h.run_steps(1);
+    h.get_by_label("Edit").click();
+    h.step();
+    h.step();
+    h.input_mut().events.push(egui::Event::Text("x".to_owned()));
+    h.step();
+
+    h.step();
+    let tab = h.get_by_role_and_label(Role::Tab, "notes.md, unsaved changes");
+    assert_eq!(tab.accesskit_node().is_selected(), Some(true));
+    h.get_by_role_and_label(Role::Button, "Close notes.md");
+    h.get_by_role(Role::TabList);
+
+    let edit = h.get_by_label("Edit");
+    assert_eq!(edit.accesskit_node().role(), Role::RadioButton);
+    assert_eq!(
+        edit.accesskit_node().toggled(),
+        Some(egui::accesskit::Toggled::True)
+    );
+    assert_eq!(h.get_by_label("Save").accesskit_node().role(), Role::Button);
+}
+
+#[test]
+fn preview_exposes_heading_level_expand_state_and_copy_status() {
+    let files = MemoryFiles::default();
+    let clipboard = FakeClipboard::default();
+    let source = "# Notes\n\nbody text\n\n```rust\nfn main() {}\n```\n";
+    let app = file_app_with_clipboard(source, &files, clipboard.clone());
+    let mut h = harness(app);
+    h.run_steps(2);
+
+    h.get_by_role_and_label(Role::Region, "Preview content");
+    let heading = h.get_by_role_and_label(Role::Heading, "Notes");
+    assert_eq!(heading.accesskit_node().level(), Some(0));
+    assert_eq!(heading.accesskit_node().data().is_expanded(), Some(true));
+
+    let copy = h.get_by_role_and_label(Role::Button, "Copy code block 1");
+    copy.focus();
+    h.step();
+    h.key_press(egui::Key::Enter);
+    h.step();
+    assert_eq!(clipboard.copied().as_deref(), Some("fn main() {}"));
+    let toast = h.get_by_role_and_label(Role::Status, "Copied");
+    assert_eq!(toast.accesskit_node().live(), egui::accesskit::Live::Polite);
+    assert!(toast.accesskit_node().is_live_atomic());
+
+    h.get_by_role_and_label(Role::Heading, "Notes").focus();
+    h.step();
+    h.key_press(egui::Key::Enter);
+    h.run_steps(1);
+    assert!(h.query_by_label_contains("body text").is_none());
+    let heading = h.get_by_role_and_label(Role::Heading, "Notes");
+    assert_eq!(heading.accesskit_node().data().is_expanded(), Some(false));
+}
+
+#[test]
+fn about_dialog_is_named_and_escape_returns_focus_to_preview() {
+    let files = MemoryFiles::default();
+    let mut h = harness(file_app(
+        notes_path(),
+        "# Notes\n",
+        &files,
+        FakeDialogs::default(),
+    ));
+    h.run_steps(1);
+
+    h.get_by_label("About").click();
+    h.step();
+    h.step();
+    let dialog = h.get_by_role_and_label(Role::Dialog, "About Markdown Hexer");
+    assert!(
+        dialog
+            .accesskit_node()
+            .description()
+            .is_some_and(|description| description.contains("Version 2.0.0"))
+    );
+    assert!(h.get_by_label("Close").is_focused());
+
+    h.key_press(egui::Key::Escape);
+    h.step();
+    h.step();
+    assert!(h.query_by_role(Role::Dialog).is_none());
+    assert!(
+        h.get_by_role_and_label(Role::Region, "Preview content")
+            .is_focused()
+    );
+}
+
+#[test]
+fn tab_strip_arrow_keys_move_focus_and_selection_without_a_trap() {
+    let files = MemoryFiles::default();
+    let first = PathBuf::from("first.md");
+    let second = PathBuf::from("second.md");
+    files.insert(first.clone(), "# First\n");
+    files.insert(second.clone(), "# Second\n");
+    let startup = startup::launch(vec![first, second], &files);
+    let app = HexerApp::with_platform(
+        startup,
+        Instant::now(),
+        Box::new(files.clone()),
+        Box::new(FakeDialogs::default()),
+    );
+    let mut h = harness(app);
+    h.run_steps(1);
+
+    h.get_by_role_and_label(Role::Tab, "first.md").focus();
+    h.step();
+    h.key_press(egui::Key::ArrowRight);
+    h.step();
+    h.step();
+
+    let second = h.get_by_role_and_label(Role::Tab, "second.md");
+    assert_eq!(second.accesskit_node().is_selected(), Some(true));
+    assert!(second.is_focused());
+
+    h.key_press(egui::Key::Tab);
+    h.step();
+    assert!(!h.get_by_role_and_label(Role::Tab, "second.md").is_focused());
+}
+
+#[test]
+fn keyboard_only_new_type_save_as_preview_and_close_workflow() {
+    let files = MemoryFiles::default();
+    let saved = PathBuf::from("keyboard.md");
+    let mut h = harness(untitled_app(&files, FakeDialogs::returning(saved.clone())));
+    h.run_steps(1);
+
+    h.key_press_modifiers(Modifiers::COMMAND, Key::N);
+    h.step();
+    h.step();
+    h.input_mut()
+        .events
+        .push(egui::Event::Text("hello".to_owned()));
+    h.step();
+    assert_eq!(document_content(&h), "hello");
+
+    h.key_press_modifiers(Modifiers::COMMAND.plus(Modifiers::SHIFT), Key::S);
+    h.step();
+    h.step();
+    assert_eq!(files.written(&saved).as_deref(), Some("hello"));
+
+    h.key_press_modifiers(Modifiers::COMMAND, Key::E);
+    h.step();
+    h.step();
+    assert_eq!(
+        h.state()
+            .workspace
+            .active_document()
+            .map(|document| document.mode),
+        Some(Mode::Preview)
+    );
+
+    h.key_press_modifiers(Modifiers::COMMAND, Key::W);
+    h.step();
+    h.step();
+    assert_eq!(h.state().workspace.tabs().len(), 1);
+    assert!(!h.state().allow_close);
+    assert!(h.get_by_role(Role::MultilineTextInput).is_focused());
+}
+
+#[test]
+fn find_panel_exposes_labelled_fields_and_escape_restores_editor() {
+    let files = MemoryFiles::default();
+    let mut h = harness(file_app(
+        notes_path(),
+        "# Notes\n\nbody text\n",
+        &files,
+        FakeDialogs::default(),
+    ));
+    h.run_steps(1);
+    h.get_by_label("Edit").click();
+    h.step();
+
+    h.key_press_modifiers(Modifiers::COMMAND, Key::F);
+    h.step();
+    h.step();
+    assert!(h.get_by_label("Find text").is_focused());
+    h.get_by_label("Find text").type_text("body");
+    h.step();
+    h.step();
+    h.get_by_role_and_label(Role::Status, "1 of 1");
+
+    h.key_press(egui::Key::Escape);
+    h.step();
+    h.step();
+    assert!(h.query_by_label("Find text").is_none());
+    assert!(h.get_by_role(Role::MultilineTextInput).is_focused());
 }

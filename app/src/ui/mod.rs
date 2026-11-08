@@ -51,6 +51,7 @@ pub struct HexerApp {
     editor: Option<EditorResources>,
     editor_sessions: HashMap<DocumentId, EditorSession>,
     focus_editor: bool,
+    focus_preview: bool,
     pending_selection: Option<(DocumentId, Range<usize>)>,
     find_open: bool,
     focus_find: bool,
@@ -69,6 +70,9 @@ pub struct HexerApp {
     instance: Option<InstanceServer>,
     instance_wake: bool,
     about_open: bool,
+    focus_about: bool,
+    tab_keyboard: bool,
+    pending_tab_focus: Option<Id>,
     focus_window: bool,
     last_active: Option<DocumentId>,
     was_focused: bool,
@@ -292,13 +296,17 @@ fn mode_toggle(ui: &mut Ui, palette: Palette, label: &str, active: bool) -> bool
     } else {
         palette.surface
     };
-    ui.add(
+    let response = ui.add(
         egui::Button::new(text)
             .selected(active)
             .fill(fill)
             .stroke(Stroke::new(1.0, palette.border)),
-    )
-    .clicked()
+    );
+    // The active fill is the accent token, which can equal the focus token, so
+    // the framed focus stroke is not always visible. Add the ring outside.
+    response.widget_info(|| WidgetInfo::selected(Role::RadioButton, true, active, label));
+    paint_focus_ring(ui, &response, palette);
+    response.clicked()
 }
 
 fn system_is_dark(ctx: &egui::Context) -> bool {
@@ -307,6 +315,36 @@ fn system_is_dark(ctx: &egui::Context) -> bool {
 
 fn editor_id(document_id: DocumentId) -> Id {
     Id::unique(("markdown_editor", document_id))
+}
+
+fn preview_region_id(document_id: DocumentId) -> Id {
+    Id::unique(("preview_region", document_id))
+}
+
+/// Custom widgets paint no frame stroke, so they get the same 2 px focus ring
+/// that framed widgets receive from the active visuals.
+fn paint_focus_ring(ui: &Ui, response: &egui::Response, palette: Palette) {
+    if response.has_focus() {
+        ui.painter().rect_stroke(
+            response.rect.expand(1.0),
+            egui::CornerRadius::same(3),
+            Stroke::new(2.0, palette.focus),
+            egui::StrokeKind::Outside,
+        );
+    }
+}
+
+/// The visible tab label carries a ` *` dirty marker; the spoken name says it
+/// in words instead.
+fn tab_accessible_name(label: &str) -> String {
+    match label.split_once(" *") {
+        Some((title, rest)) => format!("{title}{rest}, unsaved changes"),
+        None => label.to_owned(),
+    }
+}
+
+fn tab_title(label: &str) -> String {
+    label.replacen(" *", "", 1)
 }
 
 impl HexerApp {
@@ -370,6 +408,7 @@ impl HexerApp {
             editor: None,
             editor_sessions: HashMap::new(),
             focus_editor,
+            focus_preview: false,
             pending_selection: None,
             find_open: false,
             focus_find: false,
@@ -388,6 +427,9 @@ impl HexerApp {
             instance: None,
             instance_wake: false,
             about_open: false,
+            focus_about: false,
+            tab_keyboard: false,
+            pending_tab_focus: None,
             focus_window: false,
             last_active: None,
             was_focused: false,
@@ -657,16 +699,21 @@ impl HexerApp {
     }
 
     fn dispatch(&mut self, ctx: &egui::Context, commands: Vec<Command>) {
-        let focus_after = commands.iter().any(|command| {
-            matches!(
-                command,
-                Command::NewUntitled
-                    | Command::ActivateTab(_)
-                    | Command::SetMode(Mode::Edit)
-                    | Command::ToggleMode
-                    | Command::CycleTab(_)
-            )
-        });
+        let focus_after = !self.tab_keyboard
+            && commands.iter().any(|command| {
+                matches!(
+                    command,
+                    Command::NewUntitled
+                        | Command::ActivateTab(_)
+                        | Command::SetMode(Mode::Edit)
+                        | Command::ToggleMode
+                        | Command::CycleTab(_)
+                        | Command::CloseTab(_)
+                        | Command::GuardChosen(_)
+                        | Command::ExternalChosen { .. }
+                )
+            });
+        self.tab_keyboard = false;
         let mut pending: VecDeque<Command> = commands.into();
         while let Some(command) = pending.pop_front() {
             for effect in self.workspace.apply(command) {
@@ -739,10 +786,12 @@ impl HexerApp {
             }
         }
         if focus_after {
-            self.focus_editor = self
+            let edit = self
                 .workspace
                 .active_document()
                 .is_some_and(|document| document.mode == Mode::Edit);
+            self.focus_editor = edit;
+            self.focus_preview = !edit && self.workspace.active_document().is_some();
         }
         if self
             .workspace
@@ -889,7 +938,7 @@ impl HexerApp {
         });
 
         if about {
-            self.about_open = true;
+            self.open_about();
         }
         if let Some(action) = format {
             self.apply_format(ctx, action);
@@ -1085,7 +1134,7 @@ impl HexerApp {
         }
     }
 
-    fn show_tab_bar(&self, ui: &mut Ui) -> Vec<Command> {
+    fn show_tab_bar(&mut self, ui: &mut Ui) -> Vec<Command> {
         let active = self.workspace.active_document().map(|document| document.id);
         let tabs: Vec<(DocumentId, String, bool)> = self
             .workspace
@@ -1101,6 +1150,8 @@ impl HexerApp {
         }
 
         let mut commands = Vec::new();
+        let mut focused_tab = None;
+        let mut tab_ids = vec![None; tabs.len()];
         Panel::top("tab_bar")
             .frame(
                 Frame::new()
@@ -1110,10 +1161,15 @@ impl HexerApp {
             )
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
+                    ui.ctx().accesskit_node_builder(ui.unique_id(), |node| {
+                        node.set_role(Role::TabList);
+                        node.set_label("Open documents");
+                    });
                     let mut rects = Vec::new();
                     let mut dragged = None;
-                    for (id, label, is_active) in &tabs {
+                    for (index, (id, label, is_active)) in tabs.iter().enumerate() {
                         ui.horizontal(|ui| {
+                            let name = tab_accessible_name(label);
                             let response = ui.add(
                                 egui::Button::new(
                                     RichText::new(label).monospace().color(self.palette.ink),
@@ -1121,6 +1177,19 @@ impl HexerApp {
                                 .frame(false)
                                 .sense(Sense::click_and_drag()),
                             );
+                            response.widget_info(|| WidgetInfo::labeled(Role::Tab, true, &name));
+                            ui.ctx().accesskit_node_builder(response.id, |node| {
+                                node.set_selected(*is_active);
+                            });
+                            if self.pending_tab_focus == Some(response.id) {
+                                response.request_focus();
+                                self.pending_tab_focus = None;
+                            }
+                            if response.has_focus() {
+                                focused_tab = Some(index);
+                            }
+                            tab_ids[index] = Some(response.id);
+                            paint_focus_ring(ui, &response, self.palette);
                             if response.clicked() && !response.dragged() {
                                 commands.push(Command::ActivateTab(*id));
                             }
@@ -1139,6 +1208,11 @@ impl HexerApp {
                                     .frame(false)
                                     .small(),
                             );
+                            let close_name = format!("Close {}", tab_title(label));
+                            close.widget_info(|| {
+                                WidgetInfo::labeled(Role::Button, true, &close_name)
+                            });
+                            paint_focus_ring(ui, &close, self.palette);
                             if close.clicked() {
                                 commands.push(Command::CloseTab(*id));
                             }
@@ -1161,6 +1235,24 @@ impl HexerApp {
                     }
                 });
             });
+
+        if let Some(index) = focused_tab {
+            let delta = ui.input_mut(|input| {
+                if input.consume_key(Modifiers::NONE, Key::ArrowRight) {
+                    1
+                } else if input.consume_key(Modifiers::NONE, Key::ArrowLeft) {
+                    -1
+                } else {
+                    0
+                }
+            });
+            if delta != 0 && !tabs.is_empty() {
+                let next = (index as isize + delta).rem_euclid(tabs.len() as isize) as usize;
+                self.tab_keyboard = true;
+                self.pending_tab_focus = tab_ids[next];
+                commands.push(Command::ActivateTab(tabs[next].0));
+            }
+        }
         commands
     }
 
@@ -1248,7 +1340,7 @@ impl HexerApp {
 
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if ui.button("About").clicked() {
-                            self.about_open = true;
+                            self.open_about();
                         }
                         if ui.button("Save As").clicked() {
                             commands.push(Command::SaveAs);
@@ -1389,6 +1481,21 @@ impl HexerApp {
                             ui.style_mut().interaction.selectable_labels = true;
                             apply_preview_text_style(ui, content_font, content_size);
                             ui.ctx().plugin::<CopyOnSelect>().lock().enabled = true;
+                            // A focus stop before the content so Tab reaches the
+                            // Preview before its headings and links.
+                            let region = ui.interact(
+                                ui.max_rect(),
+                                preview_region_id(document_id),
+                                Sense::click(),
+                            );
+                            region.widget_info(|| {
+                                WidgetInfo::labeled(Role::Region, true, "Preview content")
+                            });
+                            if self.focus_preview {
+                                region.request_focus();
+                                self.focus_preview = false;
+                            }
+                            paint_focus_ring(ui, &region, palette);
                             let (markdown, sections) = if first_frame {
                                 (
                                     preview
@@ -1447,6 +1554,24 @@ impl HexerApp {
         });
     }
 
+    fn open_about(&mut self) {
+        if self.about_open {
+            return;
+        }
+        self.about_open = true;
+        self.focus_about = true;
+    }
+
+    fn close_about(&mut self) {
+        self.about_open = false;
+        let edit = self
+            .workspace
+            .active_document()
+            .is_some_and(|document| document.mode == Mode::Edit);
+        self.focus_editor = edit;
+        self.focus_preview = !edit && self.workspace.active_document().is_some();
+    }
+
     fn show_about(&mut self, ctx: &egui::Context) {
         if !self.about_open {
             return;
@@ -1454,7 +1579,15 @@ impl HexerApp {
 
         let mut close = false;
         let mut open_repository = false;
-        Modal::new(Id::unique("about")).show(ctx, |ui| {
+        let modal = Modal::new(Id::unique("about")).show(ctx, |ui| {
+            ui.ctx().accesskit_node_builder(ui.unique_id(), |node| {
+                node.set_role(Role::Dialog);
+                node.set_label("About Markdown Hexer");
+                node.set_description(format!(
+                    "Version {}. Keyboard shortcuts and repository link.",
+                    env!("CARGO_PKG_VERSION")
+                ));
+            });
             ui.set_max_width(560.0);
             ui.heading("Markdown Hexer");
             ui.label(format!("Version {}", env!("CARGO_PKG_VERSION")));
@@ -1493,19 +1626,25 @@ impl HexerApp {
                     }
                 });
             ui.add_space(12.0);
-            if ui.button("Close").clicked() {
+            let close_button = ui.add(egui::Button::new("Close"));
+            if self.focus_about {
+                close_button.request_focus();
+                self.focus_about = false;
+            }
+            paint_focus_ring(ui, &close_button, self.palette);
+            if close_button.clicked() {
                 close = true;
             }
         });
 
-        if ctx.input(|input| input.key_pressed(Key::Escape)) {
+        if modal.should_close() {
             close = true;
         }
         if open_repository && !crate::platform::open_url(REPOSITORY) {
             self.show_message("Could not open the repository link");
         }
         if close {
-            self.about_open = false;
+            self.close_about();
         }
     }
 
@@ -1551,10 +1690,17 @@ impl HexerApp {
                     .inner_margin(Margin::symmetric(16, 10))
                     .show(ui, |ui| {
                         ui.set_max_width(560.0);
-                        ui.add(
+                        let label = ui.add(
                             Label::new(RichText::new(&toast.message).color(palette.toast_ink))
                                 .wrap(),
                         );
+                        label.widget_info(|| {
+                            WidgetInfo::labeled(Role::Status, true, &toast.message)
+                        });
+                        ui.ctx().accesskit_node_builder(label.id, |node| {
+                            node.set_live(egui::accesskit::Live::Polite);
+                            node.set_live_atomic();
+                        });
                     });
             });
 
@@ -1724,7 +1870,9 @@ fn show_section(
         ui.add_space(6.0);
         let is_collapsed = collapsed.contains(&section.key);
         ui.horizontal(|ui| {
-            if section.has_chevron(source.markdown) {
+            let has_chevron = section.has_chevron(source.markdown);
+            let mut toggle = false;
+            if has_chevron {
                 let (symbol, label) = if is_collapsed {
                     (">", "Expand section")
                 } else {
@@ -1741,20 +1889,36 @@ fn show_section(
                     .min_size(egui::vec2(16.0, 16.0)),
                 );
                 response.widget_info(|| WidgetInfo::labeled(Role::Button, true, label));
+                paint_focus_ring(ui, &response, *palette);
                 if response.clicked() {
-                    if is_collapsed {
-                        collapsed.remove(&section.key);
-                    } else {
-                        collapsed.insert(section.key.clone());
-                    }
+                    toggle = true;
                 }
             } else {
                 ui.add_space(16.0);
             }
-            ui.add(
+            let heading = ui.add(
                 Label::new(section_heading_text(ui, section.level, &section.title))
-                    .selectable(true),
+                    .selectable(true)
+                    .sense(Sense::click_and_drag()),
             );
+            heading.widget_info(|| WidgetInfo::labeled(Role::Heading, true, section.title.clone()));
+            ui.ctx().accesskit_node_builder(heading.id, |node| {
+                node.set_level(usize::from(section.level.saturating_sub(1)));
+                if has_chevron {
+                    node.set_expanded(!is_collapsed);
+                }
+            });
+            paint_focus_ring(ui, &heading, *palette);
+            if heading.clicked() {
+                toggle = true;
+            }
+            if toggle && has_chevron {
+                if is_collapsed {
+                    collapsed.remove(&section.key);
+                } else {
+                    collapsed.insert(section.key.clone());
+                }
+            }
         });
 
         if is_collapsed {
@@ -1856,13 +2020,19 @@ fn show_code_block(
         .inner_margin(Margin::symmetric(10, 8))
         .show(ui, |ui| {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui
-                    .add(
-                        egui::Button::new(RichText::new("Copy").small().color(palette.muted))
-                            .frame(false),
+                let copy = ui.add(
+                    egui::Button::new(RichText::new("Copy").small().color(palette.muted))
+                        .frame(false),
+                );
+                copy.widget_info(|| {
+                    WidgetInfo::labeled(
+                        Role::Button,
+                        true,
+                        format!("Copy code block {}", index + 1),
                     )
-                    .clicked()
-                {
+                });
+                paint_focus_ring(ui, &copy, *palette);
+                if copy.clicked() {
                     *copy_request.borrow_mut() = Some(code.copy_text());
                 }
             });
