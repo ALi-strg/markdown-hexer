@@ -65,6 +65,8 @@ def main() -> int:
     args.log_dir.mkdir(parents=True, exist_ok=True)
     for run in range(args.runs):
         log = args.log_dir / f"first-edit-{run}.csv"
+        # A log left by an earlier run would be read as this run's row.
+        log.unlink(missing_ok=True)
         env = os.environ.copy()
         env["HEXER_FIRST_EDIT_LOG"] = str(log)
         proc = subprocess.Popen([str(args.exe), str(args.fixture)], env=env)

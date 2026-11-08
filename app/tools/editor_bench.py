@@ -67,6 +67,8 @@ def main() -> int:
     args.log_dir.mkdir(parents=True, exist_ok=True)
     for run in range(args.runs):
         log = args.log_dir / f"frames-{args.anchor}-{run}.csv"
+        # A log left by an earlier run would be read as this run's frames.
+        log.unlink(missing_ok=True)
         env = os.environ.copy()
         env["HEXER_EDITOR_BENCH_LOG"] = str(log)
         env["HEXER_EDITOR_BENCH_ANCHOR"] = args.anchor

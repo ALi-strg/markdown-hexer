@@ -107,6 +107,8 @@ def main() -> int:
             )
         for run in range(args.runs):
             log = args.log_dir / f"startup-{args.font}-{run}.csv"
+            # A log left by an earlier run would be read as this run's row.
+            log.unlink(missing_ok=True)
             env = os.environ.copy()
             env["HEXER_STARTUP_LOG"] = str(log)
             if appdata is not None:
