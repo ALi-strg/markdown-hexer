@@ -1,6 +1,6 @@
 # Architecture decisions
 
-This is the 2.0 view of the ADR set. Older decisions stay in the repository as history; the sections below say which ones still govern the rewrite.
+This is the 2.0 view of the ADR set. Older decisions stay in the repository as history; the sections below say which ones still govern the rewrite. 1.x is frozen at tag `v1.5.0` / branch `v1-final`; its application source is no longer on the 2.0 main line, and none of the superseded decisions apply there.
 
 ## Active for 2.0
 

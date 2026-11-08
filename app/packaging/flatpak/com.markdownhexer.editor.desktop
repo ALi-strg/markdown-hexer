@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Markdown Hexer
+Comment=Fast native Markdown editor
+Exec=markdown-hexer %F
+Icon=com.markdownhexer.editor
+Terminal=false
+Categories=Utility;TextEditor;
+MimeType=text/markdown;
+StartupWMClass=markdown-hexer

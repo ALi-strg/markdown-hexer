@@ -11,4 +11,4 @@ Reports are handled privately and acknowledged. Please don't disclose the issue 
 
 ## Scope
 
-This policy covers the Markdown Hexer application itself. General vulnerabilities in upstream components (Tauri, WebKitGTK/WebView2, CodeMirror, `marked`, `DOMPurify`, …) should be reported to those projects directly.
+This policy covers the Markdown Hexer application itself. General vulnerabilities in upstream components (egui/eframe, winit, pulldown-cmark, egui_commonmark, the `image` crate, rfd, …) should be reported to those projects directly. The 2.0 app has no webview and no JavaScript runtime.

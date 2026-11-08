@@ -56,9 +56,94 @@ libc = "0.2"
 egui_kittest = { version = "0.37", features = ["eframe"] }
 tempfile = "3"
 
+[build-dependencies]
+embed-resource = "3.0.12"
+
 [profile.release]
 opt-level = 3
 lto = "fat"
 codegen-units = 1
 panic = "abort"
 strip = true
+
+# Packaging for the 2.0 line. The version is rewritten from the git tag by
+# app/packaging/set_version.py in CI, so About (CARGO_PKG_VERSION) and every
+# bundle read the same value.
+[package.metadata.packager]
+product-name = "Markdown Hexer"
+identifier = "com.markdownhexer.editor"
+publisher = "Adrian Link"
+copyright = "Copyright © 2026 Adrian Link"
+homepage = "https://github.com/ALi-strg/markdown-editor"
+authors = ["Adrian Link"]
+description = "Fast native Markdown editor"
+long-description = "Markdown Hexer is a fast, native Markdown editor with a live preview."
+category = "Productivity"
+out-dir = "target/release/bundle"
+formats = ["nsis", "wix"]
+icons = [
+    "packaging/icons/icon.ico",
+    "packaging/icons/icon.icns",
+    "packaging/icons/32x32.png",
+    "packaging/icons/64x64.png",
+    "packaging/icons/128x128.png",
+    "packaging/icons/128x128@2x.png",
+    "packaging/icons/icon.png",
+]
+
+[[package.metadata.packager.file-associations]]
+extensions = ["md", "markdown", "mdown"]
+name = "MarkdownHexer.Document"
+description = "Markdown document"
+mime-type = "text/markdown"
+role = "editor"
+
+[package.metadata.packager.nsis]
+installer-mode = "currentUser"
+template = "packaging/windows/installer.nsi"
+installer-icon = "packaging/icons/icon.ico"
+
+[package.metadata.packager.wix]
+fragment-paths = ["packaging/windows/markdown-hexer.wxs"]
+component-group-refs = ["MarkdownHexerFileAssociations"]
+
+[package.metadata.packager.macos]
+info-plist-path = "packaging/macos/Info.plist"
+minimum-system-version = "11.0"
+
+[package.metadata.packager.deb]
+# shared-mime-info and desktop-file-utils trigger the MIME/desktop databases on
+# install and uninstall; the rest are the dynamic libraries eframe/winit load.
+depends = [
+    "libc6",
+    "libxkbcommon0",
+    "libwayland-client0",
+    "libx11-6",
+    "libgl1",
+    "shared-mime-info",
+    "desktop-file-utils",
+]
+files = { "packaging/linux/markdown-hexer.xml" = "/usr/share/mime/packages/markdown-hexer.xml" }
+
+[package.metadata.packager.appimage]
+files = { "packaging/linux/markdown-hexer.xml" = "/usr/share/mime/packages/markdown-hexer.xml" }
+
+# RPM is not a cargo-packager format; cargo-generate-rpm reads this table.
+[package.metadata.generate-rpm]
+summary = "Fast native Markdown editor"
+license = "MIT OR Apache-2.0"
+url = "https://github.com/ALi-strg/markdown-editor"
+vendor = "Adrian Link"
+auto-req = "builtin"
+# MIME and desktop databases are rebuilt by these packages' file triggers.
+requires = ["shared-mime-info", "desktop-file-utils"]
+assets = [
+    { source = "target/release/markdown-hexer", dest = "/usr/bin/markdown-hexer", mode = "755" },
+    { source = "packaging/linux/markdown-hexer.desktop", dest = "/usr/share/applications/markdown-hexer.desktop", mode = "644" },
+    { source = "packaging/linux/markdown-hexer.xml", dest = "/usr/share/mime/packages/markdown-hexer.xml", mode = "644" },
+    { source = "packaging/icons/32x32.png", dest = "/usr/share/icons/hicolor/32x32/apps/markdown-hexer.png", mode = "644" },
+    { source = "packaging/icons/64x64.png", dest = "/usr/share/icons/hicolor/64x64/apps/markdown-hexer.png", mode = "644" },
+    { source = "packaging/icons/128x128.png", dest = "/usr/share/icons/hicolor/128x128/apps/markdown-hexer.png", mode = "644" },
+    { source = "packaging/icons/128x128@2x.png", dest = "/usr/share/icons/hicolor/256x256/apps/markdown-hexer.png", mode = "644" },
+    { source = "packaging/icons/icon.png", dest = "/usr/share/icons/hicolor/512x512/apps/markdown-hexer.png", mode = "644" },
+]
