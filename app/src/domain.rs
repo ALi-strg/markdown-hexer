@@ -120,6 +120,21 @@ pub struct GuardState {
     pub action: GuardAction,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ExternalChoice {
+    Reload,
+    Overwrite,
+    Cancel,
+}
+
+/// The app-modal external-modification dialog is showing for this Document.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ExternalState {
+    document_id: DocumentId,
+    title: String,
+    disk_content: String,
+}
+
 /// What happens once a write or an already-clean save resolves.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum AfterWrite {
@@ -151,6 +166,7 @@ pub struct Workspace {
     active: Option<usize>,
     next_id: DocumentId,
     guard: Option<GuardState>,
+    external: Option<ExternalState>,
     save_dialog: Option<SaveDialogState>,
     pending_write: Option<PendingWrite>,
     quit_queue: Vec<DocumentId>,
@@ -192,6 +208,10 @@ impl Workspace {
 
     pub fn save_dialog_open(&self) -> bool {
         self.save_dialog.is_some()
+    }
+
+    pub fn external_modified_open(&self) -> bool {
+        self.external.is_some()
     }
 
     /// `<filename> — Markdown Hexer`, with `*` after a dirty filename.
@@ -276,6 +296,14 @@ impl Workspace {
             Command::WriteFailed(message) => self.write_failed(&message),
             Command::WindowCloseRequested => self.window_close_requested(),
             Command::GuardChosen(choice) => self.guard_chosen(choice),
+            Command::ExternalCheck {
+                document_id,
+                content,
+            } => self.external_check(document_id, content),
+            Command::ExternalChosen {
+                choice,
+                disk_content,
+            } => self.external_chosen(choice, disk_content),
         }
     }
 
@@ -411,20 +439,24 @@ impl Workspace {
     }
 
     fn close_tab(&mut self, document_id: DocumentId) -> Vec<Effect> {
-        if self.guard.is_some() || self.save_dialog.is_some() || self.pending_write.is_some() {
+        if self.guard.is_some()
+            || self.external.is_some()
+            || self.save_dialog.is_some()
+            || self.pending_write.is_some()
+        {
             return Vec::new();
         }
         let Some(index) = self.index_of(document_id) else {
             return Vec::new();
         };
         if self.tabs[index].document.is_dirty() {
-            let tab = &self.tabs[index];
+            let title = self.tabs[index].title();
             self.guard = Some(GuardState {
                 document_id,
-                title: tab.title(),
+                title: title.clone(),
                 action: GuardAction::CloseTab,
             });
-            return Vec::new();
+            return vec![Effect::ShowGuard { title }];
         }
         self.remove_tab(index)
     }
@@ -447,7 +479,7 @@ impl Workspace {
     }
 
     fn begin_save(&mut self, document_id: DocumentId, after: AfterWrite) -> Vec<Effect> {
-        if self.save_dialog.is_some() || self.pending_write.is_some() {
+        if self.external.is_some() || self.save_dialog.is_some() || self.pending_write.is_some() {
             return Vec::new();
         }
         let Some(document) = self.document(document_id) else {
@@ -466,7 +498,7 @@ impl Workspace {
     }
 
     fn begin_save_as(&mut self, document_id: DocumentId, after: AfterWrite) -> Vec<Effect> {
-        if self.save_dialog.is_some() || self.pending_write.is_some() {
+        if self.external.is_some() || self.save_dialog.is_some() || self.pending_write.is_some() {
             return Vec::new();
         }
         if self.document(document_id).is_none() {
@@ -604,10 +636,10 @@ impl Workspace {
             let title = tab.title();
             self.guard = Some(GuardState {
                 document_id,
-                title,
+                title: title.clone(),
                 action: GuardAction::Quit,
             });
-            return Vec::new();
+            return vec![Effect::ShowGuard { title }];
         }
         self.quit_queue.clear();
         vec![Effect::CloseWindow]
@@ -615,7 +647,11 @@ impl Workspace {
 
     fn window_close_requested(&mut self) -> Vec<Effect> {
         // The Guard is already app-modal; a second close request must not stack it.
-        if self.guard.is_some() || self.save_dialog.is_some() || self.pending_write.is_some() {
+        if self.guard.is_some()
+            || self.external.is_some()
+            || self.save_dialog.is_some()
+            || self.pending_write.is_some()
+        {
             return Vec::new();
         }
         self.quit_queue = self
@@ -625,6 +661,74 @@ impl Workspace {
             .map(|tab| tab.document.id)
             .collect();
         self.advance_quit()
+    }
+
+    fn external_check(&mut self, document_id: DocumentId, content: String) -> Vec<Effect> {
+        if self.external.is_some() {
+            return Vec::new();
+        }
+        let Some(index) = self.index_of(document_id) else {
+            return Vec::new();
+        };
+        let tab = &self.tabs[index];
+        if tab.document.saved_content == content {
+            return Vec::new();
+        }
+        let title = tab.title();
+        if tab.document.is_dirty() {
+            self.external = Some(ExternalState {
+                document_id,
+                title: title.clone(),
+                disk_content: content,
+            });
+            return vec![Effect::ShowExternalModified { title }];
+        }
+        let document = &mut self.tabs[index].document;
+        document.content = content.clone();
+        document.saved_content = content;
+        document.revision += 1;
+        vec![Effect::SetWindowTitle(self.window_title())]
+    }
+
+    fn external_chosen(
+        &mut self,
+        choice: ExternalChoice,
+        disk_content: Option<String>,
+    ) -> Vec<Effect> {
+        let Some(mut state) = self.external.take() else {
+            return Vec::new();
+        };
+        if self.document(state.document_id).is_none() || choice == ExternalChoice::Cancel {
+            return Vec::new();
+        }
+        // The file may have changed again while the dialog was open.
+        if let Some(content) = disk_content {
+            if content != state.disk_content {
+                state.disk_content = content;
+                let title = state.title.clone();
+                self.external = Some(state);
+                return vec![Effect::ShowExternalModified { title }];
+            }
+        } else if choice == ExternalChoice::Reload {
+            return Vec::new();
+        }
+        match choice {
+            ExternalChoice::Reload => {
+                if let Some(document) = self
+                    .tabs
+                    .iter_mut()
+                    .map(|tab| &mut tab.document)
+                    .find(|document| document.id == state.document_id)
+                {
+                    document.content = state.disk_content;
+                    document.saved_content = document.content.clone();
+                    document.revision += 1;
+                }
+                vec![Effect::SetWindowTitle(self.window_title())]
+            }
+            ExternalChoice::Overwrite => self.begin_save(state.document_id, AfterWrite::Nothing),
+            ExternalChoice::Cancel => Vec::new(),
+        }
     }
 
     fn guard_chosen(&mut self, choice: GuardChoice) -> Vec<Effect> {
@@ -706,6 +810,14 @@ pub enum Command {
     WriteFailed(String),
     WindowCloseRequested,
     GuardChosen(GuardChoice),
+    ExternalCheck {
+        document_id: DocumentId,
+        content: String,
+    },
+    ExternalChosen {
+        choice: ExternalChoice,
+        disk_content: Option<String>,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -716,6 +828,8 @@ pub enum Effect {
     ShowSaveDialog { suggested_name: String },
     SetWindowTitle(String),
     ShowToast(String),
+    ShowGuard { title: String },
+    ShowExternalModified { title: String },
     CloseWindow,
 }
 
@@ -1024,7 +1138,12 @@ mod tests {
         );
 
         edit(&mut workspace, "dirty");
-        assert!(workspace.apply(Command::WindowCloseRequested).is_empty());
+        assert_eq!(
+            workspace.apply(Command::WindowCloseRequested),
+            vec![Effect::ShowGuard {
+                title: "notes.md *".to_owned()
+            }]
+        );
         assert_eq!(workspace.guard().unwrap().title, "notes.md *");
 
         // A repeat close request must not replace or stack the Guard.
@@ -1426,7 +1545,12 @@ mod tests {
         let (mut workspace, ids) = workspace_with_files(&["a.md", "b.md"]);
         edit_document(&mut workspace, ids[0], "changed");
 
-        assert!(workspace.apply(Command::CloseTab(ids[0])).is_empty());
+        assert_eq!(
+            workspace.apply(Command::CloseTab(ids[0])),
+            vec![Effect::ShowGuard {
+                title: "a.md *".to_owned()
+            }]
+        );
         let guard = workspace.guard().unwrap();
         assert_eq!(guard.document_id, ids[0]);
         assert_eq!(guard.action, GuardAction::CloseTab);
@@ -1483,12 +1607,155 @@ mod tests {
     }
 
     #[test]
+    fn clean_external_change_reloads_without_a_dialog() {
+        let mut workspace = loaded_workspace("notes.md", "old");
+        let id = workspace.active_document().unwrap().id;
+        assert_eq!(
+            workspace.apply(Command::ExternalCheck {
+                document_id: id,
+                content: "new on disk".to_owned(),
+            }),
+            vec![Effect::SetWindowTitle(
+                "notes.md — Markdown Hexer".to_owned()
+            )]
+        );
+        let document = workspace.active_document().unwrap();
+        assert_eq!(document.content, "new on disk");
+        assert_eq!(document.saved_content, "new on disk");
+        assert!(!document.is_dirty());
+        assert_eq!(document.revision, 1);
+    }
+
+    #[test]
+    fn dirty_external_change_offers_reload_overwrite_or_cancel() {
+        let mut workspace = loaded_workspace("notes.md", "old");
+        let id = workspace.active_document().unwrap().id;
+        edit(&mut workspace, "mine");
+
+        assert_eq!(
+            workspace.apply(Command::ExternalCheck {
+                document_id: id,
+                content: "disk".to_owned(),
+            }),
+            vec![Effect::ShowExternalModified {
+                title: "notes.md *".to_owned()
+            }]
+        );
+        assert!(workspace.external_modified_open());
+
+        assert_eq!(
+            workspace.apply(Command::ExternalChosen {
+                choice: ExternalChoice::Reload,
+                disk_content: Some("disk".to_owned()),
+            }),
+            vec![Effect::SetWindowTitle(
+                "notes.md — Markdown Hexer".to_owned()
+            )]
+        );
+        let document = workspace.active_document().unwrap();
+        assert_eq!(document.content, "disk");
+        assert!(!document.is_dirty());
+        assert_eq!(document.revision, 2);
+    }
+
+    #[test]
+    fn external_cancel_keeps_the_document_and_overwrite_writes_it() {
+        let mut workspace = loaded_workspace("notes.md", "old");
+        let id = workspace.active_document().unwrap().id;
+        edit(&mut workspace, "mine");
+        workspace.apply(Command::ExternalCheck {
+            document_id: id,
+            content: "disk".to_owned(),
+        });
+        assert!(
+            workspace
+                .apply(Command::ExternalChosen {
+                    choice: ExternalChoice::Cancel,
+                    disk_content: Some("disk".to_owned()),
+                })
+                .is_empty()
+        );
+        assert!(!workspace.external_modified_open());
+        assert_eq!(workspace.active_document().unwrap().content, "mine");
+
+        workspace.apply(Command::ExternalCheck {
+            document_id: id,
+            content: "disk".to_owned(),
+        });
+        assert_eq!(
+            workspace.apply(Command::ExternalChosen {
+                choice: ExternalChoice::Overwrite,
+                disk_content: Some("disk".to_owned()),
+            }),
+            vec![Effect::WriteFile {
+                path: PathBuf::from("notes.md"),
+                content: "mine".to_owned(),
+            }]
+        );
+    }
+
+    #[test]
+    fn external_change_while_the_dialog_is_open_is_presented_again() {
+        let mut workspace = loaded_workspace("notes.md", "old");
+        let id = workspace.active_document().unwrap().id;
+        edit(&mut workspace, "mine");
+        workspace.apply(Command::ExternalCheck {
+            document_id: id,
+            content: "disk".to_owned(),
+        });
+
+        assert_eq!(
+            workspace.apply(Command::ExternalChosen {
+                choice: ExternalChoice::Reload,
+                disk_content: Some("disk again".to_owned()),
+            }),
+            vec![Effect::ShowExternalModified {
+                title: "notes.md *".to_owned()
+            }]
+        );
+        assert!(workspace.external_modified_open());
+
+        workspace.apply(Command::ExternalChosen {
+            choice: ExternalChoice::Reload,
+            disk_content: Some("disk again".to_owned()),
+        });
+        assert_eq!(workspace.active_document().unwrap().content, "disk again");
+    }
+
+    #[test]
+    fn a_missing_file_is_not_an_external_modification() {
+        let mut workspace = loaded_workspace("notes.md", "old");
+        let id = workspace.active_document().unwrap().id;
+        edit(&mut workspace, "mine");
+        workspace.apply(Command::ExternalCheck {
+            document_id: id,
+            content: "disk".to_owned(),
+        });
+
+        assert!(
+            workspace
+                .apply(Command::ExternalChosen {
+                    choice: ExternalChoice::Reload,
+                    disk_content: None,
+                })
+                .is_empty()
+        );
+        assert!(!workspace.external_modified_open());
+        assert_eq!(workspace.active_document().unwrap().content, "mine");
+    }
+
+    #[test]
     fn quit_guards_each_dirty_tab_in_tab_order_then_closes() {
         let (mut workspace, ids) = workspace_with_files(&["a.md", "b.md", "c.md"]);
         edit_document(&mut workspace, ids[0], "a changed");
         edit_document(&mut workspace, ids[2], "c changed");
 
-        assert!(workspace.apply(Command::WindowCloseRequested).is_empty());
+        assert_eq!(
+            workspace.apply(Command::WindowCloseRequested),
+            vec![Effect::ShowGuard {
+                title: "a.md *".to_owned()
+            }]
+        );
         let guard = workspace.guard().unwrap();
         assert_eq!(guard.document_id, ids[0]);
         assert_eq!(guard.action, GuardAction::Quit);
@@ -1497,7 +1764,12 @@ mod tests {
         let effects = workspace.apply(Command::WriteSucceeded);
         assert_eq!(
             effects,
-            vec![Effect::SetWindowTitle("c.md * — Markdown Hexer".to_owned())]
+            vec![
+                Effect::SetWindowTitle("c.md * — Markdown Hexer".to_owned()),
+                Effect::ShowGuard {
+                    title: "c.md *".to_owned()
+                },
+            ]
         );
         assert_eq!(workspace.guard().unwrap().document_id, ids[2]);
 

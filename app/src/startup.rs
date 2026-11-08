@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+use std::ffi::OsString;
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -12,19 +14,27 @@ pub struct Startup {
     pub notice: Option<String>,
 }
 
+/// Launch paths in argv order. Flags are not documents.
+pub fn paths_from_args(args: impl IntoIterator<Item = OsString>) -> Vec<PathBuf> {
+    args.into_iter()
+        .filter(|arg| !arg.to_string_lossy().starts_with('-'))
+        .map(PathBuf::from)
+        .collect()
+}
+
 /// Resolve a launch through the Workspace command/effect seam.
-pub fn launch(path: Option<PathBuf>, fs: &dyn FileSystem) -> Startup {
+pub fn launch(paths: Vec<PathBuf>, fs: &dyn FileSystem) -> Startup {
     let mut workspace = Workspace::new();
     let mut notice = None;
 
     // A bare launch intentionally starts in Edit. A file launch replaces this
     // placeholder, so it never builds editor state before the first frame.
-    let mut pending = workspace.apply(Command::NewUntitled);
-    if let Some(path) = path {
-        pending.extend(workspace.apply(Command::OpenPath(path)));
+    let mut pending: VecDeque<Effect> = workspace.apply(Command::NewUntitled).into();
+    for path in paths {
+        pending.extend(workspace.apply(Command::OpenPath(fs.canonicalize(&path))));
     }
 
-    while let Some(effect) = pending.pop() {
+    while let Some(effect) = pending.pop_front() {
         match effect {
             Effect::ReadFile(path) => {
                 let effects = match fs.read_utf8(&path) {
@@ -38,6 +48,8 @@ pub fn launch(path: Option<PathBuf>, fs: &dyn FileSystem) -> Startup {
             Effect::WriteFile { .. }
             | Effect::ShowOpenDialog
             | Effect::ShowSaveDialog { .. }
+            | Effect::ShowGuard { .. }
+            | Effect::ShowExternalModified { .. }
             | Effect::CloseWindow => {}
         }
     }
@@ -150,12 +162,13 @@ mod tests {
         let path = dir.path().join("notes.md");
         std::fs::write(&path, "# Notes\n\nHello.").unwrap();
 
-        let startup = launch(Some(path.clone()), &NativeFileSystem);
+        let startup = launch(vec![path.clone()], &NativeFileSystem);
+        let canonical = NativeFileSystem.canonicalize(&path);
 
         assert!(startup.notice.is_none());
         assert_eq!(startup.workspace.tabs().len(), 1);
         let document = startup.workspace.active_document().unwrap();
-        assert_eq!(document.path.as_deref(), Some(path.as_path()));
+        assert_eq!(document.path.as_deref(), Some(canonical.as_path()));
         assert_eq!(document.content, "# Notes\n\nHello.");
         assert_eq!(document.mode, Mode::Preview);
         assert_eq!(
@@ -170,7 +183,7 @@ mod tests {
         let path = dir.path().join("bom.md");
         std::fs::write(&path, b"\xEF\xBB\xBF# BOM").unwrap();
 
-        let startup = launch(Some(path), &NativeFileSystem);
+        let startup = launch(vec![path], &NativeFileSystem);
 
         assert_eq!(
             startup.workspace.active_document().unwrap().content,
@@ -180,7 +193,7 @@ mod tests {
 
     #[test]
     fn bare_launch_creates_an_untitled_document_in_edit() {
-        let startup = launch(None, &NativeFileSystem);
+        let startup = launch(Vec::new(), &NativeFileSystem);
 
         let document = startup
             .workspace
@@ -199,7 +212,7 @@ mod tests {
     #[test]
     fn missing_path_toasts_and_leaves_an_untitled_document() {
         let dir = tempfile::tempdir().unwrap();
-        let startup = launch(Some(dir.path().join("missing.md")), &NativeFileSystem);
+        let startup = launch(vec![dir.path().join("missing.md")], &NativeFileSystem);
 
         let document = startup.workspace.active_document().unwrap();
         assert_eq!(document.path, None);
@@ -216,12 +229,61 @@ mod tests {
         let path = dir.path().join("binary.md");
         std::fs::write(&path, [0xFF, 0xFE, 0x00]).unwrap();
 
-        let startup = launch(Some(path), &NativeFileSystem);
+        let startup = launch(vec![path], &NativeFileSystem);
 
         let document = startup.workspace.active_document().unwrap();
         assert_eq!(document.path, None);
         assert_eq!(document.mode, Mode::Edit);
         assert!(startup.notice.unwrap().contains("not valid UTF-8"));
+    }
+
+    #[test]
+    fn multiple_paths_open_in_argument_order_with_the_last_active() {
+        let dir = tempfile::tempdir().unwrap();
+        let first = dir.path().join("first.md");
+        let second = dir.path().join("second.markdown");
+        std::fs::write(&first, "first").unwrap();
+        std::fs::write(&second, "second").unwrap();
+
+        let startup = launch(vec![first.clone(), second.clone()], &NativeFileSystem);
+        let first_canonical = NativeFileSystem.canonicalize(&first);
+        let second_canonical = NativeFileSystem.canonicalize(&second);
+
+        let paths: Vec<_> = startup
+            .workspace
+            .tabs()
+            .iter()
+            .map(|tab| {
+                startup
+                    .workspace
+                    .document(tab.document.id)
+                    .unwrap()
+                    .path
+                    .clone()
+            })
+            .collect();
+        assert_eq!(
+            paths,
+            vec![Some(first_canonical), Some(second_canonical.clone())]
+        );
+        assert_eq!(
+            startup.workspace.active_document().unwrap().path,
+            Some(second_canonical)
+        );
+    }
+
+    #[test]
+    fn argv_flags_are_not_documents() {
+        let paths = paths_from_args([
+            OsString::from("--new-window"),
+            OsString::from("notes.md"),
+            OsString::from("-x"),
+            OsString::from("other.markdown"),
+        ]);
+        assert_eq!(
+            paths,
+            vec![PathBuf::from("notes.md"), PathBuf::from("other.markdown")]
+        );
     }
 
     #[test]
