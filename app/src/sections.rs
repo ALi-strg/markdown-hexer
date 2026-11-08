@@ -11,6 +11,9 @@ use crate::domain::DocumentId;
 pub struct Sections {
     pub preamble: Range<usize>,
     pub roots: Vec<Section>,
+    /// Raw link reference definitions collected from the whole document. Each
+    /// body segment re-appends them so references resolve across Sections.
+    pub link_definitions: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -35,7 +38,8 @@ impl Sections {
             | Options::ENABLE_TASKLISTS
             | Options::ENABLE_FOOTNOTES;
 
-        for (event, range) in Parser::new_ext(source, options).into_offset_iter() {
+        let mut parser = Parser::new_ext(source, options).into_offset_iter();
+        for (event, range) in &mut parser {
             match event {
                 Event::Start(Tag::Heading { level, .. }) => {
                     if list_depth == 0 && quote_depth == 0 && footnote_depth == 0 {
@@ -83,6 +87,15 @@ impl Sections {
             }
         }
 
+        let mut definitions: Vec<&str> = parser
+            .reference_definitions()
+            .iter()
+            .filter_map(|(_, definition)| source.get(definition.span.clone()))
+            .collect();
+        definitions.sort_unstable();
+        definitions.dedup();
+        let link_definitions = definitions.join("\n");
+
         let preamble = 0..headings
             .first()
             .map_or(source.len(), |heading| heading.start);
@@ -90,9 +103,14 @@ impl Sections {
             return Self {
                 preamble,
                 roots: Vec::new(),
+                link_definitions,
             };
         };
-        Self { preamble, roots }
+        Self {
+            preamble,
+            roots,
+            link_definitions,
+        }
     }
 
     pub fn keys(&self) -> Vec<&str> {
@@ -381,6 +399,15 @@ mod tests {
     fn keys_cover_the_whole_tree() {
         let sections = parsed("# A\n\n## B\n\nbody\n");
         assert_eq!(sections.keys().len(), 2);
+    }
+
+    #[test]
+    fn reference_definitions_are_available_to_every_segment() {
+        let source = "# A\n\n[link][ref]\n\n# B\n\n[ref]: https://example.com \"Title\"\n";
+        let sections = parsed(source);
+
+        assert!(sections.link_definitions.contains("[ref]: https://example.com"));
+        assert!(!sections.link_definitions.contains("[^"));
     }
 
     #[test]

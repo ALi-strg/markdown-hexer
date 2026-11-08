@@ -1183,6 +1183,12 @@ impl eframe::App for HexerApp {
     }
 }
 
+#[derive(Clone, Copy)]
+struct SectionSource<'a> {
+    markdown: &'a str,
+    definitions: &'a str,
+}
+
 fn show_sectioned_markdown(
     ui: &mut Ui,
     source: &str,
@@ -1201,18 +1207,21 @@ fn show_sectioned_markdown(
     };
 
     if sections.roots.is_empty() {
-        show_markdown_segment(ui, source, cache, &render_code);
+        show_markdown_segment(ui, source, cache, &render_code, "");
         return;
     }
 
     let preamble = &source[sections.preamble.clone()];
     if !preamble.trim().is_empty() {
-        show_markdown_segment(ui, preamble, cache, &render_code);
+        show_markdown_segment(ui, preamble, cache, &render_code, &sections.link_definitions);
     }
     for section in &sections.roots {
         show_section(
             ui,
-            source,
+            SectionSource {
+                markdown: source,
+                definitions: &sections.link_definitions,
+            },
             section,
             cache,
             collapsed,
@@ -1224,7 +1233,7 @@ fn show_sectioned_markdown(
 
 fn show_section(
     ui: &mut Ui,
-    source: &str,
+    source: SectionSource<'_>,
     section: &Section,
     cache: &mut egui_commonmark::CommonMarkCache,
     collapsed: &mut HashSet<String>,
@@ -1235,7 +1244,7 @@ fn show_section(
         ui.add_space(6.0);
         let is_collapsed = collapsed.contains(&section.key);
         ui.horizontal(|ui| {
-            if section.has_chevron(source) {
+            if section.has_chevron(source.markdown) {
                 let (symbol, label) = if is_collapsed {
                     (">", "Expand section")
                 } else {
@@ -1266,13 +1275,21 @@ fn show_section(
         if is_collapsed {
             return;
         }
-        let body = &source[section.body.clone()];
+        let body = &source.markdown[section.body.clone()];
         if !body.trim().is_empty() {
             ui.add_space(2.0);
-            show_markdown_segment(ui, body, cache, render_code);
+            show_markdown_segment(ui, body, cache, render_code, source.definitions);
         }
         for child in &section.children {
-            show_section(ui, source, child, cache, collapsed, palette, render_code);
+            show_section(
+                ui,
+                source,
+                child,
+                cache,
+                collapsed,
+                palette,
+                render_code,
+            );
         }
     });
 }
@@ -1282,10 +1299,18 @@ fn show_markdown_segment(
     markdown: &str,
     cache: &mut egui_commonmark::CommonMarkCache,
     render_code: &egui_commonmark::RenderHtmlFn,
+    definitions: &str,
 ) {
-    CommonMarkViewer::new()
-        .render_html_fn(Some(render_code))
-        .show(ui, cache, markdown);
+    if definitions.is_empty() {
+        CommonMarkViewer::new()
+            .render_html_fn(Some(render_code))
+            .show(ui, cache, markdown);
+    } else {
+        let markdown = format!("{markdown}\n\n{definitions}");
+        CommonMarkViewer::new()
+            .render_html_fn(Some(render_code))
+            .show(ui, cache, &markdown);
+    }
 }
 
 fn section_heading_text(ui: &Ui, level: u8, title: &str) -> RichText {
