@@ -93,6 +93,12 @@ jobs:
             mv "target/release/bundle/markdown-hexer_${version}_x64_en-US.msi" "dist/markdown-hexer_${version}_windows-x64.msi"
           fi
 
+      - name: debug staged bundles
+        shell: bash
+        run: |
+          pwd
+          find "$GITHUB_WORKSPACE" -maxdepth 4 -name 'markdown-hexer_*' -print
+
       - uses: actions/upload-artifact@v4
         with:
           name: windows
