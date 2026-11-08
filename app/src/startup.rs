@@ -12,25 +12,30 @@ pub struct Startup {
     pub notice: Option<String>,
 }
 
-/// Resolve a launch path through the Workspace command/effect seam.
+/// Resolve a launch through the Workspace command/effect seam.
 pub fn launch(path: Option<PathBuf>, fs: &dyn FileSystem) -> Startup {
     let mut workspace = Workspace::new();
     let mut notice = None;
 
+    // A bare launch intentionally starts in Edit. A file launch replaces this
+    // placeholder, so it never builds editor state before the first frame.
+    let mut pending = workspace.apply(Command::NewUntitled);
     if let Some(path) = path {
-        let mut pending = workspace.apply(Command::OpenPath(path));
-        while let Some(effect) = pending.pop() {
-            match effect {
-                Effect::ReadFile(path) => {
-                    let effects = match fs.read_utf8(&path) {
-                        Ok(content) => workspace.apply(Command::FileLoaded { path, content }),
-                        Err(error) => workspace.apply(Command::FileLoadFailed { path, error }),
-                    };
-                    pending.extend(effects);
-                }
-                Effect::ShowToast(message) => notice = Some(message),
-                Effect::SetWindowTitle(_) => {}
+        pending.extend(workspace.apply(Command::OpenPath(path)));
+    }
+
+    while let Some(effect) = pending.pop() {
+        match effect {
+            Effect::ReadFile(path) => {
+                let effects = match fs.read_utf8(&path) {
+                    Ok(content) => workspace.apply(Command::FileLoaded { path, content }),
+                    Err(error) => workspace.apply(Command::FileLoadFailed { path, error }),
+                };
+                pending.extend(effects);
             }
+            Effect::ShowToast(message) => notice = Some(message),
+            Effect::SetWindowTitle(_) => {}
+            Effect::WriteFile { .. } | Effect::ShowSaveDialog { .. } | Effect::CloseWindow => {}
         }
     }
 
@@ -145,8 +150,9 @@ mod tests {
         let startup = launch(Some(path.clone()), &NativeFileSystem);
 
         assert!(startup.notice.is_none());
+        assert_eq!(startup.workspace.tabs().len(), 1);
         let document = startup.workspace.active_document().unwrap();
-        assert_eq!(document.path, path);
+        assert_eq!(document.path.as_deref(), Some(path.as_path()));
         assert_eq!(document.content, "# Notes\n\nHello.");
         assert_eq!(document.mode, Mode::Preview);
         assert_eq!(
@@ -170,34 +176,48 @@ mod tests {
     }
 
     #[test]
-    fn bare_launch_leaves_a_neutral_empty_workspace() {
+    fn bare_launch_creates_an_untitled_document_in_edit() {
         let startup = launch(None, &NativeFileSystem);
 
-        assert!(startup.workspace.tabs().is_empty());
-        assert_eq!(startup.workspace.window_title(), "Markdown Hexer");
+        let document = startup
+            .workspace
+            .active_document()
+            .expect("untitled document");
+        assert_eq!(document.path, None);
+        assert_eq!(document.content, "");
+        assert_eq!(document.mode, Mode::Edit);
+        assert_eq!(
+            startup.workspace.active_tab().unwrap().title(),
+            "Untitled.md"
+        );
         assert!(startup.notice.is_none());
     }
 
     #[test]
-    fn missing_path_toasts_and_leaves_the_workspace_empty() {
+    fn missing_path_toasts_and_leaves_an_untitled_document() {
         let dir = tempfile::tempdir().unwrap();
         let startup = launch(Some(dir.path().join("missing.md")), &NativeFileSystem);
 
-        assert!(startup.workspace.tabs().is_empty());
+        let document = startup.workspace.active_document().unwrap();
+        assert_eq!(document.path, None);
+        assert_eq!(document.mode, Mode::Edit);
+        assert_eq!(startup.workspace.tabs().len(), 1);
         let notice = startup.notice.unwrap();
         assert!(notice.contains("missing.md"));
         assert!(notice.contains("file not found"));
     }
 
     #[test]
-    fn non_utf8_path_toasts_and_leaves_the_workspace_empty() {
+    fn non_utf8_path_toasts_and_leaves_an_untitled_document() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("binary.md");
         std::fs::write(&path, [0xFF, 0xFE, 0x00]).unwrap();
 
         let startup = launch(Some(path), &NativeFileSystem);
 
-        assert!(startup.workspace.tabs().is_empty());
+        let document = startup.workspace.active_document().unwrap();
+        assert_eq!(document.path, None);
+        assert_eq!(document.mode, Mode::Edit);
         assert!(startup.notice.unwrap().contains("not valid UTF-8"));
     }
 
