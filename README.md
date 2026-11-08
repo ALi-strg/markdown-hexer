@@ -20,7 +20,7 @@ Markdown Hexer opens Markdown files in tabs, renders them with a native preview 
 
 ## Install
 
-Download the Bundle for your platform from [GitHub Releases](https://github.com/ALi-strg/markdown-editor/releases). The draft release is published by the maintainer; release assets are unsigned.
+Download the Bundle for your platform from [GitHub Releases](https://github.com/ALi-strg/markdown-hexer/releases). The draft release is published by the maintainer; release assets are unsigned.
 
 | Platform | Bundle | Install |
 |---|---|---|

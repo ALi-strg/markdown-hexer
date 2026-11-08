@@ -165,7 +165,7 @@ _Avoid_: preview snapshot, printing the preview DOM
 ## Window Title
 
 The window title reads `<filename> — Markdown Hexer`, where `<filename>` is the Active Document's, with `*` inserted after it when the Active Document is Dirty (e.g., `notes.md * — Markdown Hexer`). Untitled Documents read `Untitled.md — Markdown Hexer` (or `Untitled 2.md`, …). The product name is **Markdown Hexer**.
-_Avoid_: markdown-editor (the repo slug), Markdown Editor
+_Avoid_: markdown-editor (the old repo slug), Markdown Editor
 
 ## Distribution
 

@@ -74,10 +74,10 @@ product-name = "Markdown Hexer"
 identifier = "com.markdownhexer.editor"
 publisher = "Adrian Link"
 copyright = "Copyright © 2026 Adrian Link"
-homepage = "https://github.com/ALi-strg/markdown-editor"
+homepage = "https://github.com/ALi-strg/markdown-hexer"
 authors = ["Adrian Link"]
 description = "Fast native Markdown editor"
-long-description = "Markdown Hexer is a fast, native Markdown editor with a live preview."
+long-description = "Markdown Hexer is a fast, native Markdown editor with a two-mode preview and editor."
 category = "Productivity"
 out-dir = "target/release/bundle"
 formats = ["nsis", "wix"]
@@ -132,7 +132,7 @@ files = { "packaging/linux/markdown-hexer.xml" = "/usr/share/mime/packages/markd
 [package.metadata.generate-rpm]
 summary = "Fast native Markdown editor"
 license = "MIT"
-url = "https://github.com/ALi-strg/markdown-editor"
+url = "https://github.com/ALi-strg/markdown-hexer"
 vendor = "Adrian Link"
 auto-req = "builtin"
 # MIME and desktop databases are rebuilt by these packages' file triggers.

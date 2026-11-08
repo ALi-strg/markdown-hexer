@@ -103,7 +103,7 @@ a release.
 
 **Command/Effect seam (`domain.rs`).** `Workspace::apply(Command) -> Vec<Effect>`
 is pure. Commands cover New/Open/Save/Save As/Close/Quit, content edits,
-mode/layout changes, Find & Replace, external checks, guard choices, export, and
+mode changes, Find & Replace, external checks, guard choices, export, and
 dialog results. Effects ask the shell to show a dialog, read/write a file, open
 a URL, export, or close a window. `HexerApp` drains a `VecDeque<Effect>`, does
 the I/O through `platform.rs`/`dialogs.rs`, and pushes result Commands back.
@@ -113,17 +113,18 @@ window.
 **Document/Tab.** A `Document` holds `id`, optional `path`, `untitled_number`,
 `content`, `saved_content`, `mode` (Preview/Edit), per-Document `FindState`, and
 a `revision` counter. Dirty = `content != saved_content`. A file-backed
-Document starts in Preview; a bare Untitled starts in Edit. Each `Tab` also
-carries its own layout/search/scroll state. The window title is
-`<name>[*] — Markdown Hexer`.
+Document starts in Preview; a bare Untitled starts in Edit. Per-Document editor
+and scroll state lives in egui memory keyed by `DocumentId`; `FindState` lives
+on the Document. The window title is `<name>[*] — Markdown Hexer`.
 
-**Preview pipeline.** `preview.rs` parses the Markdown once (sanitized raw HTML,
-GFM options), derives Sections and extracts fenced code into app-rendered
+**Preview pipeline.** `preview.rs` parses the Markdown once (raw HTML is
+dropped, GFM options), derives Sections and extracts fenced code into app-rendered
 blocks, and produces `render_markdown` with sentinels for those blocks.
 `egui_commonmark` renders it; the app supplies palette-aware syntax colours and
-independent scrolling for fenced code. A first-frame variant may use a cheaper
-tree until the first paint completes. Local images are served only through
-`ImageSource`, scoped to the Document's directory; remote images keep their URL.
+independent scrolling for fenced code. The `PreparedPreview`/`RenderTree` data
+is the renderer seam. A first-frame variant may use a cheaper tree until the
+first paint completes. Local images are served only through `ImageSource`,
+scoped to the Document's directory; remote images keep their URL.
 
 **Edit mode.** `TextEdit` is created lazily on first Edit (`first_edit.rs`), so
 a Preview launch never pays editor cost. `editor.rs` scans Markdown tokens

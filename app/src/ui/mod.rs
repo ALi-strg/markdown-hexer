@@ -283,8 +283,8 @@ fn apply_preview_text_style(ui: &mut Ui, font: FontChoice, text_size: TextSize) 
     }
 }
 
-/// The active Layout Mode is the accent control in the toolbar, matching v1's
-/// layout switcher. Inactive modes stay on the surface token.
+/// The active Mode is the accent control in the toolbar. Inactive modes stay
+/// on the surface token.
 fn mode_toggle(ui: &mut Ui, palette: Palette, label: &str, active: bool) -> bool {
     let text = RichText::new(label).color(if active {
         palette.accent_contrast
@@ -1603,22 +1603,27 @@ impl HexerApp {
                 .num_columns(2)
                 .striped(true)
                 .show(ui, |ui| {
+                    let command = if cfg!(target_os = "macos") {
+                        "Cmd"
+                    } else {
+                        "Ctrl"
+                    };
                     for (action, shortcut) in [
-                        ("New", "Ctrl+N"),
-                        ("Open", "Ctrl+O"),
-                        ("Save", "Ctrl+S"),
-                        ("Save As", "Ctrl+Shift+S"),
-                        ("Close Tab", "Ctrl+W"),
-                        ("New Tab", "Ctrl+T"),
-                        ("Next Tab", "Ctrl+Tab"),
-                        ("Previous Tab", "Ctrl+Shift+Tab"),
-                        ("Move Tab Left", "Ctrl+Shift+PgUp"),
-                        ("Move Tab Right", "Ctrl+Shift+PgDn"),
-                        ("Toggle Preview/Edit", "Ctrl+E"),
-                        ("Find", "Ctrl+F"),
-                        ("Bold", "Ctrl+B"),
-                        ("Italic", "Ctrl+I"),
-                        ("About", "Ctrl+/"),
+                        ("New", format!("{command}+N")),
+                        ("Open", format!("{command}+O")),
+                        ("Save", format!("{command}+S")),
+                        ("Save As", format!("{command}+Shift+S")),
+                        ("Close Tab", format!("{command}+W")),
+                        ("New Tab", format!("{command}+T")),
+                        ("Next Tab", format!("{command}+Tab")),
+                        ("Previous Tab", format!("{command}+Shift+Tab")),
+                        ("Move Tab Left", format!("{command}+Shift+PgUp")),
+                        ("Move Tab Right", format!("{command}+Shift+PgDn")),
+                        ("Toggle Preview/Edit", format!("{command}+E")),
+                        ("Find", format!("{command}+F")),
+                        ("Bold", format!("{command}+B")),
+                        ("Italic", format!("{command}+I")),
+                        ("About", format!("{command}+/")),
                     ] {
                         ui.label(action);
                         ui.label(RichText::new(shortcut).monospace());

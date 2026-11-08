@@ -18,7 +18,7 @@ Render the Preview natively from a fixed Markdown subset:
 - Copy-on-Select and the Code Copy Button remain.
 - No raw HTML, no arbitrary CSS, no embedded scripts. Content outside the subset is shown as text or omitted, never executed.
 - The six Palettes drive Preview styling as data; System resolves to Light or Dark. The Design language (ADR-0011) still applies to chrome.
-- The renderer sits behind a `PreviewRenderer` seam. If the egui spike succeeds, `egui_commonmark` is the base, with Sections and the Code Copy Button built around it; if not, the seam allows another native renderer.
+- The prepared preview artifact (`PreparedPreview` plus `RenderTree`) is the renderer seam. If the egui spike succeeds, `egui_commonmark` renders it, with Sections and the Code Copy Button built around it; if not, the same artifact allows another native renderer.
 - HTML Export generates a standalone HTML file from the same Markdown or AST, not from the preview widgets, and inlines local images as data URLs.
 - Print Export is deferred to 2.1; the 2.0 app has no print path.
 

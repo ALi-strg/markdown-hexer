@@ -22,7 +22,7 @@ A cross-platform, distraction-free Markdown editor built with Tauri 2, Vue 3, an
 
 ## Reporting bugs
 
-Found something broken? Open an issue: <https://github.com/ALi-strg/markdown-editor/issues/new/choose>. Please use the bug report template and include your OS, the version you're running, and reproduction steps. See [CONTRIBUTING.md](CONTRIBUTING.md) for the full contribution policy — note that **pull requests are not currently accepted**.
+Found something broken? Open an issue: <https://github.com/ALi-strg/markdown-hexer/issues/new/choose>. Please use the bug report template and include your OS, the version you're running, and reproduction steps. See [CONTRIBUTING.md](CONTRIBUTING.md) for the full contribution policy — note that **pull requests are not currently accepted**.
 
 ## Tech Stack
 
