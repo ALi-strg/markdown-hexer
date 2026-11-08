@@ -2,6 +2,7 @@ pub mod dialogs;
 pub mod domain;
 pub mod editor;
 pub mod first_edit;
+pub mod image;
 pub mod platform;
 pub mod preview;
 pub mod startup;

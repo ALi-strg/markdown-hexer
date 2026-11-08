@@ -1,6 +1,9 @@
 use std::ops::Range;
+use std::path::Path;
 
 use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
+
+use crate::image::{ImageSource, ImageTarget, NativeImageSource, file_uri};
 
 /// A preview artifact derived from a Document's content. `markdown` is the
 /// sanitized source, `render_markdown` is what egui_commonmark renders (fenced
@@ -10,6 +13,7 @@ use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 pub struct PreparedPreview {
     pub markdown: String,
     pub render_markdown: String,
+    pub first_frame_render_markdown: Option<String>,
     pub code_blocks: Vec<FencedCode>,
     pub tree: RenderTree,
 }
@@ -25,6 +29,21 @@ pub struct FencedCode {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct RenderTree {
     pub blocks: Vec<Block>,
+    pub images: Vec<ImageRef>,
+    pub links: Vec<LinkRef>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ImageRef {
+    pub alt: String,
+    pub destination: String,
+    pub range: Range<usize>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LinkRef {
+    pub text: String,
+    pub destination: String,
 }
 
 impl RenderTree {
@@ -99,21 +118,59 @@ impl Block {
 }
 
 pub fn prepare(source: &str) -> PreparedPreview {
+    prepare_with_images(source, None, &NativeImageSource)
+}
+
+pub fn prepare_with_images(
+    source: &str,
+    scope: Option<&Path>,
+    images: &dyn ImageSource,
+) -> PreparedPreview {
     let mut tree = RenderTree::default();
     let mut html_ranges = Vec::new();
     let mut code_blocks = Vec::new();
     let mut code_ranges = Vec::new();
+    let mut image_ranges = Vec::new();
     parse_events(
         source,
         &mut tree,
         &mut html_ranges,
         &mut code_blocks,
         &mut code_ranges,
+        &mut image_ranges,
     );
+
+    let targets: Vec<ImageTarget> = tree
+        .images
+        .iter()
+        .map(|image| images.resolve(scope, &image.destination))
+        .collect();
+    let first_frame_render_markdown = if tree.images.is_empty() {
+        None
+    } else {
+        Some(build_render_markdown(
+            source,
+            &html_ranges,
+            &code_ranges,
+            &image_ranges,
+            &tree.images,
+            &targets,
+            false,
+        ))
+    };
 
     PreparedPreview {
         markdown: strip_ranges(source, &html_ranges),
-        render_markdown: build_render_markdown(source, &html_ranges, &code_ranges),
+        render_markdown: build_render_markdown(
+            source,
+            &html_ranges,
+            &code_ranges,
+            &image_ranges,
+            &tree.images,
+            &targets,
+            true,
+        ),
+        first_frame_render_markdown,
         code_blocks,
         tree,
     }
@@ -125,6 +182,7 @@ fn parse_events(
     html_ranges: &mut Vec<Range<usize>>,
     code_blocks: &mut Vec<FencedCode>,
     code_ranges: &mut Vec<(Range<usize>, usize)>,
+    image_ranges: &mut Vec<(Range<usize>, usize)>,
 ) {
     let mut current = None;
     let mut list_stack: Vec<bool> = Vec::new();
@@ -132,6 +190,9 @@ fn parse_events(
     let mut table_header = false;
     let mut fenced_code = false;
     let mut footnote: Option<String> = None;
+    let mut image: Option<usize> = None;
+    let mut image_start = 0;
+    let mut link: Option<usize> = None;
     let options = Options::ENABLE_TABLES
         | Options::ENABLE_STRIKETHROUGH
         | Options::ENABLE_TASKLISTS
@@ -212,6 +273,22 @@ fn parse_events(
                 Tag::Strikethrough => mark(&mut tree.blocks, current, |block| {
                     block.strikethrough = true
                 }),
+                Tag::Image { dest_url, .. } => {
+                    tree.images.push(ImageRef {
+                        alt: String::new(),
+                        destination: dest_url.to_string(),
+                        range: range.clone(),
+                    });
+                    image = Some(tree.images.len() - 1);
+                    image_start = range.start;
+                }
+                Tag::Link { dest_url, .. } => {
+                    tree.links.push(LinkRef {
+                        text: String::new(),
+                        destination: dest_url.to_string(),
+                    });
+                    link = Some(tree.links.len() - 1);
+                }
                 Tag::FootnoteDefinition(label) => {
                     let mut block = Block::paragraph(0, false, quote_depth > 0);
                     block.kind = BlockKind::FootnoteDefinition;
@@ -254,9 +331,23 @@ fn parse_events(
                 TagEnd::List(_) => {
                     list_stack.pop();
                 }
+                TagEnd::Image => {
+                    if let Some(index) = image.take() {
+                        let range = image_start..range.end;
+                        tree.images[index].range = range.clone();
+                        image_ranges.push((range, index));
+                    }
+                }
+                TagEnd::Link => link = None,
                 _ => {}
             },
             Event::Text(text) => {
+                if let Some(image) = image.and_then(|index| tree.images.get_mut(index)) {
+                    image.alt.push_str(&text);
+                }
+                if let Some(link) = link.and_then(|index| tree.links.get_mut(index)) {
+                    link.text.push_str(&text);
+                }
                 let index = ensure_block(
                     tree,
                     &mut current,
@@ -267,6 +358,12 @@ fn parse_events(
                 tree.blocks[index].text.push_str(&text);
             }
             Event::Code(text) => {
+                if let Some(image) = image.and_then(|index| tree.images.get_mut(index)) {
+                    image.alt.push_str(&text);
+                }
+                if let Some(link) = link.and_then(|index| tree.links.get_mut(index)) {
+                    link.text.push_str(&text);
+                }
                 let index = ensure_block(
                     tree,
                     &mut current,
@@ -298,8 +395,18 @@ fn parse_events(
                 tree.blocks[index].text.push_str(&format!("[^{label}]"));
                 tree.blocks[index].footnote_ref = Some(label.to_string());
             }
-            Event::SoftBreak => append(&mut tree.blocks, current, " "),
-            Event::HardBreak => append(&mut tree.blocks, current, "\n"),
+            Event::SoftBreak => {
+                if let Some(image) = image.and_then(|index| tree.images.get_mut(index)) {
+                    image.alt.push(' ');
+                }
+                append(&mut tree.blocks, current, " ")
+            }
+            Event::HardBreak => {
+                if let Some(image) = image.and_then(|index| tree.images.get_mut(index)) {
+                    image.alt.push(' ');
+                }
+                append(&mut tree.blocks, current, "\n")
+            }
             Event::Rule => tree.blocks.push(Block {
                 kind: BlockKind::Rule,
                 ..Block::paragraph(0, false, false)
@@ -347,15 +454,21 @@ fn append(blocks: &mut [Block], current: Option<usize>, text: &str) {
 }
 
 /// Build widget input: raw HTML removed, fenced code replaced by sentinel
-/// blocks that the app renderer handles.
+/// blocks that the app renderer handles, and image destinations resolved to
+/// vetted `file://` URIs. When `allow_images` is false every image becomes alt
+/// text so the first frame never reads or fetches an image.
 fn build_render_markdown(
     source: &str,
     html_ranges: &[Range<usize>],
     code_ranges: &[(Range<usize>, usize)],
+    image_ranges: &[(Range<usize>, usize)],
+    images: &[ImageRef],
+    targets: &[ImageTarget],
+    allow_images: bool,
 ) -> String {
     struct Edit {
         range: Range<usize>,
-        code_index: Option<usize>,
+        replacement: String,
     }
 
     let mut edits: Vec<Edit> = html_ranges
@@ -363,11 +476,26 @@ fn build_render_markdown(
         .cloned()
         .map(|range| Edit {
             range,
-            code_index: None,
+            replacement: String::new(),
         })
         .chain(code_ranges.iter().map(|(range, index)| Edit {
             range: range.clone(),
-            code_index: Some(*index),
+            replacement: format!("<div data-hexer-code=\"{index}\"></div>\n"),
+        }))
+        .chain(image_ranges.iter().map(|(range, index)| {
+            let image = &images[*index];
+            let target = &targets[*index];
+            let replacement = match (allow_images, target) {
+                (true, ImageTarget::Local(path)) => {
+                    format!("![{}]({})", escape_label(&image.alt), file_uri(path))
+                }
+                (true, ImageTarget::Remote) => source[range.clone()].to_owned(),
+                _ => escape_label(&image.alt),
+            };
+            Edit {
+                range: range.clone(),
+                replacement,
+            }
         }))
         .collect();
     edits.sort_by_key(|edit| edit.range.start);
@@ -380,13 +508,29 @@ fn build_render_markdown(
             continue;
         }
         output.push_str(&source[cursor..range.start]);
-        if let Some(index) = edit.code_index {
-            output.push_str(&format!("<div data-hexer-code=\"{index}\"></div>\n"));
-        }
+        output.push_str(&edit.replacement);
         cursor = range.end;
     }
     output.push_str(&source[cursor..]);
     output
+}
+
+fn escape_label(text: &str) -> String {
+    let text = text.replace(['\n', '\r'], " ");
+    if text.trim().is_empty() {
+        return "image".to_owned();
+    }
+    let mut escaped = String::with_capacity(text.len());
+    for character in text.chars() {
+        if matches!(
+            character,
+            '\\' | '`' | '*' | '_' | '[' | ']' | '<' | '>' | '#' | '!' | '|' | '~'
+        ) {
+            escaped.push('\\');
+        }
+        escaped.push(character);
+    }
+    escaped
 }
 
 /// Remove raw HTML byte ranges, preserving every other byte of the source.
@@ -663,6 +807,67 @@ fn main() {}
             preview.render_markdown.matches("data-hexer-code").count(),
             preview.code_blocks.len()
         );
+    }
+
+    struct StubImages;
+
+    impl ImageSource for StubImages {
+        fn resolve(&self, _scope: Option<&Path>, destination: &str) -> ImageTarget {
+            match destination {
+                "ok.png" => ImageTarget::Local(std::path::PathBuf::from("/scope/ok.png")),
+                value if value.starts_with("https://") => ImageTarget::Remote,
+                _ => ImageTarget::Alt,
+            }
+        }
+    }
+
+    #[test]
+    fn extracts_image_and_link_destinations() {
+        let source = "Before ![Alt *text*](ok.png) [site](https://example.com) and [bad](javascript:alert(1)).";
+        let preview = prepare_with_images(source, None, &StubImages);
+
+        assert_eq!(preview.tree.images.len(), 1);
+        let image = &preview.tree.images[0];
+        assert_eq!(image.alt, "Alt text");
+        assert_eq!(image.destination, "ok.png");
+        assert!(source[image.range.clone()].starts_with("![Alt *text*](ok.png)"));
+
+        assert_eq!(preview.tree.links.len(), 2);
+        assert_eq!(preview.tree.links[0].text, "site");
+        assert_eq!(preview.tree.links[0].destination, "https://example.com");
+        assert_eq!(preview.tree.links[1].destination, "javascript:alert(1)");
+    }
+
+    #[test]
+    fn resolves_images_only_for_frames_after_the_first() {
+        let source = "![one](ok.png)\n\n![remote](https://example.com/x.png)\n\n![bad](javascript:alert(1))\n";
+        let preview = prepare_with_images(source, None, &StubImages);
+
+        assert!(preview.render_markdown.contains("file:///scope/ok.png"));
+        assert!(
+            preview
+                .render_markdown
+                .contains("![remote](https://example.com/x.png)")
+        );
+        assert!(!preview.render_markdown.contains("javascript"));
+        assert!(preview.render_markdown.contains("bad"));
+
+        let first_frame = preview
+            .first_frame_render_markdown
+            .as_deref()
+            .expect("images need a first-frame variant");
+        assert!(first_frame.contains("one"));
+        assert!(first_frame.contains("remote"));
+        assert!(first_frame.contains("bad"));
+        assert!(!first_frame.contains("file://"));
+        assert!(!first_frame.contains("https://"));
+        assert!(!first_frame.contains("!["));
+    }
+
+    #[test]
+    fn first_frame_variant_is_absent_without_images() {
+        let preview = prepare("Just text.");
+        assert!(preview.first_frame_render_markdown.is_none());
     }
 
     #[test]

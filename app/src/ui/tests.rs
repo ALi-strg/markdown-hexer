@@ -366,6 +366,30 @@ fn undo_survives_a_preview_round_trip() {
 }
 
 #[test]
+fn preview_shows_alt_text_and_drops_unsafe_links() {
+    let files = MemoryFiles::default();
+    let content = "\
+![missing alt](missing.png)
+
+[js](javascript:alert(1)) [file](file:///etc/passwd) [data](data:text/html,x)
+";
+    let mut h = harness(file_app(
+        notes_path(),
+        content,
+        &files,
+        FakeDialogs::default(),
+    ));
+    h.run_steps(1);
+
+    h.get_by_label("missing alt");
+    for label in ["js", "file", "data"] {
+        h.get_by_label(label).click();
+        h.step();
+        assert!(h.state().toast.is_none(), "{label} link escaped filtering");
+    }
+}
+
+#[test]
 fn preview_rebuilds_from_the_current_content_after_editing() {
     let files = MemoryFiles::default();
     let mut h = harness(file_app(
@@ -389,7 +413,49 @@ fn preview_rebuilds_from_the_current_content_after_editing() {
 
     assert_eq!(
         h.state().preview_revision,
-        Some((h.state().workspace.active_document().unwrap().id, revision))
+        Some((
+            h.state().workspace.active_document().unwrap().id,
+            revision,
+            h.state()
+                .workspace
+                .active_document()
+                .unwrap()
+                .image_scope()
+                .map(|path| path.to_path_buf())
+        ))
+    );
+}
+
+#[test]
+fn save_as_changes_the_preview_image_scope() {
+    let files = MemoryFiles::default();
+    let new_path = if cfg!(windows) {
+        PathBuf::from(r"D:\other\notes.md")
+    } else {
+        PathBuf::from("/other/notes.md")
+    };
+    let mut h = harness(file_app(
+        notes_path(),
+        "![alt](image.png)",
+        &files,
+        FakeDialogs::default(),
+    ));
+    h.run_steps(1);
+
+    let state = h.state_mut();
+    state.workspace.apply(Command::SaveAs);
+    state
+        .workspace
+        .apply(Command::SaveAsChosen(new_path.clone()));
+    state.workspace.apply(Command::WriteSucceeded);
+    state.sync_editor_resources();
+
+    assert_eq!(
+        h.state()
+            .preview_revision
+            .as_ref()
+            .map(|(_, _, scope)| scope),
+        Some(&Some(new_path.parent().unwrap().to_path_buf()))
     );
 }
 
