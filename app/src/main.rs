@@ -4,6 +4,7 @@ use std::time::Instant;
 
 use markdown_hexer::platform::NativeFileSystem;
 use markdown_hexer::platform::instance::{self, Acquire};
+use markdown_hexer::settings::{self, Settings};
 use markdown_hexer::startup;
 use markdown_hexer::ui::HexerApp;
 
@@ -22,6 +23,14 @@ fn main() -> eframe::Result {
 
     let startup = startup::launch(paths, &NativeFileSystem);
 
+    // Read settings before the window exists so the first painted frame already
+    // has the right palette, text size, and font.
+    let settings_path = settings::default_path();
+    let settings = settings_path
+        .as_deref()
+        .map(Settings::load)
+        .unwrap_or_default();
+
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title(startup.workspace.window_title())
@@ -37,8 +46,9 @@ fn main() -> eframe::Result {
     eframe::run_native(
         "Markdown Hexer",
         options,
-        Box::new(move |_cc| {
-            let mut app = HexerApp::new(startup, t_main);
+        Box::new(move |cc| {
+            let mut app = HexerApp::new(startup, t_main).with_settings(settings, settings_path);
+            app.prepare(&cc.egui_ctx);
             app.attach_instance(server);
             Ok(Box::new(app))
         }),

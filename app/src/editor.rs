@@ -415,8 +415,8 @@ pub struct EditorResources {
 }
 
 impl EditorResources {
-    pub fn new(palette: Palette) -> Self {
-        let font = FontId::monospace(15.0);
+    pub fn new(palette: Palette, family: egui::FontFamily, size: f32) -> Self {
+        let font = FontId::new(size, family);
         Self {
             highlighter: MarkdownHighlighter::new(palette, font.clone()),
             font,

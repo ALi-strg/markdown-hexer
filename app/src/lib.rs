@@ -8,5 +8,6 @@ pub mod image;
 pub mod platform;
 pub mod preview;
 pub mod sections;
+pub mod settings;
 pub mod startup;
 pub mod ui;

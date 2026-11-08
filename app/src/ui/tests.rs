@@ -1387,7 +1387,7 @@ fn code_theme_uses_palette_syntax_colors() {
     );
     assert_eq!(
         theme.format(TokenType::Punctuation).color,
-        Palette::LIGHT.ink
+        Palette::LIGHT.syntax_punctuation
     );
 }
 
@@ -2056,4 +2056,145 @@ fn replace_all_is_a_single_undo_step() {
     h.key_press_modifiers(Modifiers::COMMAND, Key::Z);
     h.step();
     assert_eq!(document_content(&h), "foo foo foo");
+}
+
+#[test]
+fn first_frame_uses_the_injected_palette_without_a_white_flash() {
+    let files = MemoryFiles::default();
+    let settings = Settings {
+        theme: Theme::Dark,
+        ..Settings::default()
+    };
+    let app = untitled_app(&files, FakeDialogs::default()).with_settings(settings, None);
+    let h = harness(app);
+
+    assert_eq!(h.state().palette, Palette::DARK);
+    let visuals = h.ctx.global_style().visuals.clone();
+    assert_eq!(visuals.panel_fill, Palette::DARK.bg);
+    assert_eq!(visuals.window_fill, Palette::DARK.surface);
+    assert_eq!(visuals.code_bg_color, Palette::DARK.code_bg);
+    assert_eq!(visuals.hyperlink_color, Palette::DARK.link);
+    assert_eq!(visuals.selection.bg_fill, Palette::DARK.selection);
+    assert_eq!(visuals.widgets.active.bg_stroke.color, Palette::DARK.focus);
+    assert_eq!(
+        eframe::App::clear_color(h.state(), &visuals),
+        Palette::DARK.bg.to_normalized_gamma_f32()
+    );
+}
+
+#[test]
+fn system_theme_follows_the_os_live() {
+    let files = MemoryFiles::default();
+    let settings = Settings {
+        theme: Theme::System,
+        ..Settings::default()
+    };
+    let app = untitled_app(&files, FakeDialogs::default()).with_settings(settings, None);
+    let mut h = harness(app);
+    h.input_mut().system_theme = Some(egui::Theme::Dark);
+    h.run_steps(1);
+    assert_eq!(h.state().palette, Palette::DARK);
+
+    h.input_mut().system_theme = Some(egui::Theme::Light);
+    h.run_steps(1);
+    assert_eq!(h.state().palette, Palette::LIGHT);
+}
+
+#[test]
+fn appearance_menu_switches_theme_immediately_and_persists() {
+    let files = MemoryFiles::default();
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("settings.json");
+    let app = untitled_app(&files, FakeDialogs::default())
+        .with_settings(Settings::default(), Some(path.clone()));
+    let mut h = harness(app);
+
+    h.get_by_label("Appearance").click();
+    h.run();
+    h.get_by_label("Theme").click();
+    h.run();
+    h.get_by_label("Dark").click();
+    h.run();
+
+    assert_eq!(h.state().settings.theme, Theme::Dark);
+    assert_eq!(h.state().palette, Palette::DARK);
+    assert_eq!(Settings::load(&path).theme, Theme::Dark);
+}
+
+#[test]
+fn choice_helpers_apply_and_persist_font_and_text_size() {
+    let files = MemoryFiles::default();
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("settings.json");
+    let mut app = untitled_app(&files, FakeDialogs::default())
+        .with_settings(Settings::default(), Some(path.clone()));
+    let ctx = egui::Context::default();
+
+    app.choose_font(&ctx, FontChoice::Serif);
+    app.choose_text_size(&ctx, TextSize::Large);
+
+    let editor = app.editor.as_ref().expect("edit mode has editor resources");
+    assert_eq!(editor.font.size, 16.0);
+    assert_eq!(
+        editor.font.family,
+        egui::FontFamily::Name(crate::settings::CONTENT_SERIF.into())
+    );
+    let saved = Settings::load(&path);
+    assert_eq!(saved.font, FontChoice::Serif);
+    assert_eq!(saved.text_size, TextSize::Large);
+}
+
+#[test]
+fn preview_content_style_applies_font_and_size_but_not_chrome() {
+    let ctx = egui::Context::default();
+    let base_heading = ctx.global_style().text_styles[&egui::TextStyle::Heading].size;
+    let base_body = ctx.global_style().text_styles[&egui::TextStyle::Body].size;
+    let mut captured = None;
+    let mut chrome = None;
+    let output = ctx.run_ui(Default::default(), |ui| {
+        apply_preview_text_style(ui, FontChoice::Serif, TextSize::Large);
+        let styles = &ui.style().text_styles;
+        captured = Some((
+            styles[&egui::TextStyle::Body].clone(),
+            styles[&egui::TextStyle::Heading].size,
+            styles[&egui::TextStyle::Monospace].size,
+        ));
+        chrome = Some(styles[&egui::TextStyle::Small].clone());
+    });
+    output.drop_without_applying_deltas();
+
+    let (body, heading, monospace) = captured.expect("content style captured");
+    assert_eq!(body.size, TextSize::Large.preview_size());
+    assert_eq!(
+        body.family,
+        egui::FontFamily::Name(crate::settings::CONTENT_SERIF.into())
+    );
+    assert_eq!(heading, base_heading * 17.0 / 15.0);
+    assert_eq!(monospace, TextSize::Large.preview_size());
+    assert_eq!(chrome.expect("small style captured").size, 9.0);
+    assert_eq!(
+        ctx.global_style().text_styles[&egui::TextStyle::Body].size,
+        base_body
+    );
+}
+
+#[test]
+fn every_theme_drives_the_chrome_tokens_it_resolves_to() {
+    for theme in Theme::ALL {
+        let files = MemoryFiles::default();
+        let settings = Settings {
+            theme,
+            ..Settings::default()
+        };
+        let app = untitled_app(&files, FakeDialogs::default()).with_settings(settings, None);
+        let h = harness(app);
+        let palette = h.state().palette;
+        let visuals = &h.ctx.global_style().visuals;
+        assert_eq!(visuals.panel_fill, palette.bg, "{theme:?}");
+        assert_eq!(visuals.window_fill, palette.surface, "{theme:?}");
+        assert_eq!(visuals.code_bg_color, palette.code_bg, "{theme:?}");
+        assert_eq!(visuals.hyperlink_color, palette.link, "{theme:?}");
+        assert_eq!(visuals.selection.bg_fill, palette.selection, "{theme:?}");
+        assert_eq!(visuals.selection.stroke.color, palette.focus, "{theme:?}");
+    }
 }
