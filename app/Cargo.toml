@@ -4,7 +4,7 @@ version = "2.0.0"
 edition = "2024"
 rust-version = "1.95"
 description = "Markdown Hexer 2.0 native shell"
-license = "MIT OR Apache-2.0"
+license = "MIT"
 publish = false
 
 [lib]
@@ -131,7 +131,7 @@ files = { "packaging/linux/markdown-hexer.xml" = "/usr/share/mime/packages/markd
 # RPM is not a cargo-packager format; cargo-generate-rpm reads this table.
 [package.metadata.generate-rpm]
 summary = "Fast native Markdown editor"
-license = "MIT OR Apache-2.0"
+license = "MIT"
 url = "https://github.com/ALi-strg/markdown-editor"
 vendor = "Adrian Link"
 auto-req = "builtin"
