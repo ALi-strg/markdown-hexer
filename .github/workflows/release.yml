@@ -258,6 +258,13 @@ jobs:
           path: dist
           merge-multiple: true
 
+      - name: flatten downloaded artifacts
+        working-directory: dist
+        run: |
+          find . -mindepth 2 -type f -exec mv -t . {} +
+          find . -mindepth 1 -type d -empty -delete
+          chmod +x *.AppImage 2>/dev/null || true
+
       - name: write checksums
         working-directory: dist
         run: sha256sum * > SHA256SUMS
