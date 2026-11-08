@@ -104,10 +104,8 @@ jobs:
           name: windows
           if-no-files-found: error
           path: |
-            dist/markdown-hexer_*-windows-x64.exe
-            dist/markdown-hexer_*-windows-x64.msi
-            app/dist/markdown-hexer_*-windows-x64.exe
-            app/dist/markdown-hexer_*-windows-x64.msi
+            dist
+            app/dist
 
   macos:
     needs: version
@@ -156,10 +154,8 @@ jobs:
           name: macos
           if-no-files-found: error
           path: |
-            dist/markdown-hexer_*-macos-*.dmg
-            dist/markdown-hexer_*-macos-*.app.tar.gz
-            app/dist/markdown-hexer_*-macos-*.dmg
-            app/dist/markdown-hexer_*-macos-*.app.tar.gz
+            dist
+            app/dist
 
   linux:
     needs: version
@@ -250,14 +246,8 @@ jobs:
           name: linux
           if-no-files-found: error
           path: |
-            dist/markdown-hexer_*-linux-x86_64.deb
-            dist/markdown-hexer_*-linux-x86_64.AppImage
-            dist/markdown-hexer_*-linux-x86_64.rpm
-            dist/markdown-hexer_*-linux-x86_64.flatpak
-            app/dist/markdown-hexer_*-linux-x86_64.deb
-            app/dist/markdown-hexer_*-linux-x86_64.AppImage
-            app/dist/markdown-hexer_*-linux-x86_64.rpm
-            app/dist/markdown-hexer_*-linux-x86_64.flatpak
+            dist
+            app/dist
 
   publish:
     needs: [version, windows, macos, linux]
