@@ -4,6 +4,7 @@ use std::path::Path;
 use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 
 use crate::image::{ImageSource, ImageTarget, NativeImageSource, file_uri};
+use crate::sections::Sections;
 
 /// A preview artifact derived from a Document's content. `markdown` is the
 /// sanitized source, `render_markdown` is what egui_commonmark renders (fenced
@@ -14,6 +15,8 @@ pub struct PreparedPreview {
     pub markdown: String,
     pub render_markdown: String,
     pub first_frame_render_markdown: Option<String>,
+    pub sections: Sections,
+    pub first_frame_sections: Option<Sections>,
     pub code_blocks: Vec<FencedCode>,
     pub tree: RenderTree,
 }
@@ -159,18 +162,24 @@ pub fn prepare_with_images(
         ))
     };
 
+    let render_markdown = build_render_markdown(
+        source,
+        &html_ranges,
+        &code_ranges,
+        &image_ranges,
+        &tree.images,
+        &targets,
+        true,
+    );
+    let sections = Sections::parse(&render_markdown);
+    let first_frame_sections = first_frame_render_markdown.as_deref().map(Sections::parse);
+
     PreparedPreview {
         markdown: strip_ranges(source, &html_ranges),
-        render_markdown: build_render_markdown(
-            source,
-            &html_ranges,
-            &code_ranges,
-            &image_ranges,
-            &tree.images,
-            &targets,
-            true,
-        ),
+        render_markdown,
         first_frame_render_markdown,
+        sections,
+        first_frame_sections,
         code_blocks,
         tree,
     }
@@ -862,12 +871,14 @@ fn main() {}
         assert!(!first_frame.contains("file://"));
         assert!(!first_frame.contains("https://"));
         assert!(!first_frame.contains("!["));
+        assert!(preview.first_frame_sections.is_some());
     }
 
     #[test]
     fn first_frame_variant_is_absent_without_images() {
         let preview = prepare("Just text.");
         assert!(preview.first_frame_render_markdown.is_none());
+        assert!(preview.first_frame_sections.is_none());
     }
 
     #[test]

@@ -457,6 +457,8 @@ fn undo_survives_a_preview_round_trip() {
 fn preview_shows_alt_text_and_drops_unsafe_links() {
     let files = MemoryFiles::default();
     let content = "\
+# Images
+
 ![missing alt](missing.png)
 
 [js](javascript:alert(1)) [file](file:///etc/passwd) [data](data:text/html,x)
@@ -512,6 +514,178 @@ fn preview_rebuilds_from_the_current_content_after_editing() {
                 .map(|path| path.to_path_buf())
         ))
     );
+}
+
+#[test]
+fn section_chevron_collapses_and_expands_body() {
+    let files = MemoryFiles::default();
+    let mut h = harness(file_app(
+        notes_path(),
+        "intro\n\n# Notes\n\nbody text\n\n## Child\n\nchild text\n",
+        &files,
+        FakeDialogs::default(),
+    ));
+    h.run_steps(1);
+
+    h.get_by_label_contains("intro");
+    h.get_by_label_contains("body text");
+    h.get_by_label_contains("child text");
+
+    h.get_all_by_label("Collapse section")
+        .next()
+        .unwrap()
+        .click();
+    h.step();
+    h.step();
+
+    h.get_by_label("Expand section");
+    assert!(h.query_by_label_contains("body text").is_none());
+    assert!(h.query_by_label_contains("child text").is_none());
+    assert!(h.query_by_label("Child").is_none());
+    h.get_by_label_contains("intro");
+
+    h.get_by_label("Expand section").click();
+    h.step();
+    h.step();
+    h.get_by_label_contains("body text");
+    h.get_by_label_contains("child text");
+}
+
+#[test]
+fn collapse_state_survives_edits_and_mode_switches() {
+    let files = MemoryFiles::default();
+    let mut h = harness(file_app(
+        notes_path(),
+        "# Notes\n\nbody text\n",
+        &files,
+        FakeDialogs::default(),
+    ));
+    h.run_steps(1);
+
+    h.get_by_label("Collapse section").click();
+    h.step();
+    h.step();
+    assert!(h.query_by_label_contains("body text").is_none());
+
+    h.get_by_label("Edit").click();
+    h.step();
+    h.step();
+    h.input_mut()
+        .events
+        .push(egui::Event::Text(" changed".to_owned()));
+    h.step();
+    assert_eq!(
+        h.state().workspace.active_document().unwrap().content,
+        "# Notes\n\nbody text\n changed"
+    );
+    h.get_by_label("Preview").click();
+    h.step();
+    h.step();
+
+    h.get_by_label("Expand section");
+    assert!(h.query_by_label_contains("body text").is_none());
+    assert!(h.query_by_label("Collapse section").is_none());
+    h.get_by_label("Expand section").click();
+    h.step();
+    h.step();
+    h.get_by_label_contains("body text");
+    h.get_by_label_contains("changed");
+}
+
+#[test]
+fn collapse_state_drops_when_the_heading_disappears() {
+    let files = MemoryFiles::default();
+    let mut h = harness(file_app(
+        notes_path(),
+        "# Notes\n\nbody text\n",
+        &files,
+        FakeDialogs::default(),
+    ));
+    h.run_steps(1);
+
+    h.get_by_label("Collapse section").click();
+    h.step();
+    h.step();
+    h.get_by_label("Expand section");
+
+    h.get_by_label("Edit").click();
+    h.step();
+    h.step();
+    h.key_press_modifiers(Modifiers::COMMAND, Key::A);
+    h.step();
+    h.input_mut()
+        .events
+        .push(egui::Event::Text("# Renamed\n\nbody text\n".to_owned()));
+    h.step();
+    h.get_by_label("Preview").click();
+    h.step();
+    h.step();
+
+    h.get_by_label("Collapse section");
+    assert!(h.query_by_label("Expand section").is_none());
+    h.get_by_label_contains("body text");
+}
+
+#[test]
+fn collapse_state_is_per_document_and_survives_tab_switches() {
+    let files = MemoryFiles::default();
+    let first = PathBuf::from("first.md");
+    let second = PathBuf::from("second.md");
+    files.insert(first.clone(), "# Same\n\nbody first\n");
+    files.insert(second.clone(), "# Same\n\nbody second\n");
+    let startup = startup::launch(vec![first, second], &files);
+    let app = HexerApp::with_platform(
+        startup,
+        Instant::now(),
+        Box::new(files.clone()),
+        Box::new(FakeDialogs::default()),
+    );
+    let mut h = harness(app);
+    h.run_steps(1);
+
+    let ids = workspace_ids(&h);
+    h.get_by_label("Collapse section").click();
+    h.step();
+    h.step();
+    assert!(h.query_by_label_contains("body second").is_none());
+
+    h.state_mut().workspace.apply(Command::ActivateTab(ids[0]));
+    h.step();
+    h.get_by_label("Collapse section");
+    h.get_by_label_contains("body first");
+
+    h.state_mut().workspace.apply(Command::ActivateTab(ids[1]));
+    h.step();
+    h.get_by_label("Expand section");
+    assert!(h.query_by_label_contains("body second").is_none());
+}
+
+#[test]
+fn focused_section_chevron_toggles_with_keyboard() {
+    let files = MemoryFiles::default();
+    let mut h = harness(file_app(
+        notes_path(),
+        "# Notes\n\nbody text\n",
+        &files,
+        FakeDialogs::default(),
+    ));
+    h.run_steps(1);
+
+    h.get_by_label("Collapse section").focus();
+    h.step();
+    h.key_press(egui::Key::Enter);
+    h.step();
+    h.step();
+    h.get_by_label("Expand section");
+    assert!(h.query_by_label_contains("body text").is_none());
+
+    h.get_by_label("Expand section").focus();
+    h.step();
+    h.key_press(egui::Key::Space);
+    h.step();
+    h.step();
+    h.get_by_label("Collapse section");
+    h.get_by_label_contains("body text");
 }
 
 #[test]
