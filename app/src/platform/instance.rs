@@ -92,14 +92,14 @@ fn acquire_at(name: PathBuf, paths: Vec<PathBuf>) -> Acquire {
                 };
             }
             Err(error) => {
+                #[cfg(unix)]
+                let address_in_use = error.kind() == io::ErrorKind::AddrInUse;
                 last_error = Some(error);
                 // A Unix socket left behind by a crashed process refuses
                 // connections but blocks bind. Only remove it after a second
                 // failed connect proves no live primary owns it.
                 #[cfg(unix)]
-                if error.kind() == io::ErrorKind::AddrInUse
-                    && send_request(&name, &request).is_err()
-                {
+                if address_in_use && send_request(&name, &request).is_err() {
                     let _ = std::fs::remove_file(&name);
                 }
             }
