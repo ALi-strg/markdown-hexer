@@ -1,5 +1,6 @@
 use super::*;
-use crate::domain::{Command, DocumentId, Mode};
+use crate::domain::{Command, DocumentId, ExternalChoice, GuardChoice, Mode};
+use crate::platform::instance::{InstanceRequest, InstanceServer};
 use crate::platform::{ReadError, WriteError};
 use crate::startup;
 use egui::accesskit::Role;
@@ -55,6 +56,10 @@ impl FileSystem for MemoryFiles {
 struct FakeDialogs {
     save_next: Rc<RefCell<Option<PathBuf>>>,
     open_next: Rc<RefCell<Option<PathBuf>>>,
+    guard_choices: Rc<RefCell<std::collections::VecDeque<GuardChoice>>>,
+    guard_calls: Rc<Cell<usize>>,
+    external_choices: Rc<RefCell<std::collections::VecDeque<ExternalChoice>>>,
+    external_calls: Rc<Cell<usize>>,
 }
 
 impl FakeDialogs {
@@ -71,6 +76,20 @@ impl FakeDialogs {
             ..Self::default()
         }
     }
+
+    fn guard_choices(choices: impl IntoIterator<Item = GuardChoice>) -> Self {
+        Self {
+            guard_choices: Rc::new(RefCell::new(choices.into_iter().collect())),
+            ..Self::default()
+        }
+    }
+
+    fn external_choices(choices: impl IntoIterator<Item = ExternalChoice>) -> Self {
+        Self {
+            external_choices: Rc::new(RefCell::new(choices.into_iter().collect())),
+            ..Self::default()
+        }
+    }
 }
 
 impl Dialogs for FakeDialogs {
@@ -81,12 +100,55 @@ impl Dialogs for FakeDialogs {
     fn open(&self) -> Option<PathBuf> {
         self.open_next.borrow_mut().take()
     }
+
+    fn confirm_discard(&self, _title: &str) -> GuardChoice {
+        self.guard_calls.set(self.guard_calls.get() + 1);
+        self.guard_choices
+            .borrow_mut()
+            .pop_front()
+            .unwrap_or(GuardChoice::Cancel)
+    }
+
+    fn external_modified(&self, _title: &str) -> ExternalChoice {
+        self.external_calls.set(self.external_calls.get() + 1);
+        self.external_choices
+            .borrow_mut()
+            .pop_front()
+            .unwrap_or(ExternalChoice::Cancel)
+    }
 }
 
 fn harness(app: HexerApp) -> Harness<'static, HexerApp> {
     Harness::builder()
         .with_size(egui::vec2(900.0, 700.0))
         .build_eframe(|_cc| app)
+}
+
+/// Simulate the window manager's close request for one frame.
+fn request_close(h: &mut Harness<'static, HexerApp>) {
+    let viewport_id = h.input().viewport_id;
+    h.input_mut()
+        .viewports
+        .get_mut(&viewport_id)
+        .expect("main viewport")
+        .events
+        .push(egui::ViewportEvent::Close);
+    h.step();
+    h.input_mut()
+        .viewports
+        .get_mut(&viewport_id)
+        .expect("main viewport")
+        .events
+        .clear();
+    h.step();
+}
+
+/// Simulate the window losing focus and gaining it again.
+fn refocus(h: &mut Harness<'static, HexerApp>) {
+    h.input_mut().focused = false;
+    h.step();
+    h.input_mut().focused = true;
+    h.step();
 }
 
 fn file_app(
@@ -97,7 +159,7 @@ fn file_app(
 ) -> HexerApp {
     let path = path.into();
     files.insert(path.clone(), content);
-    let startup = startup::launch(Some(path), files);
+    let startup = startup::launch(vec![path], files);
     HexerApp::with_platform(
         startup,
         Instant::now(),
@@ -108,7 +170,7 @@ fn file_app(
 
 fn untitled_app(files: &MemoryFiles, dialogs: FakeDialogs) -> HexerApp {
     HexerApp::with_platform(
-        startup::launch(None, files),
+        startup::launch(Vec::new(), files),
         Instant::now(),
         Box::new(files.clone()),
         Box::new(dialogs),
@@ -386,30 +448,20 @@ fn save_as_updates_path_title_and_image_scope_but_not_mode() {
 }
 
 #[test]
-fn guard_is_modal_and_cancel_keeps_the_window_open() {
+fn guard_native_cancel_keeps_the_window_open() {
     let files = MemoryFiles::default();
-    let mut h = harness(file_app(
-        notes_path(),
-        "# Notes",
-        &files,
-        FakeDialogs::default(),
-    ));
+    let dialogs = FakeDialogs::guard_choices([GuardChoice::Cancel]);
+    let calls = Rc::clone(&dialogs.guard_calls);
+    let mut h = harness(file_app(notes_path(), "# Notes", &files, dialogs));
     let document_id = h.state().workspace.active_document().unwrap().id;
     h.state_mut().workspace.apply(Command::ContentChanged {
         document_id,
         content: "# Dirty".to_owned(),
     });
-    h.state_mut().workspace.apply(Command::WindowCloseRequested);
-    h.step();
-    h.step();
 
-    h.get_by_label("Unsaved changes");
-    h.get_by_label("Save");
-    h.get_by_label("Don't Save");
-    h.get_by_label("Cancel");
+    request_close(&mut h);
 
-    h.get_by_label("Cancel").click();
-    h.step();
+    assert_eq!(calls.get(), 1, "exactly one native Guard dialog");
     assert!(h.state().workspace.guard().is_none());
     assert!(!h.state().allow_close);
     assert!(h.state().workspace.active_document().is_some());
@@ -419,52 +471,39 @@ fn guard_is_modal_and_cancel_keeps_the_window_open() {
 fn guard_save_failure_keeps_the_window_open_and_the_document_dirty() {
     let files = MemoryFiles::default();
     files.fail_writes.set(true);
-    let mut h = harness(file_app(
-        notes_path(),
-        "# Notes",
-        &files,
-        FakeDialogs::default(),
-    ));
+    let dialogs = FakeDialogs::guard_choices([GuardChoice::Save]);
+    let calls = Rc::clone(&dialogs.guard_calls);
+    let mut h = harness(file_app(notes_path(), "# Notes", &files, dialogs));
     let document_id = h.state().workspace.active_document().unwrap().id;
     h.state_mut().workspace.apply(Command::ContentChanged {
         document_id,
         content: "# Dirty".to_owned(),
     });
-    h.state_mut().workspace.apply(Command::WindowCloseRequested);
-    h.step();
-    h.step();
 
-    h.get_by_label("Save").click();
-    h.step();
+    request_close(&mut h);
 
+    assert_eq!(calls.get(), 1);
     assert!(!h.state().allow_close);
     assert!(h.state().workspace.active_document().unwrap().is_dirty());
     assert!(h.state().workspace.guard().is_none());
-    h.step();
     h.get_by_label_contains("Could not save notes.md");
 }
 
 #[test]
 fn guard_dont_save_allows_the_close() {
     let files = MemoryFiles::default();
-    let mut h = harness(file_app(
-        notes_path(),
-        "# Notes",
-        &files,
-        FakeDialogs::default(),
-    ));
+    let dialogs = FakeDialogs::guard_choices([GuardChoice::DontSave]);
+    let calls = Rc::clone(&dialogs.guard_calls);
+    let mut h = harness(file_app(notes_path(), "# Notes", &files, dialogs));
     let document_id = h.state().workspace.active_document().unwrap().id;
     h.state_mut().workspace.apply(Command::ContentChanged {
         document_id,
         content: "# Dirty".to_owned(),
     });
-    h.state_mut().workspace.apply(Command::WindowCloseRequested);
-    h.step();
-    h.step();
 
-    h.get_by_label("Don't Save").click();
-    h.step();
+    request_close(&mut h);
 
+    assert_eq!(calls.get(), 1);
     assert!(h.state().allow_close);
     assert!(h.state().workspace.guard().is_none());
 }
@@ -477,7 +516,7 @@ fn error_toast_from_a_failed_launch_appears_after_the_first_frame() {
     } else {
         PathBuf::from("/docs/missing.md")
     };
-    let startup = startup::launch(Some(missing), &files);
+    let startup = startup::launch(vec![missing], &files);
     let mut h = harness(HexerApp::with_platform(
         startup,
         Instant::now(),
@@ -526,6 +565,29 @@ fn workspace_ids(h: &Harness<'static, HexerApp>) -> Vec<DocumentId> {
         .iter()
         .map(|tab| tab.document.id)
         .collect()
+}
+
+#[derive(Debug)]
+struct DroppedPath(PathBuf);
+
+impl egui::DroppedFile for DroppedPath {
+    fn path(&self) -> &std::path::Path {
+        &self.0
+    }
+
+    fn bytes(&self) -> Result<Vec<u8>, String> {
+        Err("not needed in this test".to_owned())
+    }
+}
+
+fn drop_paths(h: &mut Harness<'static, HexerApp>, paths: impl IntoIterator<Item = PathBuf>) {
+    h.input_mut().dropped_files.extend(
+        paths
+            .into_iter()
+            .map(|path| std::sync::Arc::new(DroppedPath(path)) as egui::DroppedFileHandle),
+    );
+    h.step();
+    h.step();
 }
 
 #[test]
@@ -804,12 +866,9 @@ fn dragging_a_tab_reorders_it() {
 #[test]
 fn quit_guard_shows_each_dirty_tab_in_order() {
     let files = MemoryFiles::default();
-    let mut h = harness(file_app(
-        notes_path(),
-        "# Notes",
-        &files,
-        FakeDialogs::default(),
-    ));
+    let dialogs = FakeDialogs::guard_choices([GuardChoice::DontSave, GuardChoice::DontSave]);
+    let calls = Rc::clone(&dialogs.guard_calls);
+    let mut h = harness(file_app(notes_path(), "# Notes", &files, dialogs));
     h.step();
     add_file(&mut h, other_path(), "# Other");
     let ids = workspace_ids(&h);
@@ -821,20 +880,72 @@ fn quit_guard_shows_each_dirty_tab_in_order() {
         document_id: ids[1],
         content: "# Dirty other".to_owned(),
     });
-    h.state_mut().workspace.apply(Command::WindowCloseRequested);
-    h.step();
-    h.step();
 
-    h.get_by_label("Save changes to notes.md *?");
-    h.get_by_label("Don't Save").click();
-    h.step();
-    h.step();
-    h.get_by_label("Save changes to other.md *?");
-    h.get_by_label("Don't Save").click();
-    h.step();
+    request_close(&mut h);
 
+    // Both dirty tabs are guarded in order without a second close request.
+    assert_eq!(calls.get(), 2);
     assert!(h.state().allow_close);
     assert!(h.state().workspace.guard().is_none());
+}
+
+#[test]
+fn clean_external_change_reloads_without_a_dialog() {
+    let files = MemoryFiles::default();
+    let dialogs = FakeDialogs::default();
+    let calls = Rc::clone(&dialogs.external_calls);
+    let mut h = harness(file_app(notes_path(), "# Notes", &files, dialogs));
+    h.step();
+
+    files.insert(notes_path(), "# Changed on disk");
+    refocus(&mut h);
+
+    assert_eq!(document_content(&h), "# Changed on disk");
+    assert_eq!(calls.get(), 0);
+}
+
+#[test]
+fn external_reload_uses_the_native_dialog_and_clears_dirty() {
+    let files = MemoryFiles::default();
+    let dialogs = FakeDialogs::external_choices([ExternalChoice::Reload]);
+    let calls = Rc::clone(&dialogs.external_calls);
+    let mut h = harness(file_app(notes_path(), "# Notes", &files, dialogs));
+    h.step();
+    let document_id = h.state().workspace.active_document().unwrap().id;
+    h.state_mut().workspace.apply(Command::ContentChanged {
+        document_id,
+        content: "# Mine".to_owned(),
+    });
+    files.insert(notes_path(), "# Disk");
+
+    refocus(&mut h);
+
+    assert_eq!(calls.get(), 1);
+    assert_eq!(document_content(&h), "# Disk");
+    assert!(!h.state().workspace.active_document().unwrap().is_dirty());
+    assert_eq!(
+        h.state().workspace.window_title(),
+        "notes.md — Markdown Hexer"
+    );
+}
+
+#[test]
+fn external_overwrite_writes_the_in_memory_content() {
+    let files = MemoryFiles::default();
+    let dialogs = FakeDialogs::external_choices([ExternalChoice::Overwrite]);
+    let mut h = harness(file_app(notes_path(), "# Notes", &files, dialogs));
+    h.step();
+    let document_id = h.state().workspace.active_document().unwrap().id;
+    h.state_mut().workspace.apply(Command::ContentChanged {
+        document_id,
+        content: "# Mine".to_owned(),
+    });
+    files.insert(notes_path(), "# Disk");
+
+    refocus(&mut h);
+
+    assert_eq!(files.written(notes_path()).as_deref(), Some("# Mine"));
+    assert!(!h.state().workspace.active_document().unwrap().is_dirty());
 }
 
 #[test]
@@ -852,4 +963,142 @@ fn tab_close_button_closes_the_last_tab_and_the_window() {
     h.step();
 
     assert!(h.state().allow_close);
+}
+
+#[test]
+fn dropped_files_open_in_order_and_last_is_active() {
+    let files = MemoryFiles::default();
+    files.insert(notes_path(), "# Notes");
+    files.insert(other_path(), "# Other");
+    let mut h = harness(untitled_app(&files, FakeDialogs::default()));
+    h.step();
+
+    drop_paths(&mut h, [notes_path(), other_path()]);
+
+    assert_eq!(
+        h.state().workspace.tabs().len(),
+        2,
+        "the Untitled placeholder is replaced by the first drop"
+    );
+    assert_eq!(
+        h.state()
+            .workspace
+            .active_document()
+            .unwrap()
+            .path
+            .as_deref(),
+        Some(other_path().as_path())
+    );
+}
+
+#[test]
+fn dropping_an_open_file_focuses_its_tab() {
+    let files = MemoryFiles::default();
+    let mut h = harness(file_app(
+        notes_path(),
+        "# Notes",
+        &files,
+        FakeDialogs::default(),
+    ));
+    h.step();
+    add_file(&mut h, other_path(), "# Other");
+    assert_eq!(workspace_ids(&h).len(), 2);
+
+    drop_paths(&mut h, [notes_path()]);
+
+    assert_eq!(workspace_ids(&h).len(), 2);
+    assert_eq!(
+        h.state()
+            .workspace
+            .active_document()
+            .unwrap()
+            .path
+            .as_deref(),
+        Some(notes_path().as_path())
+    );
+}
+
+#[test]
+fn about_opens_from_the_toolbar_and_shortcut_in_either_mode() {
+    let files = MemoryFiles::default();
+    let mut h = harness(file_app(
+        notes_path(),
+        "# Notes",
+        &files,
+        FakeDialogs::default(),
+    ));
+    h.step();
+
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Slash);
+    h.step();
+    assert!(h.state().about_open);
+    h.get_by_label("Markdown Hexer");
+    h.get_by_label("Version 2.0.0");
+    h.get_by_label(REPOSITORY);
+    h.get_by_label("Shortcuts");
+    h.key_press(Key::Escape);
+    h.step();
+    assert!(!h.state().about_open);
+
+    h.get_by_label("Edit").click();
+    h.step();
+    h.get_by_label("About").click();
+    h.step();
+    assert!(h.state().about_open);
+    h.key_press(Key::Escape);
+    h.step();
+
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Slash);
+    h.step();
+    assert!(h.state().about_open);
+}
+
+#[test]
+fn instance_paths_open_and_focus_the_window() {
+    let files = MemoryFiles::default();
+    files.insert(notes_path(), "# Notes");
+    files.insert(other_path(), "# Other");
+    let (tx, rx) = std::sync::mpsc::channel();
+    let mut app = untitled_app(&files, FakeDialogs::default());
+    app.attach_instance(InstanceServer::from_receiver(rx));
+    let mut h = harness(app);
+    h.step();
+
+    tx.send(InstanceRequest {
+        paths: vec![notes_path(), other_path()],
+        focus: true,
+    })
+    .unwrap();
+    h.step();
+    h.step();
+
+    assert_eq!(
+        h.state()
+            .workspace
+            .active_document()
+            .unwrap()
+            .path
+            .as_deref(),
+        Some(other_path().as_path())
+    );
+    assert!(!h.state().focus_window);
+
+    tx.send(InstanceRequest {
+        paths: vec![notes_path()],
+        focus: true,
+    })
+    .unwrap();
+    h.step();
+    h.step();
+
+    assert_eq!(
+        h.state()
+            .workspace
+            .active_document()
+            .unwrap()
+            .path
+            .as_deref(),
+        Some(notes_path().as_path())
+    );
+    assert!(!h.state().focus_window);
 }

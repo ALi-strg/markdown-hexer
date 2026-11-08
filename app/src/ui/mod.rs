@@ -12,12 +12,15 @@ use egui::{
 use egui_commonmark::CommonMarkViewer;
 
 use crate::dialogs::{Dialogs, NativeDialogs};
-use crate::domain::{Command, DocumentId, GuardChoice, Mode, Workspace};
+use crate::domain::{Command, DocumentId, Mode, Workspace};
 use crate::editor::{EditorResources, EditorSession};
 use crate::first_edit::FirstEditProbe;
+use crate::platform::instance::InstanceServer;
 use crate::platform::{FileSystem, NativeFileSystem};
 use crate::preview::{self, PreparedPreview};
 use crate::startup::{Startup, StartupTimer};
+
+const REPOSITORY: &str = "https://github.com/ALi-strg/markdown-hexer";
 
 pub struct HexerApp {
     workspace: Workspace,
@@ -38,6 +41,13 @@ pub struct HexerApp {
     dialogs: Box<dyn Dialogs>,
     allow_close: bool,
     first_edit: Option<FirstEditProbe>,
+    instance: Option<InstanceServer>,
+    instance_wake: bool,
+    about_open: bool,
+    focus_window: bool,
+    last_active: Option<DocumentId>,
+    was_focused: bool,
+    was_guard_open: bool,
 }
 
 struct Toast {
@@ -94,9 +104,68 @@ impl HexerApp {
             dialogs,
             allow_close: false,
             first_edit: FirstEditProbe::from_env(),
+            instance: None,
+            instance_wake: false,
+            about_open: false,
+            focus_window: false,
+            last_active: None,
+            was_focused: false,
+            was_guard_open: false,
         };
         app.sync_editor_resources();
         app
+    }
+
+    /// Hand the running instance's launch receiver to the UI. Main attaches
+    /// this after the primary process has bound the socket.
+    pub fn attach_instance(&mut self, server: InstanceServer) {
+        self.instance = Some(server);
+    }
+
+    fn drain_instance(&mut self, ctx: &egui::Context) {
+        if !self.instance_wake {
+            self.instance_wake = true;
+            if let Some(server) = &self.instance {
+                let ctx = ctx.clone();
+                server.set_wake(move || ctx.request_repaint());
+            }
+        }
+
+        let requests: Vec<_> = self
+            .instance
+            .as_ref()
+            .map(|server| std::iter::from_fn(|| server.try_recv()).collect())
+            .unwrap_or_default();
+        if requests.is_empty() {
+            return;
+        }
+
+        self.focus_window |= requests.iter().any(|request| request.focus);
+        let commands = requests
+            .into_iter()
+            .flat_map(|request| request.paths)
+            .map(Command::OpenPath)
+            .collect();
+        self.dispatch(ctx, commands);
+
+        if std::mem::take(&mut self.focus_window) {
+            ctx.send_viewport_cmd(ViewportCommand::Minimized(false));
+            ctx.send_viewport_cmd(ViewportCommand::Focus);
+        }
+    }
+
+    fn handle_dropped_files(&mut self, ctx: &egui::Context) {
+        let dropped = ctx.input_mut(|input| std::mem::take(&mut input.raw.dropped_files));
+        if dropped.is_empty() {
+            return;
+        }
+        let paths: Vec<_> = dropped
+            .iter()
+            .map(|file| file.path())
+            .filter(|path| !path.as_os_str().is_empty())
+            .map(|path| self.files.canonicalize(path))
+            .collect();
+        self.dispatch(ctx, paths.into_iter().map(Command::OpenPath).collect());
     }
 
     fn apply_style(&mut self, ctx: &egui::Context) {
@@ -203,6 +272,25 @@ impl HexerApp {
                         });
                     }
                     crate::domain::Effect::ShowToast(message) => self.show_message(message),
+                    crate::domain::Effect::ShowGuard { title } => {
+                        pending
+                            .push_back(Command::GuardChosen(self.dialogs.confirm_discard(&title)));
+                    }
+                    crate::domain::Effect::ShowExternalModified { title } => {
+                        let choice = self.dialogs.external_modified(&title);
+                        let disk_content = if choice == crate::domain::ExternalChoice::Cancel {
+                            None
+                        } else {
+                            self.workspace
+                                .active_document()
+                                .and_then(|document| document.path.as_deref())
+                                .and_then(|path| self.files.read_utf8(path).ok())
+                        };
+                        pending.push_back(Command::ExternalChosen {
+                            choice,
+                            disk_content,
+                        });
+                    }
                     crate::domain::Effect::SetWindowTitle(_) => {}
                     crate::domain::Effect::CloseWindow => {
                         self.allow_close = true;
@@ -250,6 +338,7 @@ impl HexerApp {
             next_tab,
             move_left,
             move_right,
+            about,
         ) = ctx.input_mut(|input| {
             let save_as = input.consume_key(Modifiers::COMMAND.plus(Modifiers::SHIFT), Key::S);
             let save = input.consume_key(Modifiers::COMMAND, Key::S);
@@ -258,6 +347,7 @@ impl HexerApp {
             let new_tab = input.consume_key(Modifiers::COMMAND, Key::T);
             let open = input.consume_key(Modifiers::COMMAND, Key::O);
             let close = input.consume_key(Modifiers::COMMAND, Key::W);
+            let about = input.consume_key(Modifiers::COMMAND, Key::Slash);
             // Tab cycling is Ctrl-only, never Cmd.
             let previous_tab = input.consume_key(Modifiers::CTRL.plus(Modifiers::SHIFT), Key::Tab);
             let next_tab = input.consume_key(Modifiers::CTRL, Key::Tab);
@@ -277,8 +367,13 @@ impl HexerApp {
                 next_tab,
                 move_left,
                 move_right,
+                about,
             )
         });
+
+        if about {
+            self.about_open = true;
+        }
 
         let active = self.workspace.active_document().map(|document| document.id);
         let active_index = active.and_then(|id| {
@@ -329,6 +424,43 @@ impl HexerApp {
             }
         }
         commands
+    }
+
+    fn check_external(&mut self, ctx: &egui::Context) {
+        let focused = ctx.input(|input| input.focused);
+        let active = self.workspace.active_document().map(|document| document.id);
+        let guard_open = self.workspace.guard().is_some();
+        let trigger = (focused && !self.was_focused)
+            || active != self.last_active
+            || (self.was_guard_open && !guard_open);
+        self.was_focused = focused;
+        self.last_active = active;
+        self.was_guard_open = guard_open;
+
+        if !trigger
+            || guard_open
+            || self.workspace.external_modified_open()
+            || self.workspace.save_dialog_open()
+        {
+            return;
+        }
+        let Some(document) = self.workspace.active_document() else {
+            return;
+        };
+        let Some(path) = document.path.as_deref() else {
+            return;
+        };
+        let document_id = document.id;
+        // A missing or unreadable file is not an external modification.
+        if let Ok(content) = self.files.read_utf8(path) {
+            self.dispatch(
+                ctx,
+                vec![Command::ExternalCheck {
+                    document_id,
+                    content,
+                }],
+            );
+        }
     }
 
     fn handle_close_request(&mut self, ctx: &egui::Context) {
@@ -422,7 +554,7 @@ impl HexerApp {
         commands
     }
 
-    fn show_toolbar(&self, ui: &mut Ui) -> Vec<Command> {
+    fn show_toolbar(&mut self, ui: &mut Ui) -> Vec<Command> {
         let Some(document) = self.workspace.active_document() else {
             return Vec::new();
         };
@@ -455,6 +587,9 @@ impl HexerApp {
                     }
 
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.button("About").clicked() {
+                            self.about_open = true;
+                        }
                         if ui.button("Save As").clicked() {
                             commands.push(Command::SaveAs);
                         }
@@ -596,34 +731,84 @@ impl HexerApp {
         });
     }
 
-    fn show_guard(&mut self, ctx: &egui::Context) {
-        let Some(title) = self.workspace.guard().map(|guard| guard.title.clone()) else {
+    fn show_about(&mut self, ctx: &egui::Context) {
+        if !self.about_open {
             return;
-        };
+        }
 
-        let mut choice = None;
-        Modal::new(Id::unique("close_guard")).show(ctx, |ui| {
-            ui.set_max_width(420.0);
-            ui.heading("Unsaved changes");
-            ui.add_space(8.0);
-            ui.label(format!("Save changes to {title}?"));
-            ui.add_space(14.0);
+        let mut close = false;
+        let mut open_repository = false;
+        Modal::new(Id::unique("about")).show(ctx, |ui| {
+            ui.set_max_width(560.0);
+            ui.heading("Markdown Hexer");
+            ui.label(format!("Version {}", env!("CARGO_PKG_VERSION")));
             ui.horizontal(|ui| {
-                if ui.button("Save").clicked() {
-                    choice = Some(GuardChoice::Save);
-                }
-                if ui.button("Don't Save").clicked() {
-                    choice = Some(GuardChoice::DontSave);
-                }
-                if ui.button("Cancel").clicked() {
-                    choice = Some(GuardChoice::Cancel);
+                ui.label("Repository:");
+                if ui.link(REPOSITORY).clicked() {
+                    open_repository = true;
                 }
             });
+            ui.add_space(10.0);
+            ui.heading("Shortcuts");
+            egui::Grid::new("about_shortcuts")
+                .num_columns(2)
+                .striped(true)
+                .show(ui, |ui| {
+                    for (action, shortcut) in [
+                        ("New", "Ctrl+N"),
+                        ("Open", "Ctrl+O"),
+                        ("Save", "Ctrl+S"),
+                        ("Save As", "Ctrl+Shift+S"),
+                        ("Close Tab", "Ctrl+W"),
+                        ("New Tab", "Ctrl+T"),
+                        ("Next Tab", "Ctrl+Tab"),
+                        ("Previous Tab", "Ctrl+Shift+Tab"),
+                        ("Move Tab Left", "Ctrl+Shift+PgUp"),
+                        ("Move Tab Right", "Ctrl+Shift+PgDn"),
+                        ("Toggle Preview/Edit", "Ctrl+E"),
+                        ("Find", "Ctrl+F"),
+                        ("Bold", "Ctrl+B"),
+                        ("Italic", "Ctrl+I"),
+                        ("About", "Ctrl+/"),
+                    ] {
+                        ui.label(action);
+                        ui.label(RichText::new(shortcut).monospace());
+                        ui.end_row();
+                    }
+                });
+            ui.add_space(12.0);
+            if ui.button("Close").clicked() {
+                close = true;
+            }
         });
 
-        if let Some(choice) = choice {
-            self.dispatch(ctx, vec![Command::GuardChosen(choice)]);
+        if ctx.input(|input| input.key_pressed(Key::Escape)) {
+            close = true;
         }
+        if open_repository && !crate::platform::open_url(REPOSITORY) {
+            self.show_message("Could not open the repository link");
+        }
+        if close {
+            self.about_open = false;
+        }
+    }
+
+    fn handle_open_urls(&mut self, ctx: &egui::Context) {
+        let commands = ctx.output_mut(|output| std::mem::take(&mut output.commands));
+        let mut kept = Vec::with_capacity(commands.len());
+        for command in commands {
+            let egui::OutputCommand::OpenUrl(open) = command else {
+                kept.push(command);
+                continue;
+            };
+            if crate::platform::open_url(&open.url) {
+                continue;
+            }
+            if crate::platform::is_allowed_url(&open.url) {
+                self.show_message("Could not open link");
+            }
+        }
+        ctx.output_mut(|output| output.commands = kept);
     }
 
     fn show_toast(&mut self, ctx: &egui::Context) {
@@ -678,6 +863,8 @@ impl eframe::App for HexerApp {
         }
 
         self.apply_style(&ctx);
+        self.drain_instance(&ctx);
+        self.handle_dropped_files(&ctx);
         self.sync_title(&ctx);
         self.sync_editor_resources();
 
@@ -700,8 +887,10 @@ impl eframe::App for HexerApp {
         self.show_document(ui);
         self.dispatch(&ctx, deferred);
         self.handle_close_request(&ctx);
-        self.show_guard(&ctx);
+        self.check_external(&ctx);
+        self.show_about(&ctx);
         self.show_toast(&ctx);
+        self.handle_open_urls(&ctx);
 
         if self.frame_count == 0 {
             // eframe shows the window only after this frame has painted, so the

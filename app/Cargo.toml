@@ -29,8 +29,12 @@ egui = "0.37"
 egui_commonmark = { version = "0.26", default-features = false, features = [
     "pulldown_cmark",
 ] }
+interprocess = "2"
 pulldown-cmark = { version = "0.13", default-features = false }
 rfd = "0.16"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
 
 [dev-dependencies]
 egui_kittest = { version = "0.37", features = ["eframe"] }
