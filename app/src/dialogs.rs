@@ -11,6 +11,12 @@ pub trait Dialogs {
 
     fn save_as(&self, suggested_name: &str) -> Option<PathBuf>;
 
+    /// HTML Export destination. Export needs no new document state, so a
+    /// cancelled dialog simply returns to the app.
+    fn export_html(&self, _suggested_name: &str) -> Option<PathBuf> {
+        None
+    }
+
     /// Native Save / Don't Save / Cancel dialog. Closing it or pressing Esc
     /// is reported by rfd as anything but the two custom labels, i.e. Cancel.
     fn confirm_discard(&self, _title: &str) -> GuardChoice {
@@ -39,6 +45,14 @@ impl Dialogs for NativeDialogs {
         rfd::FileDialog::new()
             .add_filter("Markdown Document", &["md", "markdown", "mdown"])
             .set_title("Save Markdown Document")
+            .set_file_name(suggested_name)
+            .save_file()
+    }
+
+    fn export_html(&self, suggested_name: &str) -> Option<PathBuf> {
+        rfd::FileDialog::new()
+            .add_filter("HTML Document", &["html", "htm"])
+            .set_title("Export HTML")
             .set_file_name(suggested_name)
             .save_file()
     }

@@ -17,11 +17,12 @@ use egui::{
     ViewportCommand, WidgetInfo,
 };
 use egui_commonmark::CommonMarkViewer;
-use egui_extras::syntax_highlighting::{CodeTheme, TokenType, highlight};
+use egui_extras::syntax_highlighting::highlight;
 
 use crate::dialogs::{Dialogs, NativeDialogs};
 use crate::domain::{Command, DocumentId, Mode, Workspace};
 use crate::editor::{EditorResources, EditorSession};
+use crate::export::{self, ExportOptions};
 use crate::first_edit::FirstEditProbe;
 use crate::format::FormatAction;
 use crate::image::{ImageSource, NativeImageSource};
@@ -694,6 +695,21 @@ impl HexerApp {
                             None => Command::SaveDialogCancelled,
                         });
                     }
+                    crate::domain::Effect::ShowExportDialog { suggested_name } => {
+                        pending.push_back(match self.dialogs.export_html(&suggested_name) {
+                            Some(path) => Command::ExportPathChosen(self.files.canonicalize(&path)),
+                            None => Command::ExportCancelled,
+                        });
+                    }
+                    crate::domain::Effect::WriteExportFile { document_id, path } => {
+                        let name = display_name(&path);
+                        match self.write_export(document_id, &path, ctx) {
+                            Ok(()) => self.show_message(format!("Exported {name}")),
+                            Err(message) => {
+                                self.show_message(format!("Could not export {name}: {message}"))
+                            }
+                        }
+                    }
                     crate::domain::Effect::ShowToast(message) => self.show_message(message),
                     crate::domain::Effect::ShowGuard { title } => {
                         pending
@@ -1009,6 +1025,7 @@ impl HexerApp {
             || guard_open
             || self.workspace.external_modified_open()
             || self.workspace.save_dialog_open()
+            || self.workspace.export_dialog_open()
         {
             return;
         }
@@ -1029,6 +1046,31 @@ impl HexerApp {
                 }],
             );
         }
+    }
+
+    fn write_export(
+        &self,
+        document_id: DocumentId,
+        path: &Path,
+        ctx: &egui::Context,
+    ) -> Result<(), String> {
+        let Some(document) = self.workspace.document(document_id) else {
+            return Err("the Document is closed".to_owned());
+        };
+        let title = document.file_name();
+        let options = ExportOptions {
+            title: &title,
+            palette: self.palette,
+            font: self.settings.font,
+            text_size: self.settings.text_size,
+            scope: document.image_scope(),
+            images: self.images.as_ref(),
+            ctx,
+        };
+        let html = export::document(&document.content, &options);
+        self.files
+            .write_utf8(path, &html)
+            .map_err(|error| error.to_string())
     }
 
     fn handle_close_request(&mut self, ctx: &egui::Context) {
@@ -1210,6 +1252,9 @@ impl HexerApp {
                         }
                         if ui.button("Save As").clicked() {
                             commands.push(Command::SaveAs);
+                        }
+                        if ui.button("Export HTML").clicked() {
+                            commands.push(Command::ExportHtml);
                         }
                         if ui.button("Save").clicked() {
                             commands.push(Command::Save);
@@ -1559,7 +1604,11 @@ impl eframe::App for HexerApp {
         let (deferred, immediate): (Vec<_>, Vec<_>) = commands.into_iter().partition(|command| {
             matches!(
                 command,
-                Command::Save | Command::SaveAs | Command::CloseTab(_) | Command::GuardChosen(_)
+                Command::Save
+                    | Command::SaveAs
+                    | Command::ExportHtml
+                    | Command::CloseTab(_)
+                    | Command::GuardChosen(_)
             )
         });
         self.dispatch(&ctx, immediate);
@@ -1771,15 +1820,10 @@ fn code_sentinel_index(html: &str) -> Option<usize> {
         .ok()
 }
 
-fn code_theme(style: &egui::Style, palette: &Palette) -> CodeTheme {
-    let mut theme = CodeTheme::light(egui::TextStyle::Monospace.resolve(style).size);
-    theme.format_mut(TokenType::Comment).color = palette.syntax_comment;
-    theme.format_mut(TokenType::Keyword).color = palette.syntax_keyword;
-    theme.format_mut(TokenType::StringLiteral).color = palette.syntax_string;
-    theme.format_mut(TokenType::Literal).color = palette.syntax_number;
-    theme.format_mut(TokenType::Function).color = palette.syntax_function;
-    theme.format_mut(TokenType::Punctuation).color = palette.syntax_punctuation;
-    theme
+fn display_name(path: &Path) -> String {
+    path.file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_else(|| path.to_string_lossy().into_owned())
 }
 
 fn code_layout_job(
@@ -1791,7 +1835,7 @@ fn code_layout_job(
     highlight(
         ctx,
         style,
-        &code_theme(style, palette),
+        &export::code_theme(style, palette),
         &code.text,
         code.language.as_deref().unwrap_or(""),
     )

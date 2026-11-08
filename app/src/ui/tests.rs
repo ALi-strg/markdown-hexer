@@ -55,6 +55,8 @@ impl FileSystem for MemoryFiles {
 #[derive(Clone, Default)]
 struct FakeDialogs {
     save_next: Rc<RefCell<Option<PathBuf>>>,
+    export_next: Rc<RefCell<Option<PathBuf>>>,
+    export_names: Rc<RefCell<Vec<String>>>,
     open_next: Rc<RefCell<Option<PathBuf>>>,
     guard_choices: Rc<RefCell<std::collections::VecDeque<GuardChoice>>>,
     guard_calls: Rc<Cell<usize>>,
@@ -77,6 +79,13 @@ impl FakeDialogs {
         }
     }
 
+    fn exporting(path: impl Into<PathBuf>) -> Self {
+        Self {
+            export_next: Rc::new(RefCell::new(Some(path.into()))),
+            ..Self::default()
+        }
+    }
+
     fn guard_choices(choices: impl IntoIterator<Item = GuardChoice>) -> Self {
         Self {
             guard_choices: Rc::new(RefCell::new(choices.into_iter().collect())),
@@ -95,6 +104,13 @@ impl FakeDialogs {
 impl Dialogs for FakeDialogs {
     fn save_as(&self, _suggested_name: &str) -> Option<PathBuf> {
         self.save_next.borrow_mut().take()
+    }
+
+    fn export_html(&self, suggested_name: &str) -> Option<PathBuf> {
+        self.export_names
+            .borrow_mut()
+            .push(suggested_name.to_owned());
+        self.export_next.borrow_mut().take()
     }
 
     fn open(&self) -> Option<PathBuf> {
@@ -1363,7 +1379,8 @@ fn dropped_files_open_in_order_and_last_is_active() {
 
 #[test]
 fn code_theme_uses_palette_syntax_colors() {
-    let theme = code_theme(&egui::Style::default(), &Palette::LIGHT);
+    let theme = crate::export::code_theme(&egui::Style::default(), &Palette::LIGHT);
+    use egui_extras::syntax_highlighting::TokenType;
 
     assert_eq!(
         theme.format(TokenType::Keyword).color,
@@ -2197,4 +2214,160 @@ fn every_theme_drives_the_chrome_tokens_it_resolves_to() {
         assert_eq!(visuals.selection.bg_fill, palette.selection, "{theme:?}");
         assert_eq!(visuals.selection.stroke.color, palette.focus, "{theme:?}");
     }
+}
+
+fn export_path() -> PathBuf {
+    if cfg!(windows) {
+        PathBuf::from(r"D:\docs\notes.html")
+    } else {
+        PathBuf::from("/docs/notes.html")
+    }
+}
+
+fn css_hex(color: egui::Color32) -> String {
+    format!("#{:02x}{:02x}{:02x}", color.r(), color.g(), color.b())
+}
+
+#[test]
+fn export_in_preview_writes_standalone_html_without_touching_the_document() {
+    let files = MemoryFiles::default();
+    let dialogs = FakeDialogs::exporting(export_path());
+    let names = Rc::clone(&dialogs.export_names);
+    let guard_calls = Rc::clone(&dialogs.guard_calls);
+    let mut h = harness(file_app(
+        notes_path(),
+        "# Notes\n\n**bold** [x](javascript:alert(1))",
+        &files,
+        dialogs,
+    ));
+    h.step();
+
+    h.get_by_label("Export HTML").click();
+    h.step();
+    h.step();
+
+    assert_eq!(names.borrow().as_slice(), ["notes.html"]);
+    let html = files.written(export_path()).expect("exported file");
+    assert!(html.starts_with("<!DOCTYPE html>"));
+    assert!(html.contains("<h1>Notes</h1>"));
+    assert!(html.contains("<strong>bold</strong>"));
+    assert!(!html.contains("javascript:"));
+    assert!(!html.contains("<script"));
+    let toast = h.state().toast.as_ref().expect("export toast");
+    assert_eq!(toast.message, "Exported notes.html");
+    assert!(!h.state().workspace.export_dialog_open());
+    let document = h.state().workspace.active_document().unwrap();
+    assert!(!document.is_dirty());
+    assert_eq!(document.mode, Mode::Preview);
+    assert_eq!(document.path.as_deref(), Some(notes_path().as_path()));
+    assert!(h.state().workspace.guard().is_none());
+    assert_eq!(guard_calls.get(), 0);
+}
+
+#[test]
+fn export_in_edit_mode_uses_unsaved_content_and_keeps_it_dirty() {
+    let files = MemoryFiles::default();
+    let dialogs = FakeDialogs::exporting(export_path());
+    let names = Rc::clone(&dialogs.export_names);
+    let guard_calls = Rc::clone(&dialogs.guard_calls);
+    let mut h = harness(untitled_app(&files, dialogs));
+    h.run_steps(1);
+
+    h.input_mut()
+        .events
+        .push(egui::Event::Text("unsaved new".to_owned()));
+    h.step();
+
+    h.get_by_label("Export HTML").click();
+    h.step();
+    h.step();
+
+    assert_eq!(names.borrow().as_slice(), ["Untitled.html"]);
+    let html = files.written(export_path()).expect("exported file");
+    assert!(html.contains("unsaved new"));
+    let document = h.state().workspace.active_document().unwrap();
+    assert!(document.is_dirty(), "export must not save the document");
+    assert_eq!(document.mode, Mode::Edit, "export must not change the Mode");
+    assert!(document.path.is_none(), "export must not attach a path");
+    assert!(h.state().workspace.guard().is_none());
+    assert_eq!(guard_calls.get(), 0);
+}
+
+#[test]
+fn cancelled_export_writes_nothing_and_shows_no_toast() {
+    let files = MemoryFiles::default();
+    let mut h = harness(file_app(
+        notes_path(),
+        "# Notes",
+        &files,
+        FakeDialogs::default(),
+    ));
+    h.step();
+
+    h.get_by_label("Export HTML").click();
+    h.step();
+    h.step();
+
+    assert!(files.written(export_path()).is_none());
+    assert!(h.state().toast.is_none());
+    assert!(!h.state().workspace.export_dialog_open());
+    assert!(!h.state().workspace.active_document().unwrap().is_dirty());
+    assert!(h.state().workspace.guard().is_none());
+}
+
+#[test]
+fn failed_export_shows_a_toast_and_keeps_the_document() {
+    let files = MemoryFiles::default();
+    files.fail_writes.set(true);
+    let dialogs = FakeDialogs::exporting(export_path());
+    let guard_calls = Rc::clone(&dialogs.guard_calls);
+    let mut h = harness(file_app(notes_path(), "saved", &files, dialogs));
+    let document_id = h.state().workspace.active_document().unwrap().id;
+    h.state_mut().workspace.apply(Command::ContentChanged {
+        document_id,
+        content: "unsaved".to_owned(),
+    });
+    h.step();
+
+    h.get_by_label("Export HTML").click();
+    h.step();
+    h.step();
+
+    assert!(files.written(export_path()).is_none());
+    let toast = h.state().toast.as_ref().expect("failure toast");
+    assert_eq!(toast.message, "Could not export notes.html: disk full");
+    let document = h.state().workspace.active_document().unwrap();
+    assert!(document.is_dirty());
+    assert_eq!(document.mode, Mode::Preview);
+    assert!(h.state().workspace.guard().is_none());
+    assert_eq!(guard_calls.get(), 0);
+}
+
+#[test]
+fn exported_css_reflects_the_current_theme_font_and_text_size() {
+    let files = MemoryFiles::default();
+    let settings = Settings {
+        theme: Theme::Dark,
+        font: FontChoice::Serif,
+        text_size: TextSize::Large,
+        ..Settings::default()
+    };
+    let app = file_app(
+        notes_path(),
+        "text",
+        &files,
+        FakeDialogs::exporting(export_path()),
+    )
+    .with_settings(settings, None);
+    let mut h = harness(app);
+    h.step();
+
+    h.get_by_label("Export HTML").click();
+    h.step();
+    h.step();
+
+    let html = files.written(export_path()).expect("exported file");
+    assert!(html.contains(&format!("--bg: {}", css_hex(Palette::DARK.bg))));
+    assert!(html.contains("font-family: Georgia"));
+    assert!(html.contains("font-size: 17px"));
 }
