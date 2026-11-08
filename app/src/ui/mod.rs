@@ -5,7 +5,8 @@ pub use palette::Palette;
 use std::collections::{HashMap, VecDeque};
 use std::time::{Duration, Instant};
 
-use egui::text::LayoutJob;
+use egui::text::{CCursor, CCursorRange, LayoutJob};
+use egui::widgets::text_edit::TextEditState;
 use egui::{
     Align2, CentralPanel, Frame, Id, Key, Label, Margin, Modal, Modifiers, Panel, RichText,
     ScrollArea, Sense, Stroke, TextBuffer, TextEdit, TextWrapMode, Ui, ViewportCommand,
@@ -17,10 +18,12 @@ use crate::dialogs::{Dialogs, NativeDialogs};
 use crate::domain::{Command, DocumentId, Mode, Workspace};
 use crate::editor::{EditorResources, EditorSession};
 use crate::first_edit::FirstEditProbe;
+use crate::format::FormatAction;
 use crate::platform::instance::InstanceServer;
 use crate::platform::{FileSystem, NativeFileSystem};
 use crate::preview::{self, FencedCode, PreparedPreview};
 use crate::startup::{Startup, StartupTimer};
+use std::ops::Range;
 
 const REPOSITORY: &str = "https://github.com/ALi-strg/markdown-hexer";
 
@@ -33,6 +36,7 @@ pub struct HexerApp {
     editor: Option<EditorResources>,
     editor_sessions: HashMap<DocumentId, EditorSession>,
     focus_editor: bool,
+    pending_selection: Option<(DocumentId, Range<usize>)>,
     toast: Option<Toast>,
     pending_toast: Option<String>,
     style_applied: bool,
@@ -59,6 +63,10 @@ struct Toast {
 
 fn preview_scroll_id(document_id: DocumentId) -> Id {
     Id::unique(("preview_scroll", document_id))
+}
+
+fn editor_id(document_id: DocumentId) -> Id {
+    Id::unique(("markdown_editor", document_id))
 }
 
 impl HexerApp {
@@ -96,6 +104,7 @@ impl HexerApp {
             editor: None,
             editor_sessions: HashMap::new(),
             focus_editor,
+            pending_selection: None,
             toast: None,
             pending_toast: startup.notice,
             style_applied: false,
@@ -328,6 +337,10 @@ impl HexerApp {
             return Vec::new();
         }
 
+        let edit = self
+            .workspace
+            .active_document()
+            .is_some_and(|document| document.mode == Mode::Edit);
         let (
             save_as,
             save,
@@ -341,6 +354,7 @@ impl HexerApp {
             move_left,
             move_right,
             about,
+            format,
         ) = ctx.input_mut(|input| {
             let save_as = input.consume_key(Modifiers::COMMAND.plus(Modifiers::SHIFT), Key::S);
             let save = input.consume_key(Modifiers::COMMAND, Key::S);
@@ -350,6 +364,17 @@ impl HexerApp {
             let open = input.consume_key(Modifiers::COMMAND, Key::O);
             let close = input.consume_key(Modifiers::COMMAND, Key::W);
             let about = input.consume_key(Modifiers::COMMAND, Key::Slash);
+            let format = if edit {
+                if input.consume_key(Modifiers::COMMAND, Key::B) {
+                    Some(FormatAction::Bold)
+                } else if input.consume_key(Modifiers::COMMAND, Key::I) {
+                    Some(FormatAction::Italic)
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
             // Tab cycling is Ctrl-only, never Cmd.
             let previous_tab = input.consume_key(Modifiers::CTRL.plus(Modifiers::SHIFT), Key::Tab);
             let next_tab = input.consume_key(Modifiers::CTRL, Key::Tab);
@@ -370,11 +395,15 @@ impl HexerApp {
                 move_left,
                 move_right,
                 about,
+                format,
             )
         });
 
         if about {
             self.about_open = true;
+        }
+        if let Some(action) = format {
+            self.apply_format(ctx, action);
         }
 
         let active = self.workspace.active_document().map(|document| document.id);
@@ -426,6 +455,53 @@ impl HexerApp {
             }
         }
         commands
+    }
+
+    /// Format the saved editor selection. This runs before the editor paints,
+    /// while the last frame's selection is still intact and one undo point can
+    /// hold both sides of the change.
+    fn apply_format(&mut self, ctx: &egui::Context, action: FormatAction) {
+        let Some(document) = self.workspace.active_document() else {
+            return;
+        };
+        if document.mode != Mode::Edit {
+            return;
+        }
+        let document_id = document.id;
+        let text = document.content.clone();
+        let editor_id = editor_id(document_id);
+        let Some(mut state) = TextEditState::load(ctx, editor_id) else {
+            return;
+        };
+        let Some(cursor_range) = state.cursor.char_range() else {
+            return;
+        };
+        let selection = cursor_range.as_sorted_char_range();
+        let selection = selection.start.0..selection.end.0;
+        let formatted = action.apply(&text, selection.clone());
+        if formatted.text == text && formatted.selection == selection {
+            return;
+        }
+
+        let range = CCursorRange::two(
+            CCursor::new(formatted.selection.start),
+            CCursor::new(formatted.selection.end),
+        );
+        let mut undoer = state.undoer();
+        undoer.add_undo(&(cursor_range, text));
+        undoer.add_undo(&(range, formatted.text.clone()));
+        state.set_undoer(undoer);
+        state.cursor.set_char_range(Some(range));
+        state.store(ctx, editor_id);
+
+        self.pending_selection = Some((document_id, formatted.selection.clone()));
+        self.dispatch(
+            ctx,
+            vec![Command::ContentChanged {
+                document_id,
+                content: formatted.text,
+            }],
+        );
     }
 
     fn check_external(&mut self, ctx: &egui::Context) {
@@ -562,6 +638,7 @@ impl HexerApp {
         };
         let mode = document.mode;
         let mut commands = Vec::new();
+        let mut format = None;
 
         Panel::top("toolbar")
             .frame(
@@ -587,6 +664,21 @@ impl HexerApp {
                     if ui.selectable_label(mode == Mode::Edit, "Edit").clicked() {
                         commands.push(Command::SetMode(Mode::Edit));
                     }
+                    if mode == Mode::Edit {
+                        ui.separator();
+                        for (label, action) in [
+                            ("Bold", FormatAction::Bold),
+                            ("Italic", FormatAction::Italic),
+                            ("Heading", FormatAction::Heading),
+                            ("List", FormatAction::List),
+                            ("Link", FormatAction::Link),
+                            ("Code", FormatAction::Code),
+                        ] {
+                            if ui.button(label).clicked() {
+                                format = Some(action);
+                            }
+                        }
+                    }
 
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if ui.button("About").clicked() {
@@ -601,6 +693,9 @@ impl HexerApp {
                     });
                 });
             });
+        if let Some(action) = format {
+            self.apply_format(ui.ctx(), action);
+        }
         commands
     }
 
@@ -632,6 +727,13 @@ impl HexerApp {
         let mut content = document.content.clone();
 
         let focus = std::mem::take(&mut self.focus_editor);
+        let pending_selection = match self.pending_selection.take() {
+            Some((id, range)) if id == document_id => Some(range),
+            other => {
+                self.pending_selection = other;
+                None
+            }
+        };
         let changed = {
             let Some(editor) = self.editor.as_ref() else {
                 return;
@@ -655,7 +757,7 @@ impl HexerApp {
                 .show(ui, |ui| {
                     let min_size = ui.available_size();
                     let output = TextEdit::multiline(&mut content)
-                        .id(Id::unique(("markdown_editor", document_id)))
+                        .id(editor_id(document_id))
                         .font(font)
                         .desired_width(f32::INFINITY)
                         .desired_rows(1)
@@ -668,6 +770,18 @@ impl HexerApp {
                         .hint_text("Write Markdown…")
                         .layouter(&mut layouter)
                         .show(ui);
+                    if let Some(range) = pending_selection {
+                        if let Some(mut state) =
+                            TextEditState::load(ui.ctx(), editor_id(document_id))
+                        {
+                            state.cursor.set_char_range(Some(CCursorRange::two(
+                                CCursor::new(range.start),
+                                CCursor::new(range.end),
+                            )));
+                            state.store(ui.ctx(), editor_id(document_id));
+                        }
+                        output.response.request_focus();
+                    }
                     if focus {
                         output.response.request_focus();
                     }

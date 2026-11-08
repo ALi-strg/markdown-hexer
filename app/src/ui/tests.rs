@@ -1219,3 +1219,179 @@ fn malformed_markdown_renders_without_panicking() {
 
     h.get_by_label_contains("Still here.");
 }
+
+#[test]
+fn formatting_buttons_are_visible_only_in_edit() {
+    let files = MemoryFiles::default();
+    let mut h = harness(untitled_app(&files, FakeDialogs::default()));
+    h.run_steps(1);
+
+    for label in ["Bold", "Italic", "Heading", "List", "Link", "Code"] {
+        h.get_by_label(label);
+    }
+
+    h.get_by_label("Preview").click();
+    h.run_steps(2);
+    assert_eq!(
+        h.state().workspace.active_document().map(|d| d.mode),
+        Some(Mode::Preview)
+    );
+    for label in ["Bold", "Italic", "Heading", "List", "Link", "Code"] {
+        assert!(h.query_by_label(label).is_none(), "{label} in Preview");
+    }
+}
+
+#[test]
+fn cmd_b_and_cmd_i_format_the_selection_once() {
+    let files = MemoryFiles::default();
+    let mut h = harness(untitled_app(&files, FakeDialogs::default()));
+    h.run_steps(1);
+
+    h.input_mut()
+        .events
+        .push(egui::Event::Text("hello".to_owned()));
+    h.step();
+    h.key_press_modifiers(Modifiers::COMMAND, Key::A);
+    h.step();
+
+    h.key_press_modifiers(Modifiers::COMMAND, Key::B);
+    h.step();
+    assert_eq!(document_content(&h), "**hello**");
+
+    h.key_press_modifiers(Modifiers::COMMAND, Key::I);
+    h.step();
+    assert_eq!(document_content(&h), "_**hello**_");
+}
+
+#[test]
+fn cmd_b_and_cmd_i_do_nothing_in_preview() {
+    let files = MemoryFiles::default();
+    let mut h = harness(file_app(
+        notes_path(),
+        "hello",
+        &files,
+        FakeDialogs::default(),
+    ));
+    h.run_steps(1);
+
+    h.key_press_modifiers(Modifiers::COMMAND, Key::B);
+    h.step();
+    h.key_press_modifiers(Modifiers::COMMAND, Key::I);
+    h.step();
+
+    assert_eq!(document_content(&h), "hello");
+    assert_eq!(
+        h.state().workspace.active_document().map(|d| d.mode),
+        Some(Mode::Preview)
+    );
+}
+
+#[test]
+fn toolbar_bold_is_one_undo_step() {
+    let files = MemoryFiles::default();
+    let mut h = harness(untitled_app(&files, FakeDialogs::default()));
+    h.run_steps(1);
+
+    h.input_mut()
+        .events
+        .push(egui::Event::Text("hello".to_owned()));
+    h.step();
+    h.key_press_modifiers(Modifiers::COMMAND, Key::A);
+    h.step();
+
+    h.get_by_label("Bold").click();
+    h.step();
+    assert_eq!(document_content(&h), "**hello**");
+
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+    h.step();
+    assert_eq!(document_content(&h), "hello");
+}
+
+#[test]
+fn formatting_preserves_the_selection_for_typing() {
+    let files = MemoryFiles::default();
+    let mut h = harness(untitled_app(&files, FakeDialogs::default()));
+    h.run_steps(1);
+
+    h.input_mut()
+        .events
+        .push(egui::Event::Text("hello".to_owned()));
+    h.step();
+    h.key_press_modifiers(Modifiers::COMMAND, Key::A);
+    h.step();
+
+    h.get_by_label("Heading").click();
+    h.step();
+    assert_eq!(document_content(&h), "## hello");
+
+    h.input_mut().events.push(egui::Event::Text("X".to_owned()));
+    h.step();
+    assert_eq!(document_content(&h), "## X");
+}
+
+#[test]
+fn link_keeps_the_label_and_selects_the_url() {
+    let files = MemoryFiles::default();
+    let mut h = harness(untitled_app(&files, FakeDialogs::default()));
+    h.run_steps(1);
+
+    h.input_mut()
+        .events
+        .push(egui::Event::Text("hello".to_owned()));
+    h.step();
+    h.key_press_modifiers(Modifiers::COMMAND, Key::A);
+    h.step();
+
+    h.get_by_label("Link").click();
+    h.step();
+    assert_eq!(document_content(&h), "[hello](url)");
+
+    h.input_mut()
+        .events
+        .push(egui::Event::Text("https://example.com".to_owned()));
+    h.step();
+    assert_eq!(document_content(&h), "[hello](https://example.com)");
+}
+
+#[test]
+fn empty_selection_inserts_bold_markers_with_the_caret_between() {
+    let files = MemoryFiles::default();
+    let mut h = harness(untitled_app(&files, FakeDialogs::default()));
+    h.run_steps(1);
+
+    h.get_by_label("Bold").click();
+    h.step();
+    assert_eq!(document_content(&h), "****");
+
+    h.input_mut().events.push(egui::Event::Text("x".to_owned()));
+    h.step();
+    assert_eq!(document_content(&h), "**x**");
+}
+
+#[test]
+fn formatting_then_typing_undoes_one_change_at_a_time() {
+    let files = MemoryFiles::default();
+    let mut h = harness(untitled_app(&files, FakeDialogs::default()));
+    h.run_steps(1);
+
+    h.input_mut()
+        .events
+        .push(egui::Event::Text("hello".to_owned()));
+    h.step();
+    h.key_press_modifiers(Modifiers::COMMAND, Key::A);
+    h.step();
+    h.get_by_label("Bold").click();
+    h.step();
+    h.input_mut().events.push(egui::Event::Text("X".to_owned()));
+    h.step();
+    assert_eq!(document_content(&h), "X");
+
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+    h.step();
+    assert_eq!(document_content(&h), "**hello**");
+
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+    h.step();
+    assert_eq!(document_content(&h), "hello");
+}
