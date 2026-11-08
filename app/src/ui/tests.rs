@@ -1,5 +1,5 @@
 use super::*;
-use crate::domain::{Command, Mode};
+use crate::domain::{Command, DocumentId, Mode};
 use crate::platform::{ReadError, WriteError};
 use crate::startup;
 use egui::accesskit::Role;
@@ -53,20 +53,33 @@ impl FileSystem for MemoryFiles {
 
 #[derive(Clone, Default)]
 struct FakeDialogs {
-    next: Rc<RefCell<Option<PathBuf>>>,
+    save_next: Rc<RefCell<Option<PathBuf>>>,
+    open_next: Rc<RefCell<Option<PathBuf>>>,
 }
 
 impl FakeDialogs {
     fn returning(path: impl Into<PathBuf>) -> Self {
         Self {
-            next: Rc::new(RefCell::new(Some(path.into()))),
+            save_next: Rc::new(RefCell::new(Some(path.into()))),
+            ..Self::default()
+        }
+    }
+
+    fn opening(path: impl Into<PathBuf>) -> Self {
+        Self {
+            open_next: Rc::new(RefCell::new(Some(path.into()))),
+            ..Self::default()
         }
     }
 }
 
 impl Dialogs for FakeDialogs {
     fn save_as(&self, _suggested_name: &str) -> Option<PathBuf> {
-        self.next.borrow_mut().take()
+        self.save_next.borrow_mut().take()
+    }
+
+    fn open(&self) -> Option<PathBuf> {
+        self.open_next.borrow_mut().take()
     }
 }
 
@@ -489,4 +502,332 @@ fn clean_close_does_not_open_the_guard() {
     h.step();
 
     assert!(h.state().workspace.guard().is_none());
+}
+
+fn other_path() -> PathBuf {
+    if cfg!(windows) {
+        PathBuf::from(r"D:\docs\other.md")
+    } else {
+        PathBuf::from("/docs/other.md")
+    }
+}
+
+fn add_file(h: &mut Harness<'static, HexerApp>, path: impl Into<PathBuf>, content: &str) {
+    h.state_mut().workspace.apply(Command::FileLoaded {
+        path: path.into(),
+        content: content.to_owned(),
+    });
+}
+
+fn workspace_ids(h: &Harness<'static, HexerApp>) -> Vec<DocumentId> {
+    h.state()
+        .workspace
+        .tabs()
+        .iter()
+        .map(|tab| tab.document.id)
+        .collect()
+}
+
+#[test]
+fn new_button_inserts_after_active_and_focuses_the_editor() {
+    let files = MemoryFiles::default();
+    let mut h = harness(untitled_app(&files, FakeDialogs::default()));
+    h.run_steps(1);
+
+    h.get_by_label("New").click();
+    h.step();
+    h.step();
+
+    assert_eq!(h.state().workspace.tabs().len(), 2);
+    let document = h.state().workspace.active_document().unwrap();
+    assert_eq!(document.untitled_number, Some(2));
+    assert_eq!(document.mode, Mode::Edit);
+    h.get_by_label("Untitled.md");
+    h.get_by_label("Untitled 2.md");
+
+    h.input_mut()
+        .events
+        .push(egui::Event::Text("second tab".to_owned()));
+    h.step();
+    assert_eq!(document_content(&h), "second tab");
+}
+
+#[test]
+fn open_button_replaces_a_sole_empty_untitled() {
+    let files = MemoryFiles::default();
+    files.insert(notes_path(), "# Notes");
+    let mut h = harness(untitled_app(&files, FakeDialogs::opening(notes_path())));
+    h.run_steps(1);
+
+    h.get_by_label("Open").click();
+    h.step();
+    h.step();
+
+    assert_eq!(h.state().workspace.tabs().len(), 1);
+    let document = h.state().workspace.active_document().unwrap();
+    assert_eq!(document.path.as_deref(), Some(notes_path().as_path()));
+    assert_eq!(document.content, "# Notes");
+    assert_eq!(document.mode, Mode::Preview);
+    h.get_by_label("notes.md");
+}
+
+#[test]
+fn cmd_o_opens_a_file_after_the_active_tab() {
+    let files = MemoryFiles::default();
+    files.insert(other_path(), "# Other");
+    let mut h = harness(file_app(
+        notes_path(),
+        "# Notes",
+        &files,
+        FakeDialogs::opening(other_path()),
+    ));
+    h.step();
+
+    h.key_press_modifiers(Modifiers::COMMAND, Key::O);
+    h.step();
+    h.step();
+
+    assert_eq!(h.state().workspace.tabs().len(), 2);
+    let document = h.state().workspace.active_document().unwrap();
+    assert_eq!(document.path.as_deref(), Some(other_path().as_path()));
+    assert_eq!(document.content, "# Other");
+    h.get_by_label("notes.md");
+    h.get_by_label("other.md");
+}
+
+#[test]
+fn tab_bar_shows_every_tab_dirty_marker_and_close_button_in_both_modes() {
+    let files = MemoryFiles::default();
+    let mut h = harness(file_app(
+        notes_path(),
+        "# Notes",
+        &files,
+        FakeDialogs::default(),
+    ));
+    h.step();
+    add_file(&mut h, other_path(), "# Other");
+    h.step();
+
+    let notes = workspace_ids(&h)[0];
+    h.state_mut().workspace.apply(Command::ContentChanged {
+        document_id: notes,
+        content: "# Dirty".to_owned(),
+    });
+    h.step();
+
+    h.get_by_label("notes.md *");
+    h.get_by_label("other.md");
+    assert_eq!(h.get_all_by_label("×").count(), 2);
+
+    h.get_by_label("Edit").click();
+    h.step();
+    h.get_by_label("notes.md *");
+    h.get_by_label("other.md");
+}
+
+#[test]
+fn same_basenames_get_parent_folders_in_their_tab_labels() {
+    let files = MemoryFiles::default();
+    let mut h = harness(file_app(
+        "left/notes.md",
+        "# Left",
+        &files,
+        FakeDialogs::default(),
+    ));
+    h.step();
+    add_file(&mut h, "right/notes.md", "# Right");
+    h.step();
+
+    h.get_by_label("notes.md — left");
+    h.get_by_label("notes.md — right");
+}
+
+#[test]
+fn each_tab_keeps_its_mode_across_switches() {
+    let files = MemoryFiles::default();
+    let mut h = harness(file_app(
+        notes_path(),
+        "# Notes",
+        &files,
+        FakeDialogs::default(),
+    ));
+    h.step();
+
+    h.get_by_label("New").click();
+    h.step();
+    h.step();
+    assert_eq!(
+        h.state().workspace.active_document().map(|d| d.mode),
+        Some(Mode::Edit)
+    );
+
+    h.get_by_label("notes.md").click();
+    h.step();
+    h.step();
+    assert_eq!(
+        h.state().workspace.active_document().map(|d| d.mode),
+        Some(Mode::Preview)
+    );
+
+    h.get_by_label("Untitled.md").click();
+    h.step();
+    h.step();
+    assert_eq!(
+        h.state().workspace.active_document().map(|d| d.mode),
+        Some(Mode::Edit)
+    );
+}
+
+#[test]
+fn cursor_and_undo_survive_switching_away_and_back() {
+    let files = MemoryFiles::default();
+    let mut h = harness(untitled_app(&files, FakeDialogs::default()));
+    h.run_steps(1);
+
+    h.input_mut()
+        .events
+        .push(egui::Event::Text("abc".to_owned()));
+    h.step();
+    h.key_press(Key::ArrowLeft);
+    h.step();
+
+    h.key_press_modifiers(Modifiers::COMMAND, Key::N);
+    h.step();
+    h.step();
+    h.input_mut().events.push(egui::Event::Text("x".to_owned()));
+    h.step();
+    assert_eq!(document_content(&h), "x");
+
+    h.get_by_label("Untitled.md *").click();
+    h.step();
+    h.step();
+    h.input_mut().events.push(egui::Event::Text("Z".to_owned()));
+    h.step();
+    assert_eq!(document_content(&h), "abZc");
+
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+    h.step();
+    assert_eq!(document_content(&h), "abc");
+}
+
+#[test]
+fn preview_scroll_ids_are_per_document() {
+    assert_eq!(preview_scroll_id(7), preview_scroll_id(7));
+    assert_ne!(preview_scroll_id(7), preview_scroll_id(8));
+}
+
+#[test]
+fn save_shortcut_uses_editor_content_from_the_same_frame() {
+    let files = MemoryFiles::default();
+    let mut h = harness(untitled_app(&files, FakeDialogs::returning(notes_path())));
+    h.run_steps(1);
+
+    h.input_mut()
+        .events
+        .push(egui::Event::Text("typed".to_owned()));
+    h.input_mut().events.push(egui::Event::Key {
+        key: Key::S,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: Modifiers::COMMAND,
+    });
+    h.step();
+    h.step();
+
+    assert_eq!(files.written(notes_path()).as_deref(), Some("typed"));
+}
+
+#[test]
+fn keyboard_reorder_moves_the_active_tab() {
+    let files = MemoryFiles::default();
+    let mut h = harness(file_app("a.md", "a", &files, FakeDialogs::default()));
+    add_file(&mut h, "b.md", "b");
+    add_file(&mut h, "c.md", "c");
+    h.step();
+
+    let ids = workspace_ids(&h);
+    h.state_mut().workspace.apply(Command::ActivateTab(ids[1]));
+    h.step();
+
+    h.key_press_modifiers(Modifiers::COMMAND.plus(Modifiers::SHIFT), Key::PageUp);
+    h.step();
+
+    assert_eq!(workspace_ids(&h), vec![ids[1], ids[0], ids[2]]);
+    assert_eq!(h.state().workspace.active_document().unwrap().id, ids[1]);
+}
+
+#[test]
+fn dragging_a_tab_reorders_it() {
+    let files = MemoryFiles::default();
+    let mut h = harness(file_app("a.md", "a", &files, FakeDialogs::default()));
+    add_file(&mut h, "b.md", "b");
+    add_file(&mut h, "c.md", "c");
+    h.step();
+
+    let ids = workspace_ids(&h);
+    let from = h.get_by_label("a.md").rect().center();
+    let to = h.get_by_label("c.md").rect().center();
+    h.drag_at(from);
+    h.step();
+    h.hover_at(to);
+    h.step();
+    h.drop_at(to);
+    h.step();
+
+    assert_eq!(workspace_ids(&h), vec![ids[1], ids[2], ids[0]]);
+    h.get_by_label("a.md");
+}
+
+#[test]
+fn quit_guard_shows_each_dirty_tab_in_order() {
+    let files = MemoryFiles::default();
+    let mut h = harness(file_app(
+        notes_path(),
+        "# Notes",
+        &files,
+        FakeDialogs::default(),
+    ));
+    h.step();
+    add_file(&mut h, other_path(), "# Other");
+    let ids = workspace_ids(&h);
+    h.state_mut().workspace.apply(Command::ContentChanged {
+        document_id: ids[0],
+        content: "# Dirty notes".to_owned(),
+    });
+    h.state_mut().workspace.apply(Command::ContentChanged {
+        document_id: ids[1],
+        content: "# Dirty other".to_owned(),
+    });
+    h.state_mut().workspace.apply(Command::WindowCloseRequested);
+    h.step();
+    h.step();
+
+    h.get_by_label("Save changes to notes.md *?");
+    h.get_by_label("Don't Save").click();
+    h.step();
+    h.step();
+    h.get_by_label("Save changes to other.md *?");
+    h.get_by_label("Don't Save").click();
+    h.step();
+
+    assert!(h.state().allow_close);
+    assert!(h.state().workspace.guard().is_none());
+}
+
+#[test]
+fn tab_close_button_closes_the_last_tab_and_the_window() {
+    let files = MemoryFiles::default();
+    let mut h = harness(file_app(
+        notes_path(),
+        "# Notes",
+        &files,
+        FakeDialogs::default(),
+    ));
+    h.step();
+
+    h.get_by_label("×").click();
+    h.step();
+
+    assert!(h.state().allow_close);
 }

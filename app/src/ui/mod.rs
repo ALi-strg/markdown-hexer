@@ -2,12 +2,12 @@ mod palette;
 
 pub use palette::Palette;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::time::{Duration, Instant};
 
 use egui::{
     Align2, CentralPanel, Frame, Id, Key, Label, Margin, Modal, Modifiers, Panel, RichText,
-    ScrollArea, Stroke, TextBuffer, TextEdit, Ui, ViewportCommand,
+    ScrollArea, Sense, Stroke, TextBuffer, TextEdit, Ui, ViewportCommand,
 };
 use egui_commonmark::CommonMarkViewer;
 
@@ -43,6 +43,10 @@ pub struct HexerApp {
 struct Toast {
     message: String,
     expires_at: Instant,
+}
+
+fn preview_scroll_id(document_id: DocumentId) -> Id {
+    Id::unique(("preview_scroll", document_id))
 }
 
 impl HexerApp {
@@ -160,24 +164,40 @@ impl HexerApp {
     }
 
     fn dispatch(&mut self, ctx: &egui::Context, commands: Vec<Command>) {
-        let mut pending = commands;
-        while let Some(command) = pending.pop() {
+        let focus_after = commands.iter().any(|command| {
+            matches!(
+                command,
+                Command::NewUntitled
+                    | Command::ActivateTab(_)
+                    | Command::SetMode(Mode::Edit)
+                    | Command::ToggleMode
+                    | Command::CycleTab(_)
+            )
+        });
+        let mut pending: VecDeque<Command> = commands.into();
+        while let Some(command) = pending.pop_front() {
             for effect in self.workspace.apply(command) {
                 match effect {
                     crate::domain::Effect::ReadFile(path) => {
-                        pending.push(match self.files.read_utf8(&path) {
+                        pending.push_back(match self.files.read_utf8(&path) {
                             Ok(content) => Command::FileLoaded { path, content },
                             Err(error) => Command::FileLoadFailed { path, error },
                         });
                     }
                     crate::domain::Effect::WriteFile { path, content } => {
-                        pending.push(match self.files.write_utf8(&path, &content) {
+                        pending.push_back(match self.files.write_utf8(&path, &content) {
                             Ok(()) => Command::WriteSucceeded,
                             Err(error) => Command::WriteFailed(error.to_string()),
                         });
                     }
+                    crate::domain::Effect::ShowOpenDialog => {
+                        if let Some(path) = self.dialogs.open() {
+                            let path = self.files.canonicalize(&path);
+                            pending.push_back(Command::OpenPath(path));
+                        }
+                    }
                     crate::domain::Effect::ShowSaveDialog { suggested_name } => {
-                        pending.push(match self.dialogs.save_as(&suggested_name) {
+                        pending.push_back(match self.dialogs.save_as(&suggested_name) {
                             Some(path) => Command::SaveAsChosen(self.files.canonicalize(&path)),
                             None => Command::SaveDialogCancelled,
                         });
@@ -191,6 +211,14 @@ impl HexerApp {
                 }
             }
         }
+        if focus_after {
+            self.focus_editor = self
+                .workspace
+                .active_document()
+                .is_some_and(|document| document.mode == Mode::Edit);
+        }
+        self.editor_sessions
+            .retain(|document_id, _| self.workspace.document(*document_id).is_some());
         self.sync_editor_resources();
     }
 
@@ -201,57 +229,100 @@ impl HexerApp {
         });
     }
 
-    fn set_mode(&mut self, ctx: &egui::Context, mode: Mode) {
-        let current = self
-            .workspace
-            .active_document()
-            .map(|document| document.mode);
-        if current == Some(mode) {
-            return;
-        }
-        self.dispatch(ctx, vec![Command::SetMode(mode)]);
-        if mode == Mode::Edit {
-            self.focus_editor = true;
-        }
-    }
-
     fn toggle_mode(&mut self, ctx: &egui::Context) {
-        let Some(mode) = self
-            .workspace
-            .active_document()
-            .map(|document| document.mode)
-        else {
-            return;
-        };
-        self.set_mode(
-            ctx,
-            match mode {
-                Mode::Preview => Mode::Edit,
-                Mode::Edit => Mode::Preview,
-            },
-        );
+        self.dispatch(ctx, vec![Command::ToggleMode]);
     }
 
-    fn handle_shortcuts(&mut self, ctx: &egui::Context) {
+    fn handle_shortcuts(&mut self, ctx: &egui::Context) -> Vec<Command> {
         if self.workspace.guard().is_some() {
-            return;
+            return Vec::new();
         }
 
-        let (save_as, save, toggle) = ctx.input_mut(|input| {
+        let (
+            save_as,
+            save,
+            toggle,
+            new,
+            open,
+            close,
+            previous_tab,
+            next_tab,
+            move_left,
+            move_right,
+        ) = ctx.input_mut(|input| {
             let save_as = input.consume_key(Modifiers::COMMAND.plus(Modifiers::SHIFT), Key::S);
             let save = input.consume_key(Modifiers::COMMAND, Key::S);
             let toggle = input.consume_key(Modifiers::COMMAND, Key::E);
-            (save_as, save, toggle)
+            let new = input.consume_key(Modifiers::COMMAND, Key::N);
+            let open = input.consume_key(Modifiers::COMMAND, Key::O);
+            let close = input.consume_key(Modifiers::COMMAND, Key::W);
+            // Tab cycling is Ctrl-only, never Cmd.
+            let previous_tab = input.consume_key(Modifiers::CTRL.plus(Modifiers::SHIFT), Key::Tab);
+            let next_tab = input.consume_key(Modifiers::CTRL, Key::Tab);
+            let move_left =
+                input.consume_key(Modifiers::COMMAND.plus(Modifiers::SHIFT), Key::PageUp);
+            let move_right =
+                input.consume_key(Modifiers::COMMAND.plus(Modifiers::SHIFT), Key::PageDown);
+            (
+                save_as,
+                save,
+                toggle,
+                new,
+                open,
+                close,
+                previous_tab,
+                next_tab,
+                move_left,
+                move_right,
+            )
         });
 
+        let active = self.workspace.active_document().map(|document| document.id);
+        let active_index = active.and_then(|id| {
+            self.workspace
+                .tabs()
+                .iter()
+                .position(|tab| tab.document.id == id)
+        });
+
+        let mut commands = Vec::new();
         if save_as {
-            self.dispatch(ctx, vec![Command::SaveAs]);
+            commands.push(Command::SaveAs);
         } else if save {
-            self.dispatch(ctx, vec![Command::Save]);
+            commands.push(Command::Save);
         }
         if toggle {
-            self.toggle_mode(ctx);
+            commands.push(Command::ToggleMode);
         }
+        if new {
+            commands.push(Command::NewUntitled);
+        }
+        if open {
+            commands.push(Command::Open);
+        }
+        if close && let Some(id) = active {
+            commands.push(Command::CloseTab(id));
+        }
+        if previous_tab {
+            commands.push(Command::CycleTab(-1));
+        } else if next_tab {
+            commands.push(Command::CycleTab(1));
+        }
+        if let (Some(id), Some(index)) = (active, active_index) {
+            if move_left && index > 0 {
+                commands.push(Command::MoveTab {
+                    from: id,
+                    to: index - 1,
+                });
+            }
+            if move_right && index + 1 < self.workspace.tabs().len() {
+                commands.push(Command::MoveTab {
+                    from: id,
+                    to: index + 1,
+                });
+            }
+        }
+        commands
     }
 
     fn handle_close_request(&mut self, ctx: &egui::Context) {
@@ -266,11 +337,22 @@ impl HexerApp {
         }
     }
 
-    fn show_tab_bar(&self, ui: &mut Ui) {
-        let Some(tab) = self.workspace.active_tab() else {
-            return;
-        };
+    fn show_tab_bar(&self, ui: &mut Ui) -> Vec<Command> {
+        let active = self.workspace.active_document().map(|document| document.id);
+        let tabs: Vec<(DocumentId, String, bool)> = self
+            .workspace
+            .tabs()
+            .iter()
+            .map(|tab| {
+                let id = tab.document.id;
+                (id, self.workspace.tab_label(id), Some(id) == active)
+            })
+            .collect();
+        if tabs.is_empty() {
+            return Vec::new();
+        }
 
+        let mut commands = Vec::new();
         Panel::top("tab_bar")
             .frame(
                 Frame::new()
@@ -280,32 +362,66 @@ impl HexerApp {
             )
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
-                    let response = ui.add(
-                        Label::new(
-                            RichText::new(tab.title())
-                                .monospace()
-                                .color(self.palette.ink),
-                        )
-                        .selectable(false),
-                    );
-                    ui.painter().hline(
-                        response.rect.x_range(),
-                        response.rect.bottom() + 2.0,
-                        Stroke::new(1.0, self.palette.accent),
-                    );
+                    let mut rects = Vec::new();
+                    let mut dragged = None;
+                    for (id, label, is_active) in &tabs {
+                        ui.horizontal(|ui| {
+                            let response = ui.add(
+                                egui::Button::new(
+                                    RichText::new(label).monospace().color(self.palette.ink),
+                                )
+                                .frame(false)
+                                .sense(Sense::click_and_drag()),
+                            );
+                            if response.clicked() && !response.dragged() {
+                                commands.push(Command::ActivateTab(*id));
+                            }
+                            if response.dragged() {
+                                dragged = Some(*id);
+                            }
+                            if *is_active {
+                                ui.painter().hline(
+                                    response.rect.x_range(),
+                                    response.rect.bottom() + 2.0,
+                                    Stroke::new(1.0, self.palette.accent),
+                                );
+                            }
+                            let close = ui.add(
+                                egui::Button::new(RichText::new("×").color(self.palette.muted))
+                                    .frame(false)
+                                    .small(),
+                            );
+                            if close.clicked() {
+                                commands.push(Command::CloseTab(*id));
+                            }
+                            rects.push((*id, response.rect));
+                        });
+                    }
+
+                    if let Some(from) = dragged
+                        && let Some(pointer) = ui.ctx().input(|input| input.pointer.interact_pos())
+                    {
+                        let to = rects
+                            .iter()
+                            .position(|(_, rect)| pointer.x < rect.center().x)
+                            .unwrap_or(rects.len() - 1);
+                        if let Some(current) = tabs.iter().position(|(id, _, _)| *id == from)
+                            && to != current
+                        {
+                            commands.push(Command::MoveTab { from, to });
+                        }
+                    }
                 });
             });
+        commands
     }
 
-    fn show_toolbar(&mut self, ui: &mut Ui) {
+    fn show_toolbar(&self, ui: &mut Ui) -> Vec<Command> {
         let Some(document) = self.workspace.active_document() else {
-            return;
+            return Vec::new();
         };
         let mode = document.mode;
-
-        let mut requested_mode = None;
-        let mut save = false;
-        let mut save_as = false;
+        let mut commands = Vec::new();
 
         Panel::top("toolbar")
             .frame(
@@ -315,37 +431,34 @@ impl HexerApp {
             )
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
+                    if ui.button("New").clicked() {
+                        commands.push(Command::NewUntitled);
+                    }
+                    if ui.button("Open").clicked() {
+                        commands.push(Command::Open);
+                    }
+                    ui.separator();
                     if ui
                         .selectable_label(mode == Mode::Preview, "Preview")
                         .clicked()
                     {
-                        requested_mode = Some(Mode::Preview);
+                        commands.push(Command::SetMode(Mode::Preview));
                     }
                     if ui.selectable_label(mode == Mode::Edit, "Edit").clicked() {
-                        requested_mode = Some(Mode::Edit);
+                        commands.push(Command::SetMode(Mode::Edit));
                     }
 
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if ui.button("Save As").clicked() {
-                            save_as = true;
+                            commands.push(Command::SaveAs);
                         }
                         if ui.button("Save").clicked() {
-                            save = true;
+                            commands.push(Command::Save);
                         }
                     });
                 });
             });
-
-        let ctx = ui.ctx().clone();
-        if let Some(mode) = requested_mode {
-            self.set_mode(&ctx, mode);
-        }
-        if save_as {
-            self.dispatch(&ctx, vec![Command::SaveAs]);
-        }
-        if save {
-            self.dispatch(&ctx, vec![Command::Save]);
-        }
+        commands
     }
 
     fn show_document(&mut self, root: &mut Ui) {
@@ -435,14 +548,16 @@ impl HexerApp {
     fn show_preview(&mut self, ui: &mut Ui) {
         let palette = self.palette;
         let preview = self.preview.as_ref();
+        let document_id = self.workspace.active_document().map(|document| document.id);
         let cache = &mut self.cache;
 
         Frame::new()
             .fill(palette.bg)
             .inner_margin(Margin::symmetric(28, 20))
             .show(ui, |ui| {
-                if let Some(preview) = preview {
+                if let (Some(preview), Some(document_id)) = (preview, document_id) {
                     ScrollArea::vertical()
+                        .id_salt(preview_scroll_id(document_id))
                         .auto_shrink([false, false])
                         .show(ui, |ui| {
                             CommonMarkViewer::new().show(ui, cache, &preview.markdown);
@@ -558,15 +673,27 @@ impl eframe::App for HexerApp {
 
         self.apply_style(&ctx);
         self.sync_title(&ctx);
-        self.handle_close_request(&ctx);
-        self.handle_shortcuts(&ctx);
         self.sync_editor_resources();
 
-        self.show_tab_bar(ui);
+        // Commands are collected and dispatched after the editor has handed
+        // this frame's content to the Workspace, so Save never writes stale text.
+        let mut commands = self.handle_shortcuts(&ctx);
+        commands.extend(self.show_tab_bar(ui));
         if self.workspace.guard().is_none() {
-            self.show_toolbar(ui);
+            commands.extend(self.show_toolbar(ui));
         }
+        // Mode, Tab, and New/Open commands can run before painting so the new
+        // state is visible this frame. Save and close must wait for the editor.
+        let (deferred, immediate): (Vec<_>, Vec<_>) = commands.into_iter().partition(|command| {
+            matches!(
+                command,
+                Command::Save | Command::SaveAs | Command::CloseTab(_) | Command::GuardChosen(_)
+            )
+        });
+        self.dispatch(&ctx, immediate);
         self.show_document(ui);
+        self.dispatch(&ctx, deferred);
+        self.handle_close_request(&ctx);
         self.show_guard(&ctx);
         self.show_toast(&ctx);
 
