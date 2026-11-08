@@ -69,6 +69,18 @@ def main() -> int:
     parser.add_argument(
         "--fixture", type=Path, default=root / "tests" / "fixtures" / "startup.md"
     )
+    parser.add_argument(
+        "--font",
+        choices=["default", "serif", "sans", "mono"],
+        default="default",
+        help="persist this Font in a throwaway APPDATA before measuring",
+    )
+    parser.add_argument(
+        "--log-dir",
+        type=Path,
+        default=root / "target" / "bench-logs" / "startup",
+        help="where the per-run startup CSVs are kept",
+    )
     args = parser.parse_args()
 
     if not args.exe.is_file():
@@ -82,11 +94,25 @@ def main() -> int:
     internal_t1: list[float] = []
     internal_t2: list[float] = []
 
+    args.log_dir.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="hexer-startup-") as temp:
+        appdata = None
+        if args.font != "default":
+            appdata = Path(temp) / "appdata"
+            (appdata / "markdown-hexer").mkdir(parents=True)
+            (appdata / "markdown-hexer" / "settings.json").write_text(
+                f'{{"version": 1, "theme": "light", "font": "{args.font}", '
+                '"text_size": "medium"}}',
+                encoding="utf-8",
+            )
         for run in range(args.runs):
-            log = Path(temp) / f"startup-{run}.csv"
+            log = args.log_dir / f"startup-{args.font}-{run}.csv"
+            # A log left by an earlier run would be read as this run's row.
+            log.unlink(missing_ok=True)
             env = os.environ.copy()
             env["HEXER_STARTUP_LOG"] = str(log)
+            if appdata is not None:
+                env["APPDATA"] = str(appdata)
             launched_ms = time.time() * 1_000.0
             launched_mono = time.monotonic()
             proc = subprocess.Popen([str(args.exe), str(args.fixture)], env=env)
@@ -138,6 +164,7 @@ def main() -> int:
     print(f"runs: {args.runs}")
     print(f"binary: {args.exe} ({args.exe.stat().st_size / (1024 * 1024):.2f} MB)")
     print(f"fixture: {args.fixture}")
+    print(f"font: {args.font}" + (" (persisted settings, APPDATA redirected)" if args.font != "default" else ""))
     report("T1 visible (external)", external_t1)
     report("T1 first frame (internal)", internal_t1)
     report("T2 readable (external, end-to-end)", external_t2)
