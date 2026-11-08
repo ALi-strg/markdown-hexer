@@ -1,6 +1,7 @@
 pub mod dialogs;
 pub mod domain;
 pub mod editor;
+pub mod find;
 pub mod first_edit;
 pub mod image;
 pub mod platform;
