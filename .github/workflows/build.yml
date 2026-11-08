@@ -48,7 +48,8 @@ jobs:
             libxkbcommon-dev \
             libwayland-dev \
             libx11-dev \
-            libgl1-mesa-dev
+            libgl1-mesa-dev \
+            fonts-noto-cjk
 
       - uses: dtolnay/rust-toolchain@stable
         with:

@@ -1025,7 +1025,11 @@ mod tests {
 
     #[test]
     fn file_launch_opens_preview_tab() {
-        let path = PathBuf::from(r"C:\notes\ideas.md");
+        let path = if cfg!(windows) {
+            PathBuf::from(r"C:\notes\ideas.md")
+        } else {
+            PathBuf::from("/notes/ideas.md")
+        };
         let mut workspace = Workspace::new();
 
         let effects = workspace.apply(Command::OpenPath(path.clone()));
