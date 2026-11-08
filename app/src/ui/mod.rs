@@ -1903,7 +1903,7 @@ fn show_section(
             );
             heading.widget_info(|| WidgetInfo::labeled(Role::Heading, true, section.title.clone()));
             ui.ctx().accesskit_node_builder(heading.id, |node| {
-                node.set_level(usize::from(section.level.saturating_sub(1)));
+                node.set_level(usize::from(section.level));
                 if has_chevron {
                     node.set_expanded(!is_collapsed);
                 }

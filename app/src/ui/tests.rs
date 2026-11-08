@@ -2414,7 +2414,7 @@ fn preview_exposes_heading_level_expand_state_and_copy_status() {
 
     h.get_by_role_and_label(Role::Region, "Preview content");
     let heading = h.get_by_role_and_label(Role::Heading, "Notes");
-    assert_eq!(heading.accesskit_node().level(), Some(0));
+    assert_eq!(heading.accesskit_node().level(), Some(1));
     assert_eq!(heading.accesskit_node().data().is_expanded(), Some(true));
 
     let copy = h.get_by_role_and_label(Role::Button, "Copy code block 1");
