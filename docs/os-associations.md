@@ -17,7 +17,8 @@ Active.
 | macOS UTI | `net.daringfireball.markdown` |
 | Linux desktop id | `markdown-hexer.desktop` |
 
-The machine-readable copy is `app/packaging/file-associations.toml`.
+The machine-readable copy is the `file-associations` table in `app/Cargo.toml`
+under `[package.metadata.packager]`.
 
 ## Windows
 

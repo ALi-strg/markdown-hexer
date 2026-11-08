@@ -1,0 +1,3 @@
+// Application icon embedded in markdown-hexer.exe so Explorer, the taskbar,
+// and the MarkdownHexer.Document DefaultIcon all show the product icon.
+1 ICON "packaging/icons/icon.ico"

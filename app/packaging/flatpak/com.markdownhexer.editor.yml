@@ -1,0 +1,48 @@
+# Flatpak manifest for Markdown Hexer on x86_64 — see docs/adr/0006.
+#
+# CI stages the release .deb as `markdown-hexer.deb` next to this manifest
+# (a stable name, so the source path is version-independent) and wraps it in a
+# single-file bundle that installs with `flatpak install`. The runtime is
+# pinned to one GNOME release; bump `runtime-version` when Flathub moves on.
+#
+# Release asset only: no Flathub listing, no self-hosted repository, and no
+# auto-update. The app itself never talks to the network at startup.
+
+id: com.markdownhexer.editor
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+command: markdown-hexer
+
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --share=ipc
+  # ADR 0006: relative images resolve against the opened Document's directory,
+  # so the sandbox must see $HOME.
+  - --filesystem=home
+
+modules:
+  - name: markdown-hexer
+    buildsystem: simple
+    sources:
+      - type: file
+        path: markdown-hexer.deb
+      - type: file
+        path: com.markdownhexer.editor.desktop
+    build-commands:
+      - mkdir -p deb-extract
+      # The .deb is an ar archive; extract data.tar.gz (binary, desktop file,
+      # MIME database, hicolor icons) and lay it out under /app.
+      - ar -x --output=deb-extract markdown-hexer.deb
+      - tar -xf deb-extract/data.tar.gz -C deb-extract
+      - install -Dm755 deb-extract/usr/bin/markdown-hexer /app/bin/markdown-hexer
+      # Flatpak resolves the exported desktop file and icons by app id.
+      - install -Dm644 com.markdownhexer.editor.desktop /app/share/applications/com.markdownhexer.editor.desktop
+      - install -Dm644 deb-extract/usr/share/mime/packages/markdown-hexer.xml /app/share/mime/packages/markdown-hexer.xml
+      - install -Dm644 deb-extract/usr/share/icons/hicolor/32x32/apps/markdown-hexer.png /app/share/icons/hicolor/32x32/apps/com.markdownhexer.editor.png
+      - install -Dm644 deb-extract/usr/share/icons/hicolor/64x64/apps/markdown-hexer.png /app/share/icons/hicolor/64x64/apps/com.markdownhexer.editor.png
+      - install -Dm644 deb-extract/usr/share/icons/hicolor/128x128/apps/markdown-hexer.png /app/share/icons/hicolor/128x128/apps/com.markdownhexer.editor.png
+      - install -Dm644 deb-extract/usr/share/icons/hicolor/256x256@2/apps/markdown-hexer.png /app/share/icons/hicolor/256x256@2/apps/com.markdownhexer.editor.png
+      - install -Dm644 deb-extract/usr/share/icons/hicolor/512x512/apps/markdown-hexer.png /app/share/icons/hicolor/512x512/apps/com.markdownhexer.editor.png
