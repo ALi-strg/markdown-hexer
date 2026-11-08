@@ -119,7 +119,7 @@ npm run tauri build -- --debug --no-bundle   # what test:e2e uses to build the a
 | `src/lib/shortcuts.ts` | Single shortcut registry: toolbar tooltips + the About Dialog's Shortcuts Reference (`SHORTCUT_GROUPS`), incl. `THEME_CONTROL`/`FONT_CONTROL`/`SIZE_CONTROL` (label-only entries) |
 | `src/lib/findReplace.ts` | Match-count / next / prev helpers over CM search state |
 | `src/lib/blockMap.ts` | `deriveBlocks` — the single lex pass behind renderer anchors and Synced Scrolling ranges |
-| `src/lib/sections.ts` | Section DOM seam: build/query/mutate for collapsible Sections (see CONTEXT.md) |
+| `src/lib/sections.ts` | Section DOM seam: build/query/mutate for collapsible Sections (see GLOSSARY.md) |
 | `src/lib/tabEditorState.ts` | Tab-session controller (`createTabSession`) + per-Tab preserved editor state (WeakMap) |
 | `src/lib/{open,save}Dialog.ts`, `guardDialog.ts`, `externalDialog.ts` | Native dialog wrappers with E2E localStorage stubs |
 | `src-tauri/src/asset.rs` | Scoped `asset://` serving |
@@ -163,7 +163,7 @@ npm run tauri build -- --debug --no-bundle   # what test:e2e uses to build the a
 - **Rendering / sanitization / highlighting** → `src/lib/renderer.ts`, `src/lib/sections.ts` (Section markup), `src/components/PreviewPane.vue`, `src/lib/assetUrl.ts`, `src-tauri/src/asset.rs`.
 - **Tab-switch / editor-state preservation** → `src/lib/tabEditorState.ts` (controller + WeakMap), `src/components/EditorPane.vue` (extensions, state creation), `src/App.vue` (the five switch paths).
 - **Synced Scrolling / block anchors** → `src/lib/blockMap.ts` (`deriveBlocks`, `SKIP_BLOCK_TOKEN_TYPES`), `src/lib/useSyncedScrolling.ts`.
-- **Collapsible Sections** → `src/lib/sections.ts` (DOM contract), `src/components/PreviewPane.vue` (`collapsedSections` record), `CONTEXT.md` (§ Sections).
+- **Collapsible Sections** → `src/lib/sections.ts` (DOM contract), `src/components/PreviewPane.vue` (`collapsedSections` record), `GLOSSARY.md` (§ Sections).
 - **Save/Open/dialog flows or new IPC** → `src/stores/document.ts`, `src/lib/*Dialog.ts`, matching Rust module in `src-tauri/src/` + command registration in `src-tauri/src/lib.rs`.
 - **Keyboard shortcuts / window events** → `onKeydown` and `onMounted` listeners in `src/App.vue`.
 - **Theme/font/text size/typography** → `src/stores/settings.ts` (types, persistence, `resolvedTheme`), `src/styles.css` (Palette token blocks), `src/prism-theme.css` (`--syntax-*`), `src/components/Toolbar.vue`, `src/lib/shortcuts.ts` (control tooltip entries).

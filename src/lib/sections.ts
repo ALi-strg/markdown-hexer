@@ -1,6 +1,6 @@
 import { type Token, type Tokens } from "marked";
 
-/// The shared DOM contract for Preview Pane Sections (see CONTEXT.md): the
+/// The shared DOM contract for Preview Pane Sections (see GLOSSARY.md): the
 /// renderer emits `.md-section` wrappers carrying `data-section-key`, a
 /// `.md-chevron` toggle (the ▸ glyph as a real text node) inside the head
 /// block, and a `.md-section-body` for the content. Collapsed is the class

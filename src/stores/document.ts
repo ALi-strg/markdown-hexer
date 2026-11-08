@@ -217,7 +217,7 @@ export const useDocumentStore = defineStore("document", () => {
   /// Exports the Tab's in-memory content as a self-contained `.html` file
   /// through the Save As flow — native save dialog, then the same write path
   /// as Save. Export never modifies the Document and never triggers the
-  /// Confirm-Discard Guard (CONTEXT.md, ## Export).
+  /// Confirm-Discard Guard (GLOSSARY.md, ## Export).
   async function exportHtml(tab: Tab = activeTab()): Promise<boolean> {
     const ui = useUiStore();
     const defaultPath = exportDefaultPath(tab, ui.lastDirectory);

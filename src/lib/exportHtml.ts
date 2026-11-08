@@ -3,7 +3,7 @@
 /// (same pipeline as the Preview Pane and the Print Render, block wrapping
 /// off), local images embedded as base64 data URLs. The exported file renders
 /// correctly on its own in any browser, even on a machine without the source
-/// images (CONTEXT.md, ## Export). Remote (http/https) image URLs pass
+/// images (GLOSSARY.md, ## Export). Remote (http/https) image URLs pass
 /// through untouched.
 
 import { renderMarkdown } from "./renderer";

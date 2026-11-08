@@ -296,7 +296,7 @@ async function runDocumentControl(operation: DocumentControlOperation) {
 
 /// Print Export: the Active Document's in-memory content (Dirty included) as a
 /// chrome-free Print Render handed to the OS print dialog. Never touches the
-/// Document; never triggers the Confirm-Discard Guard (CONTEXT.md, ## Export).
+/// Document; never triggers the Confirm-Discard Guard (GLOSSARY.md, ## Export).
 /// The container is torn down by the print dialog's `afterprint` signal in the
 /// printExport module — not here, since window.print() does not block on every
 /// engine (WebKit returns before the dialog closes).

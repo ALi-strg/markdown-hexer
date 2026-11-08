@@ -1,7 +1,7 @@
 /// Print Export: mounts an offscreen Print Render of the Active Document and
 /// hands it to the OS print dialog via window.print(). The Print Render is the
 /// same render pipeline as the Preview Pane with block wrapping off — no
-/// Sections, no collapse state, no preview chrome (CONTEXT.md, ## Export).
+/// Sections, no collapse state, no preview chrome (GLOSSARY.md, ## Export).
 
 import { renderMarkdown } from "./renderer";
 import { rewriteAssetSrcs } from "./assetUrl";

@@ -63,7 +63,7 @@ The E2E suite stubs the native dialogs via a `VITE_E2E` build-time seam (`src/li
 
 ## Documentation
 
-- `CONTEXT.md` — domain vocabulary (Editor Pane, Preview Pane, Synced Scrolling, Dirty, Confirm-Discard Guard, ...). Use it in all code and docs.
+- `GLOSSARY.md` — domain vocabulary (Preview, Edit, Editor View, Preview View, Dirty, Confirm-Discard Guard, ...). Use it in all code and docs.
 - `docs/PRD.md` — the product specification and implementation decisions.
 - `docs/adr/` — architectural decision records (editor engine, rendering pipeline, multi-tab document model, release versioning, license, contribution policy).
 - `docs/slices/` — the incremental build plan the codebase was developed against.
