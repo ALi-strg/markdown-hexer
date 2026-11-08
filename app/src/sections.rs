@@ -406,7 +406,11 @@ mod tests {
         let source = "# A\n\n[link][ref]\n\n# B\n\n[ref]: https://example.com \"Title\"\n";
         let sections = parsed(source);
 
-        assert!(sections.link_definitions.contains("[ref]: https://example.com"));
+        assert!(
+            sections
+                .link_definitions
+                .contains("[ref]: https://example.com")
+        );
         assert!(!sections.link_definitions.contains("[^"));
     }
 
