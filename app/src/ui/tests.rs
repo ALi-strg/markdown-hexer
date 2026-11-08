@@ -183,6 +183,85 @@ fn paste_goes_through_the_editor_and_undo_restores_it() {
     h.key_press_modifiers(Modifiers::COMMAND, Key::Z);
     h.step();
     assert_eq!(document_content(&h), "");
+
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Y);
+    h.step();
+    assert_eq!(document_content(&h), "pasted text");
+}
+
+#[test]
+fn redo_covers_typing_and_paste() {
+    let files = MemoryFiles::default();
+    let mut h = harness(untitled_app(&files, FakeDialogs::default()));
+    h.run_steps(1);
+
+    h.input_mut()
+        .events
+        .push(egui::Event::Text("typed".to_owned()));
+    h.step();
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+    h.step();
+    assert_eq!(document_content(&h), "");
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Y);
+    h.step();
+    assert_eq!(document_content(&h), "typed");
+
+    h.input_mut()
+        .events
+        .push(egui::Event::Paste(" pasted".to_owned()));
+    h.step();
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+    h.step();
+    assert_eq!(document_content(&h), "typed");
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Y);
+    h.step();
+    assert_eq!(document_content(&h), "typed pasted");
+}
+
+#[test]
+fn cjk_preedit_previews_and_commit_replaces_it() {
+    let files = MemoryFiles::default();
+    let mut h = harness(untitled_app(&files, FakeDialogs::default()));
+    h.run_steps(1);
+
+    h.input_mut()
+        .events
+        .push(egui::Event::Ime(egui::ImeEvent::Preedit {
+            text: "にほん".to_owned(),
+            active_range_chars: None,
+        }));
+    h.step();
+    assert_eq!(document_content(&h), "にほん");
+
+    let editor_rect = h.get_by_role(Role::MultilineTextInput).rect();
+    let first = h
+        .output()
+        .platform_output
+        .ime
+        .expect("focused editor must publish an IME cursor rect");
+    assert!(first.cursor_rect.is_positive());
+    assert!(editor_rect.expand(2.0).contains_rect(first.cursor_rect));
+
+    h.input_mut()
+        .events
+        .push(egui::Event::Ime(egui::ImeEvent::Preedit {
+            text: "にほんご".to_owned(),
+            active_range_chars: None,
+        }));
+    h.step();
+    assert_eq!(document_content(&h), "にほんご");
+    let wider = h.output().platform_output.ime.unwrap();
+    assert!(wider.cursor_rect.right() > first.cursor_rect.right());
+
+    h.input_mut()
+        .events
+        .push(egui::Event::Ime(egui::ImeEvent::Commit(
+            "日本語".to_owned(),
+        )));
+    h.step();
+    assert_eq!(document_content(&h), "日本語");
+    let committed = h.output().platform_output.ime.unwrap();
+    assert!(committed.cursor_rect.right() > first.cursor_rect.right());
 }
 
 #[test]
@@ -202,6 +281,7 @@ fn mode_switcher_toggles_and_builds_the_editor_once() {
         Some(Mode::Edit)
     );
     assert!(h.state().editor.is_some());
+    let first = h.state().editor.as_ref().unwrap() as *const EditorResources;
     h.get_by_role(Role::MultilineTextInput);
 
     h.get_by_label("Preview").click();
@@ -211,6 +291,14 @@ fn mode_switcher_toggles_and_builds_the_editor_once() {
         Some(Mode::Preview)
     );
     assert!(h.query_by_role(Role::MultilineTextInput).is_none());
+
+    h.get_by_label("Edit").click();
+    h.step();
+    let second = h.state().editor.as_ref().unwrap() as *const EditorResources;
+    assert_eq!(
+        first, second,
+        "editor resources must initialize once per process"
+    );
 }
 
 #[test]
@@ -730,6 +818,16 @@ fn cursor_and_undo_survive_switching_away_and_back() {
     h.key_press_modifiers(Modifiers::COMMAND, Key::Z);
     h.step();
     assert_eq!(document_content(&h), "abc");
+
+    h.key_press_modifiers(Modifiers::CTRL, Key::Tab);
+    h.step();
+    h.step();
+    h.key_press_modifiers(Modifiers::CTRL.plus(Modifiers::SHIFT), Key::Tab);
+    h.step();
+    h.step();
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Y);
+    h.step();
+    assert_eq!(document_content(&h), "abZc");
 }
 
 #[test]
