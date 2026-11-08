@@ -3,8 +3,10 @@ mod palette;
 
 pub use palette::Palette;
 
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use egui::text::{CCursor, CCursorRange, LayoutJob};
@@ -23,7 +25,7 @@ use crate::first_edit::FirstEditProbe;
 use crate::format::FormatAction;
 use crate::image::{ImageSource, NativeImageSource};
 use crate::platform::instance::InstanceServer;
-use crate::platform::{FileSystem, NativeFileSystem};
+use crate::platform::{Clipboard, FileSystem, NativeClipboard, NativeFileSystem};
 use crate::preview::{self, FencedCode, PreparedPreview};
 use crate::sections::{Section, SectionState, Sections};
 use crate::startup::{Startup, StartupTimer};
@@ -54,6 +56,7 @@ pub struct HexerApp {
     timer: StartupTimer,
     files: Box<dyn FileSystem>,
     dialogs: Box<dyn Dialogs>,
+    clipboard: Box<dyn Clipboard>,
     allow_close: bool,
     first_edit: Option<FirstEditProbe>,
     instance: Option<InstanceServer>,
@@ -68,6 +71,50 @@ pub struct HexerApp {
 struct Toast {
     message: String,
     expires_at: Instant,
+}
+
+/// Collects settled label selections after the pass, when the app can no
+/// longer see the output commands itself.
+#[derive(Default)]
+struct CopyOnSelect {
+    enabled: bool,
+    settled: Option<String>,
+}
+
+impl egui::Plugin for CopyOnSelect {
+    fn debug_name(&self) -> &'static str {
+        "CopyOnSelect"
+    }
+
+    fn output_hook(&mut self, ctx: &egui::Context, output: &mut egui::FullOutput) {
+        if !self.enabled
+            || ctx.viewport_id() != egui::ViewportId::ROOT
+            || !ctx.input(|input| input.pointer.any_released())
+        {
+            return;
+        }
+        // A single click also settles a label selection (and would copy it);
+        // only a drag or double-click is a deliberate copy gesture.
+        let deliberate = ctx.input(|input| {
+            input
+                .pointer
+                .button_double_clicked(egui::PointerButton::Primary)
+                || input.pointer.is_decidedly_dragging()
+        });
+        if !deliberate {
+            return;
+        }
+        // Read only: the command stays in the output so the OS still gets the
+        // primary selection.
+        for command in &output.platform_output.commands {
+            if let egui::OutputCommand::TextSelectionSettled(text) = command
+                && !text.is_empty()
+            {
+                self.settled = Some(text.clone());
+                ctx.request_repaint();
+            }
+        }
+    }
 }
 
 type PreviewKey = (DocumentId, u64, Option<PathBuf>);
@@ -191,6 +238,7 @@ impl HexerApp {
             timer: StartupTimer::new(t_main),
             files,
             dialogs,
+            clipboard: Box::new(NativeClipboard::default()),
             allow_close: false,
             first_edit: FirstEditProbe::from_env(),
             instance: None,
@@ -263,6 +311,8 @@ impl HexerApp {
         }
         self.style_applied = true;
 
+        ctx.add_plugin(CopyOnSelect::default());
+        ctx.all_styles_mut(|style| style.interaction.selectable_labels = false);
         install_cjk_font(ctx);
         ctx.set_theme(egui::ThemePreference::Light);
         let mut visuals = egui::Visuals::light();
@@ -418,10 +468,53 @@ impl HexerApp {
     }
 
     fn show_message(&mut self, message: impl Into<String>) {
+        self.show_toast_for(message, Duration::from_secs(6));
+    }
+
+    fn show_copy_toast(&mut self) {
+        self.show_toast_for("Copied", Duration::from_millis(1_500));
+    }
+
+    fn show_toast_for(&mut self, message: impl Into<String>, duration: Duration) {
         self.toast = Some(Toast {
             message: message.into(),
-            expires_at: Instant::now() + Duration::from_secs(6),
+            expires_at: Instant::now() + duration,
         });
+    }
+
+    /// Takes the selection captured after last frame's mouse release. Also
+    /// disarms capture until Preview re-enables it for this frame.
+    fn take_settled_selection(&mut self, ctx: &egui::Context) -> Option<String> {
+        let handle = ctx.plugin::<CopyOnSelect>();
+        let mut plugin = handle.lock();
+        plugin.enabled = false;
+        plugin.settled.take()
+    }
+
+    fn handle_selection_settled(&mut self, ctx: &egui::Context, text: &str) {
+        if text.is_empty()
+            || self
+                .workspace
+                .active_document()
+                .is_none_or(|document| document.mode != Mode::Preview)
+        {
+            return;
+        }
+        if self.copy_to_clipboard(text) {
+            ctx.plugin::<egui::text_selection::LabelSelectionState>()
+                .lock()
+                .clear_selection();
+        }
+    }
+
+    fn copy_to_clipboard(&mut self, text: &str) -> bool {
+        if self.clipboard.set_text(text).is_ok() {
+            self.show_copy_toast();
+            true
+        } else {
+            self.show_message("Could not copy");
+            false
+        }
     }
 
     fn toggle_mode(&mut self, ctx: &egui::Context) {
@@ -923,6 +1016,7 @@ impl HexerApp {
         let document_id = self.workspace.active_document().map(|document| document.id);
         let collapsed = document_id.map(|document_id| self.sections.collapsed_mut(document_id));
         let cache = &mut self.cache;
+        let copy_request = Rc::new(RefCell::new(None));
 
         Frame::new()
             .fill(palette.bg)
@@ -935,6 +1029,8 @@ impl HexerApp {
                         .id_salt(preview_scroll_id(document_id))
                         .auto_shrink([false, false])
                         .show(ui, |ui| {
+                            ui.style_mut().interaction.selectable_labels = true;
+                            ui.ctx().plugin::<CopyOnSelect>().lock().enabled = true;
                             let (markdown, sections) = if first_frame {
                                 (
                                     preview
@@ -957,6 +1053,7 @@ impl HexerApp {
                                 palette,
                                 cache,
                                 collapsed,
+                                &copy_request,
                             );
                         });
                 } else {
@@ -972,6 +1069,11 @@ impl HexerApp {
                     });
                 }
             });
+
+        let text = copy_request.borrow_mut().take();
+        if let Some(text) = text {
+            self.copy_to_clipboard(&text);
+        }
     }
 
     fn show_empty(&self, ui: &mut Ui) {
@@ -1119,6 +1221,9 @@ impl eframe::App for HexerApp {
         }
 
         self.apply_style(&ctx);
+        if let Some(text) = self.take_settled_selection(&ctx) {
+            self.handle_selection_settled(&ctx, &text);
+        }
         self.drain_instance(&ctx);
         self.handle_dropped_files(&ctx);
         self.sync_title(&ctx);
@@ -1189,6 +1294,7 @@ struct SectionSource<'a> {
     definitions: &'a str,
 }
 
+#[allow(clippy::too_many_arguments)]
 fn show_sectioned_markdown(
     ui: &mut Ui,
     source: &str,
@@ -1197,12 +1303,14 @@ fn show_sectioned_markdown(
     palette: Palette,
     cache: &mut egui_commonmark::CommonMarkCache,
     collapsed: &mut HashSet<String>,
+    copy_request: &Rc<RefCell<Option<String>>>,
 ) {
+    let copy_request = Rc::clone(copy_request);
     let render_code = move |ui: &mut Ui, html: &str| {
         if let Some(index) = code_sentinel_index(html)
             && let Some(code) = code_blocks.get(index)
         {
-            show_code_block(ui, &palette, code, index);
+            show_code_block(ui, &palette, code, index, &copy_request);
         }
     };
 
@@ -1374,6 +1482,7 @@ fn show_code_block(
     palette: &Palette,
     code: &FencedCode,
     index: usize,
+    copy_request: &RefCell<Option<String>>,
 ) -> (egui::Response, egui::Response) {
     let mut content = None;
     let frame = Frame::new()
@@ -1382,6 +1491,17 @@ fn show_code_block(
         .corner_radius(4)
         .inner_margin(Margin::symmetric(10, 8))
         .show(ui, |ui| {
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui
+                    .add(
+                        egui::Button::new(RichText::new("Copy").small().color(palette.muted))
+                            .frame(false),
+                    )
+                    .clicked()
+                {
+                    *copy_request.borrow_mut() = Some(code.copy_text());
+                }
+            });
             ScrollArea::horizontal()
                 .id_salt(("preview_code_scroll", index))
                 .auto_shrink([false, true])

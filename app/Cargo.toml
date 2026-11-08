@@ -16,6 +16,7 @@ name = "markdown-hexer"
 path = "src/main.rs"
 
 [dependencies]
+arboard = "3"
 eframe = { version = "0.37", default-features = false, features = [
     "accesskit",
     "clipboard",
