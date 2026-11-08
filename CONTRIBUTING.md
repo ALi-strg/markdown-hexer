@@ -4,7 +4,7 @@ Thanks for your interest. Markdown Hexer is in active development, so this page 
 
 ## Reporting bugs
 
-**Bug reports are always welcome.** If you hit something broken, unexpected, or that could lose your work, open an issue using the bug report template at <https://github.com/ALi-strg/markdown-editor/issues/new/choose>. A good report includes:
+**Bug reports are always welcome.** If you hit something broken, unexpected, or that could lose your work, open an issue using the bug report template at <https://github.com/ALi-strg/markdown-hexer/issues/new/choose>. A good report includes:
 
 - Your OS and architecture (e.g. Windows 11 x64, macOS 14, Ubuntu 22.04).
 - The version you're running — the release tag (e.g. `v1.1.3`) if you installed a bundle, or the commit if you built from source.

@@ -2,16 +2,6 @@
 *logs
 logs
 *.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
-
-node_modules
-dist
-dist-ssr
-*.local
 
 # Editor directories and files
 .vscode/*
@@ -23,8 +13,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
-*.scratch
 
-# Test output
-coverage
-e2e/logs
+# Local issue tracker and scratch notes
+.scratch
+
+# Cargo output (app/.gitignore also covers /target)
+target

@@ -1,5 +1,7 @@
 # Unconditional `--disable-gpu` in the Windows WebView2
 
+**Status: superseded by ADR-0014 (no WebView2).**
+
 ## Decision
 
 The main window in `tauri.conf.json` ships `additionalBrowserArgs` containing

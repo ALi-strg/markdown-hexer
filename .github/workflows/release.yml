@@ -1,0 +1,280 @@
+# Tag-driven release for the 2.0 line (ADR-0004). Pushing a `v*` tag builds
+# every Bundle, then creates a DRAFT GitHub Release and attaches the assets.
+# Tags with a semver prerelease segment (`v2.0.0-rc.1`) are marked prerelease.
+#
+# Nothing here signs or notarizes: see docs/release-2.0.md for the resulting
+# Windows SmartScreen / macOS Gatekeeper / Linux trust caveats.
+
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.derive.outputs.version }}
+      prerelease: ${{ steps.derive.outputs.prerelease }}
+    steps:
+      - name: derive version from tag
+        id: derive
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not carry a semver version (vMAJOR.MINOR.PATCH[-pre])."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if [[ "$version" == *-* ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "Releasing ${version} from ${GITHUB_REF_NAME} (prerelease=$([[ "$version" == *-* ]] && echo true || echo false))"
+
+  windows:
+    needs: version
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./app -> target"
+
+      - name: set version from tag
+        shell: bash
+        run: python packaging/set_version.py "${{ needs.version.outputs.version }}"
+
+      - name: install cargo-packager
+        run: cargo install cargo-packager --locked --version 0.11.8
+
+      - name: build release binary
+        run: cargo build --release
+
+      # WiX rejects a non-numeric prerelease (cargo-packager converts
+      # `2.0.0-rc.1` to a numeric ProductVersion and fails), so prerelease
+      # tags ship the NSIS installer only.
+      - name: build NSIS and WiX bundles
+        if: needs.version.outputs.prerelease == 'false'
+        run: cargo packager --release --formats nsis,wix
+
+      - name: build NSIS bundle (prerelease)
+        if: needs.version.outputs.prerelease == 'true'
+        run: cargo packager --release --formats nsis
+
+      - name: rename to release asset names
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ needs.version.outputs.version }}"
+          mv "target/release/bundle/markdown-hexer_${version}_x64-setup.exe" "markdown-hexer_${version}_windows-x64.exe"
+          if [[ -f "target/release/bundle/markdown-hexer_${version}_x64_en-US.msi" ]]; then
+            mv "target/release/bundle/markdown-hexer_${version}_x64_en-US.msi" "markdown-hexer_${version}_windows-x64.msi"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          if-no-files-found: error
+          path: |
+            app/markdown-hexer_*-windows-x64.exe
+            app/markdown-hexer_*-windows-x64.msi
+
+  macos:
+    needs: version
+    runs-on: macos-14 # arm64, matches the aarch64 asset name
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./app -> target"
+
+      - name: set version from tag
+        run: python3 packaging/set_version.py "${{ needs.version.outputs.version }}"
+
+      - name: install cargo-packager
+        run: cargo install cargo-packager --locked --version 0.11.8
+
+      - name: build release binary
+        run: cargo build --release
+
+      # The DMG bundler builds the .app as a prerequisite and deletes it again
+      # unless `app` is listed too, so one run produces both artifacts.
+      - name: build .app and .dmg
+        run: cargo packager --release --formats app,dmg
+
+      - name: archive .app and rename assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ needs.version.outputs.version }}"
+          case "$(uname -m)" in
+            arm64|aarch64) arch=aarch64 ;;
+            *) arch=x64 ;;
+          esac
+          tar -czf "markdown-hexer_${version}_macos-${arch}.app.tar.gz" -C target/release/bundle "Markdown Hexer.app"
+          mv "target/release/bundle/Markdown Hexer_${version}_${arch}.dmg" "markdown-hexer_${version}_macos-${arch}.dmg"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          if-no-files-found: error
+          path: |
+            app/markdown-hexer_*-macos-*.dmg
+            app/markdown-hexer_*-macos-*.app.tar.gz
+
+  linux:
+    needs: version
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: install build and packaging dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libxkbcommon-dev \
+            libwayland-dev \
+            libx11-dev \
+            libgl1-mesa-dev \
+            rpm \
+            flatpak \
+            flatpak-builder
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./app -> target"
+
+      - name: set version from tag
+        run: python3 packaging/set_version.py "${{ needs.version.outputs.version }}"
+
+      - name: install cargo-packager and cargo-generate-rpm
+        run: |
+          cargo install cargo-packager --locked --version 0.11.8
+          cargo install cargo-generate-rpm --locked --version 0.21.1
+
+      - name: build release binary
+        run: cargo build --release
+
+      - name: build deb and AppImage
+        run: cargo packager --release --formats deb,appimage
+
+      - name: build rpm
+        run: |
+          # RPM Version cannot contain '-'; the RPM form of a prerelease uses '~'.
+          rpm_version="$(printf '%s' "${{ needs.version.outputs.version }}" | sed 's/-/~/')"
+          cargo generate-rpm --set-metadata "version = \"${rpm_version}\""
+
+      - name: rename to release asset names
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ needs.version.outputs.version }}"
+          arch="$(uname -m)"
+          mv "target/release/bundle/markdown-hexer_${version}_amd64.deb" "markdown-hexer_${version}_linux-${arch}.deb"
+          mv "target/release/bundle/markdown-hexer_${version}_${arch}.AppImage" "markdown-hexer_${version}_linux-${arch}.AppImage"
+          rpm_file="$(ls target/generate-rpm/*.rpm)"
+          mv "$rpm_file" "markdown-hexer_${version}_linux-${arch}.rpm"
+          # The Flatpak manifest wraps the release .deb under a stable name (ADR-0006).
+          cp "markdown-hexer_${version}_linux-${arch}.deb" packaging/flatpak/markdown-hexer.deb
+
+      - name: install flatpak tooling and remote
+        run: |
+          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+
+      - name: build Flatpak bundle
+        run: |
+          set -euo pipefail
+          version="${{ needs.version.outputs.version }}"
+          flatpak-builder --user \
+            --repo=flatpak-repo \
+            --disable-rofiles-fuse \
+            --install-deps-from=flathub \
+            --force-clean \
+            --default-branch=master \
+            --arch=x86_64 \
+            --subject="Markdown Hexer ${version} (${GITHUB_SHA})" \
+            flatpak-app \
+            packaging/flatpak/com.markdownhexer.editor.yml
+          flatpak build-bundle flatpak-repo "markdown-hexer_${version}_linux-x86_64.flatpak" \
+            --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo \
+            com.markdownhexer.editor \
+            master
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          if-no-files-found: error
+          path: |
+            app/markdown-hexer_*-linux-x86_64.deb
+            app/markdown-hexer_*-linux-x86_64.AppImage
+            app/markdown-hexer_*-linux-x86_64.rpm
+            app/markdown-hexer_*-linux-x86_64.flatpak
+
+  publish:
+    needs: [version, windows, macos, linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: write checksums
+        working-directory: dist
+        run: sha256sum * > SHA256SUMS
+
+      - name: create draft release and upload assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.version.outputs.version }}
+          PRERELEASE: ${{ needs.version.outputs.prerelease }}
+          TAG: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          prerelease_flag=()
+          if [[ "$PRERELEASE" == "true" ]]; then
+            prerelease_flag=(--prerelease)
+          fi
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$TAG" dist/* \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "$TAG" \
+              --draft \
+              --notes "Markdown Hexer ${VERSION} — unsigned builds; see docs/release-2.0.md for install notes and known limitations." \
+              "${prerelease_flag[@]}"
+          fi

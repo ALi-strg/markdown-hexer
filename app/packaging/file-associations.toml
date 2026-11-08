@@ -1,0 +1,19 @@
+# Consumed by ticket 17 installers. Keep in sync with docs/os-associations.md.
+binary = "markdown-hexer"
+product = "Markdown Hexer"
+extensions = ["md", "markdown", "mdown"]
+mime_type = "text/markdown"
+
+[windows]
+prog_id = "MarkdownHexer.Document"
+friendly_type = "Markdown document"
+open_command = "\"<install-dir>\\markdown-hexer.exe\" \"%1\""
+
+[macos]
+uti = "net.daringfireball.markdown"
+document_type = "Markdown Document"
+role = "Editor"
+
+[linux]
+desktop_id = "markdown-hexer.desktop"
+exec = "markdown-hexer %F"
