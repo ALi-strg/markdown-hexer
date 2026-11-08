@@ -64,8 +64,8 @@ best-effort. macOS is borrowed-hardware best-effort.
       appears; the first dialog remains the only pending one.
 - [ ] External-modified dialogs (when a file changes on disk outside the app)
       offer Reload/Overwrite/Cancel, are keyboard-operable, and Esc cancels.
-      This path is wired through the native adapter; automated change detection
-      is tracked separately.
+      Automated detection runs when the window regains focus and when a Tab
+      becomes Active; there is no background file watcher.
 
 ## Links and local files
 
