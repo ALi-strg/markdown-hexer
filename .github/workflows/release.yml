@@ -97,8 +97,8 @@ jobs:
           name: windows
           if-no-files-found: error
           path: |
-            app/markdown-hexer_*-windows-x64.exe
-            app/markdown-hexer_*-windows-x64.msi
+            ${{ github.workspace }}/app/markdown-hexer_*-windows-x64.exe
+            ${{ github.workspace }}/app/markdown-hexer_*-windows-x64.msi
 
   macos:
     needs: version
@@ -146,8 +146,8 @@ jobs:
           name: macos
           if-no-files-found: error
           path: |
-            app/markdown-hexer_*-macos-*.dmg
-            app/markdown-hexer_*-macos-*.app.tar.gz
+            ${{ github.workspace }}/app/markdown-hexer_*-macos-*.dmg
+            ${{ github.workspace }}/app/markdown-hexer_*-macos-*.app.tar.gz
 
   linux:
     needs: version
@@ -237,10 +237,10 @@ jobs:
           name: linux
           if-no-files-found: error
           path: |
-            app/markdown-hexer_*-linux-x86_64.deb
-            app/markdown-hexer_*-linux-x86_64.AppImage
-            app/markdown-hexer_*-linux-x86_64.rpm
-            app/markdown-hexer_*-linux-x86_64.flatpak
+            ${{ github.workspace }}/app/markdown-hexer_*-linux-x86_64.deb
+            ${{ github.workspace }}/app/markdown-hexer_*-linux-x86_64.AppImage
+            ${{ github.workspace }}/app/markdown-hexer_*-linux-x86_64.rpm
+            ${{ github.workspace }}/app/markdown-hexer_*-linux-x86_64.flatpak
 
   publish:
     needs: [version, windows, macos, linux]
