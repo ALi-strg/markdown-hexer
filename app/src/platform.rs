@@ -6,6 +6,46 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 const UTF8_BOM: &[u8] = b"\xEF\xBB\xBF";
 
+pub mod instance;
+
+/// Open an external http, https, or mailto link with the OS handler.
+///
+/// Returns false for every other scheme, so callers cannot navigate to local
+/// files or hand arbitrary text to a shell.
+pub fn open_url(url: &str) -> bool {
+    if !is_allowed_url(url) {
+        return false;
+    }
+    open_native(url).is_ok()
+}
+
+pub(crate) fn is_allowed_url(url: &str) -> bool {
+    let Some((scheme, rest)) = url.split_once(':') else {
+        return false;
+    };
+    if url.chars().any(|ch| ch.is_control() || ch.is_whitespace()) {
+        return false;
+    }
+    match scheme.to_ascii_lowercase().as_str() {
+        "http" | "https" => rest.starts_with("//") && rest.len() > 2,
+        "mailto" => !rest.is_empty(),
+        _ => false,
+    }
+}
+
+fn open_native(url: &str) -> std::io::Result<()> {
+    let mut command = if cfg!(windows) {
+        let mut command = std::process::Command::new("rundll32.exe");
+        command.arg("url.dll,FileProtocolHandler");
+        command
+    } else if cfg!(target_os = "macos") {
+        std::process::Command::new("open")
+    } else {
+        std::process::Command::new("xdg-open")
+    };
+    command.arg(url).spawn().map(|_| ())
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ReadError {
     NotFound,
@@ -276,5 +316,35 @@ mod tests {
         let canonical_new = fs.canonicalize(&new_path);
         assert_eq!(canonical_new.parent(), canonical_existing.parent());
         assert_eq!(canonical_new.file_name().unwrap(), "new.md");
+    }
+
+    #[test]
+    fn only_web_and_mail_schemes_are_allowed() {
+        for url in [
+            "http://example.com",
+            "https://example.com/a?b=c#d",
+            "mailto:someone@example.com",
+        ] {
+            assert!(is_allowed_url(url), "{url}");
+        }
+        for url in [
+            "file:///etc/passwd",
+            "javascript:alert(1)",
+            "data:text/html,hi",
+            "ftp://example.com",
+            "http://",
+            "mailto:",
+            "https://example.com/a b",
+            "https://example.com/\nnext",
+            "C:\\docs\\notes.md",
+        ] {
+            assert!(!is_allowed_url(url), "{url}");
+        }
+    }
+
+    #[test]
+    fn open_url_refuses_other_schemes_without_spawning() {
+        assert!(!open_url("file:///tmp/notes.md"));
+        assert!(!open_url("not a url"));
     }
 }

@@ -1,16 +1,26 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use std::path::PathBuf;
 use std::time::Instant;
 
 use markdown_hexer::platform::NativeFileSystem;
+use markdown_hexer::platform::instance::{self, Acquire};
 use markdown_hexer::startup;
 use markdown_hexer::ui::HexerApp;
 
 fn main() -> eframe::Result {
     let t_main = Instant::now();
-    let path = std::env::args_os().nth(1).map(PathBuf::from);
-    let startup = startup::launch(path, &NativeFileSystem);
+    let paths = startup::paths_from_args(std::env::args_os().skip(1));
+    let server = match instance::acquire(paths.clone()) {
+        Acquire::Forwarded => return Ok(()),
+        Acquire::Primary { server, warning } => {
+            if let Some(warning) = warning {
+                eprintln!("markdown-hexer: {warning}");
+            }
+            server
+        }
+    };
+
+    let startup = startup::launch(paths, &NativeFileSystem);
 
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
@@ -27,6 +37,10 @@ fn main() -> eframe::Result {
     eframe::run_native(
         "Markdown Hexer",
         options,
-        Box::new(move |_cc| Ok(Box::new(HexerApp::new(startup, t_main)))),
+        Box::new(move |_cc| {
+            let mut app = HexerApp::new(startup, t_main);
+            app.attach_instance(server);
+            Ok(Box::new(app))
+        }),
     )
 }

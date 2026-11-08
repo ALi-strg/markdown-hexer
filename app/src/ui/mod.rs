@@ -1,3 +1,4 @@
+mod find;
 mod palette;
 
 pub use palette::Palette;
@@ -5,19 +6,24 @@ pub use palette::Palette;
 use std::collections::{HashMap, VecDeque};
 use std::time::{Duration, Instant};
 
+use egui::text::LayoutJob;
 use egui::{
     Align2, CentralPanel, Frame, Id, Key, Label, Margin, Modal, Modifiers, Panel, RichText,
-    ScrollArea, Sense, Stroke, TextBuffer, TextEdit, Ui, ViewportCommand,
+    ScrollArea, Sense, Stroke, TextBuffer, TextEdit, TextWrapMode, Ui, ViewportCommand,
 };
 use egui_commonmark::CommonMarkViewer;
+use egui_extras::syntax_highlighting::{CodeTheme, TokenType, highlight};
 
 use crate::dialogs::{Dialogs, NativeDialogs};
-use crate::domain::{Command, DocumentId, GuardChoice, Mode, Workspace};
+use crate::domain::{Command, DocumentId, Mode, Workspace};
 use crate::editor::{EditorResources, EditorSession};
 use crate::first_edit::FirstEditProbe;
+use crate::platform::instance::InstanceServer;
 use crate::platform::{FileSystem, NativeFileSystem};
-use crate::preview::{self, PreparedPreview};
+use crate::preview::{self, FencedCode, PreparedPreview};
 use crate::startup::{Startup, StartupTimer};
+
+const REPOSITORY: &str = "https://github.com/ALi-strg/markdown-hexer";
 
 pub struct HexerApp {
     workspace: Workspace,
@@ -28,6 +34,9 @@ pub struct HexerApp {
     editor: Option<EditorResources>,
     editor_sessions: HashMap<DocumentId, EditorSession>,
     focus_editor: bool,
+    find_open: bool,
+    focus_find: bool,
+    replace_text: String,
     toast: Option<Toast>,
     pending_toast: Option<String>,
     style_applied: bool,
@@ -38,6 +47,13 @@ pub struct HexerApp {
     dialogs: Box<dyn Dialogs>,
     allow_close: bool,
     first_edit: Option<FirstEditProbe>,
+    instance: Option<InstanceServer>,
+    instance_wake: bool,
+    about_open: bool,
+    focus_window: bool,
+    last_active: Option<DocumentId>,
+    was_focused: bool,
+    was_guard_open: bool,
 }
 
 struct Toast {
@@ -89,6 +105,10 @@ fn preview_scroll_id(document_id: DocumentId) -> Id {
     Id::unique(("preview_scroll", document_id))
 }
 
+fn editor_id(document_id: DocumentId) -> Id {
+    Id::unique(("markdown_editor", document_id))
+}
+
 impl HexerApp {
     pub fn new(startup: Startup, t_main: Instant) -> Self {
         Self::with_platform(
@@ -124,6 +144,9 @@ impl HexerApp {
             editor: None,
             editor_sessions: HashMap::new(),
             focus_editor,
+            find_open: false,
+            focus_find: false,
+            replace_text: String::new(),
             toast: None,
             pending_toast: startup.notice,
             style_applied: false,
@@ -134,9 +157,68 @@ impl HexerApp {
             dialogs,
             allow_close: false,
             first_edit: FirstEditProbe::from_env(),
+            instance: None,
+            instance_wake: false,
+            about_open: false,
+            focus_window: false,
+            last_active: None,
+            was_focused: false,
+            was_guard_open: false,
         };
         app.sync_editor_resources();
         app
+    }
+
+    /// Hand the running instance's launch receiver to the UI. Main attaches
+    /// this after the primary process has bound the socket.
+    pub fn attach_instance(&mut self, server: InstanceServer) {
+        self.instance = Some(server);
+    }
+
+    fn drain_instance(&mut self, ctx: &egui::Context) {
+        if !self.instance_wake {
+            self.instance_wake = true;
+            if let Some(server) = &self.instance {
+                let ctx = ctx.clone();
+                server.set_wake(move || ctx.request_repaint());
+            }
+        }
+
+        let requests: Vec<_> = self
+            .instance
+            .as_ref()
+            .map(|server| std::iter::from_fn(|| server.try_recv()).collect())
+            .unwrap_or_default();
+        if requests.is_empty() {
+            return;
+        }
+
+        self.focus_window |= requests.iter().any(|request| request.focus);
+        let commands = requests
+            .into_iter()
+            .flat_map(|request| request.paths)
+            .map(|path| Command::OpenPath(self.files.canonicalize(&path)))
+            .collect();
+        self.dispatch(ctx, commands);
+
+        if std::mem::take(&mut self.focus_window) {
+            ctx.send_viewport_cmd(ViewportCommand::Minimized(false));
+            ctx.send_viewport_cmd(ViewportCommand::Focus);
+        }
+    }
+
+    fn handle_dropped_files(&mut self, ctx: &egui::Context) {
+        let dropped = ctx.input_mut(|input| std::mem::take(&mut input.raw.dropped_files));
+        if dropped.is_empty() {
+            return;
+        }
+        let paths: Vec<_> = dropped
+            .iter()
+            .map(|file| file.path())
+            .filter(|path| !path.as_os_str().is_empty())
+            .map(|path| self.files.canonicalize(path))
+            .collect();
+        self.dispatch(ctx, paths.into_iter().map(Command::OpenPath).collect());
     }
 
     fn apply_style(&mut self, ctx: &egui::Context) {
@@ -244,6 +326,25 @@ impl HexerApp {
                         });
                     }
                     crate::domain::Effect::ShowToast(message) => self.show_message(message),
+                    crate::domain::Effect::ShowGuard { title } => {
+                        pending
+                            .push_back(Command::GuardChosen(self.dialogs.confirm_discard(&title)));
+                    }
+                    crate::domain::Effect::ShowExternalModified { title } => {
+                        let choice = self.dialogs.external_modified(&title);
+                        let disk_content = if choice == crate::domain::ExternalChoice::Cancel {
+                            None
+                        } else {
+                            self.workspace
+                                .active_document()
+                                .and_then(|document| document.path.as_deref())
+                                .and_then(|path| self.files.read_utf8(path).ok())
+                        };
+                        pending.push_back(Command::ExternalChosen {
+                            choice,
+                            disk_content,
+                        });
+                    }
                     crate::domain::Effect::SetWindowTitle(_) => {}
                     crate::domain::Effect::CloseWindow => {
                         self.allow_close = true;
@@ -257,6 +358,13 @@ impl HexerApp {
                 .workspace
                 .active_document()
                 .is_some_and(|document| document.mode == Mode::Edit);
+        }
+        if self
+            .workspace
+            .active_document()
+            .is_none_or(|document| document.mode != Mode::Edit)
+        {
+            self.find_open = false;
         }
         self.editor_sessions
             .retain(|document_id, _| self.workspace.document(*document_id).is_some());
@@ -291,6 +399,9 @@ impl HexerApp {
             next_tab,
             move_left,
             move_right,
+            about,
+            find,
+            escape,
         ) = ctx.input_mut(|input| {
             let save_as = input.consume_key(Modifiers::COMMAND.plus(Modifiers::SHIFT), Key::S);
             let save = input.consume_key(Modifiers::COMMAND, Key::S);
@@ -299,6 +410,11 @@ impl HexerApp {
             let new_tab = input.consume_key(Modifiers::COMMAND, Key::T);
             let open = input.consume_key(Modifiers::COMMAND, Key::O);
             let close = input.consume_key(Modifiers::COMMAND, Key::W);
+            let about = input.consume_key(Modifiers::COMMAND, Key::Slash);
+            let find = input.consume_key(Modifiers::COMMAND, Key::F);
+            let escape = self.find_open
+                && !self.about_open
+                && input.consume_key(Modifiers::NONE, Key::Escape);
             // Tab cycling is Ctrl-only, never Cmd.
             let previous_tab = input.consume_key(Modifiers::CTRL.plus(Modifiers::SHIFT), Key::Tab);
             let next_tab = input.consume_key(Modifiers::CTRL, Key::Tab);
@@ -318,8 +434,29 @@ impl HexerApp {
                 next_tab,
                 move_left,
                 move_right,
+                about,
+                find,
+                escape,
             )
         });
+
+        if about {
+            self.about_open = true;
+        }
+
+        let mut switch_to_edit = false;
+        if find && self.workspace.active_document().is_some() {
+            self.find_open = true;
+            self.focus_find = true;
+            switch_to_edit = self
+                .workspace
+                .active_document()
+                .is_some_and(|document| document.mode == Mode::Preview);
+        }
+        if escape {
+            self.find_open = false;
+            self.focus_editor = true;
+        }
 
         let active = self.workspace.active_document().map(|document| document.id);
         let active_index = active.and_then(|id| {
@@ -330,6 +467,9 @@ impl HexerApp {
         });
 
         let mut commands = Vec::new();
+        if switch_to_edit {
+            commands.push(Command::SetMode(Mode::Edit));
+        }
         if save_as {
             commands.push(Command::SaveAs);
         } else if save {
@@ -370,6 +510,43 @@ impl HexerApp {
             }
         }
         commands
+    }
+
+    fn check_external(&mut self, ctx: &egui::Context) {
+        let focused = ctx.input(|input| input.focused);
+        let active = self.workspace.active_document().map(|document| document.id);
+        let guard_open = self.workspace.guard().is_some();
+        let trigger = (focused && !self.was_focused)
+            || active != self.last_active
+            || (self.was_guard_open && !guard_open);
+        self.was_focused = focused;
+        self.last_active = active;
+        self.was_guard_open = guard_open;
+
+        if !trigger
+            || guard_open
+            || self.workspace.external_modified_open()
+            || self.workspace.save_dialog_open()
+        {
+            return;
+        }
+        let Some(document) = self.workspace.active_document() else {
+            return;
+        };
+        let Some(path) = document.path.as_deref() else {
+            return;
+        };
+        let document_id = document.id;
+        // A missing or unreadable file is not an external modification.
+        if let Ok(content) = self.files.read_utf8(path) {
+            self.dispatch(
+                ctx,
+                vec![Command::ExternalCheck {
+                    document_id,
+                    content,
+                }],
+            );
+        }
     }
 
     fn handle_close_request(&mut self, ctx: &egui::Context) {
@@ -463,7 +640,7 @@ impl HexerApp {
         commands
     }
 
-    fn show_toolbar(&self, ui: &mut Ui) -> Vec<Command> {
+    fn show_toolbar(&mut self, ui: &mut Ui) -> Vec<Command> {
         let Some(document) = self.workspace.active_document() else {
             return Vec::new();
         };
@@ -496,6 +673,9 @@ impl HexerApp {
                     }
 
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.button("About").clicked() {
+                            self.about_open = true;
+                        }
                         if ui.button("Save As").clicked() {
                             commands.push(Command::SaveAs);
                         }
@@ -552,7 +732,7 @@ impl HexerApp {
                 .show(ui, |ui| {
                     let min_size = ui.available_size();
                     let output = TextEdit::multiline(&mut content)
-                        .id(Id::unique(("markdown_editor", document_id)))
+                        .id(editor_id(document_id))
                         .font(font)
                         .desired_width(f32::INFINITY)
                         .desired_rows(1)
@@ -596,11 +776,21 @@ impl HexerApp {
             .inner_margin(Margin::symmetric(28, 20))
             .show(ui, |ui| {
                 if let (Some(preview), Some(document_id)) = (preview, document_id) {
+                    let code_blocks = preview.code_blocks.clone();
+                    let render_code = move |ui: &mut Ui, html: &str| {
+                        if let Some(index) = code_sentinel_index(html)
+                            && let Some(code) = code_blocks.get(index)
+                        {
+                            show_code_block(ui, &palette, code, index);
+                        }
+                    };
                     ScrollArea::vertical()
                         .id_salt(preview_scroll_id(document_id))
                         .auto_shrink([false, false])
                         .show(ui, |ui| {
-                            CommonMarkViewer::new().show(ui, cache, &preview.markdown);
+                            CommonMarkViewer::new()
+                                .render_html_fn(Some(&render_code))
+                                .show(ui, cache, &preview.render_markdown);
                         });
                 } else {
                     ui.centered_and_justified(|ui| {
@@ -630,34 +820,84 @@ impl HexerApp {
         });
     }
 
-    fn show_guard(&mut self, ctx: &egui::Context) {
-        let Some(title) = self.workspace.guard().map(|guard| guard.title.clone()) else {
+    fn show_about(&mut self, ctx: &egui::Context) {
+        if !self.about_open {
             return;
-        };
+        }
 
-        let mut choice = None;
-        Modal::new(Id::unique("close_guard")).show(ctx, |ui| {
-            ui.set_max_width(420.0);
-            ui.heading("Unsaved changes");
-            ui.add_space(8.0);
-            ui.label(format!("Save changes to {title}?"));
-            ui.add_space(14.0);
+        let mut close = false;
+        let mut open_repository = false;
+        Modal::new(Id::unique("about")).show(ctx, |ui| {
+            ui.set_max_width(560.0);
+            ui.heading("Markdown Hexer");
+            ui.label(format!("Version {}", env!("CARGO_PKG_VERSION")));
             ui.horizontal(|ui| {
-                if ui.button("Save").clicked() {
-                    choice = Some(GuardChoice::Save);
-                }
-                if ui.button("Don't Save").clicked() {
-                    choice = Some(GuardChoice::DontSave);
-                }
-                if ui.button("Cancel").clicked() {
-                    choice = Some(GuardChoice::Cancel);
+                ui.label("Repository:");
+                if ui.link(REPOSITORY).clicked() {
+                    open_repository = true;
                 }
             });
+            ui.add_space(10.0);
+            ui.heading("Shortcuts");
+            egui::Grid::new("about_shortcuts")
+                .num_columns(2)
+                .striped(true)
+                .show(ui, |ui| {
+                    for (action, shortcut) in [
+                        ("New", "Ctrl+N"),
+                        ("Open", "Ctrl+O"),
+                        ("Save", "Ctrl+S"),
+                        ("Save As", "Ctrl+Shift+S"),
+                        ("Close Tab", "Ctrl+W"),
+                        ("New Tab", "Ctrl+T"),
+                        ("Next Tab", "Ctrl+Tab"),
+                        ("Previous Tab", "Ctrl+Shift+Tab"),
+                        ("Move Tab Left", "Ctrl+Shift+PgUp"),
+                        ("Move Tab Right", "Ctrl+Shift+PgDn"),
+                        ("Toggle Preview/Edit", "Ctrl+E"),
+                        ("Find", "Ctrl+F"),
+                        ("Bold", "Ctrl+B"),
+                        ("Italic", "Ctrl+I"),
+                        ("About", "Ctrl+/"),
+                    ] {
+                        ui.label(action);
+                        ui.label(RichText::new(shortcut).monospace());
+                        ui.end_row();
+                    }
+                });
+            ui.add_space(12.0);
+            if ui.button("Close").clicked() {
+                close = true;
+            }
         });
 
-        if let Some(choice) = choice {
-            self.dispatch(ctx, vec![Command::GuardChosen(choice)]);
+        if ctx.input(|input| input.key_pressed(Key::Escape)) {
+            close = true;
         }
+        if open_repository && !crate::platform::open_url(REPOSITORY) {
+            self.show_message("Could not open the repository link");
+        }
+        if close {
+            self.about_open = false;
+        }
+    }
+
+    fn handle_open_urls(&mut self, ctx: &egui::Context) {
+        let commands = ctx.output_mut(|output| std::mem::take(&mut output.commands));
+        let mut kept = Vec::with_capacity(commands.len());
+        for command in commands {
+            let egui::OutputCommand::OpenUrl(open) = command else {
+                kept.push(command);
+                continue;
+            };
+            if crate::platform::open_url(&open.url) {
+                continue;
+            }
+            if crate::platform::is_allowed_url(&open.url) {
+                self.show_message("Could not open link");
+            }
+        }
+        ctx.output_mut(|output| output.commands = kept);
     }
 
     fn show_toast(&mut self, ctx: &egui::Context) {
@@ -712,6 +952,8 @@ impl eframe::App for HexerApp {
         }
 
         self.apply_style(&ctx);
+        self.drain_instance(&ctx);
+        self.handle_dropped_files(&ctx);
         self.sync_title(&ctx);
         self.sync_editor_resources();
 
@@ -721,6 +963,7 @@ impl eframe::App for HexerApp {
         commands.extend(self.show_tab_bar(ui));
         if self.workspace.guard().is_none() {
             commands.extend(self.show_toolbar(ui));
+            commands.extend(self.show_find_panel(ui));
         }
         // Mode, Tab, and New/Open commands can run before painting so the new
         // state is visible this frame. Save and close must wait for the editor.
@@ -734,8 +977,10 @@ impl eframe::App for HexerApp {
         self.show_document(ui);
         self.dispatch(&ctx, deferred);
         self.handle_close_request(&ctx);
-        self.show_guard(&ctx);
+        self.check_external(&ctx);
+        self.show_about(&ctx);
         self.show_toast(&ctx);
+        self.handle_open_urls(&ctx);
 
         if self.frame_count == 0 {
             // eframe shows the window only after this frame has painted, so the
@@ -769,6 +1014,74 @@ impl eframe::App for HexerApp {
     fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
         self.palette.bg.to_normalized_gamma_f32()
     }
+}
+
+fn code_sentinel_index(html: &str) -> Option<usize> {
+    html.trim()
+        .strip_prefix("<div data-hexer-code=\"")?
+        .strip_suffix("\"></div>")?
+        .parse()
+        .ok()
+}
+
+fn code_theme(style: &egui::Style, palette: &Palette) -> CodeTheme {
+    let mut theme = CodeTheme::light(egui::TextStyle::Monospace.resolve(style).size);
+    theme.format_mut(TokenType::Comment).color = palette.syntax_comment;
+    theme.format_mut(TokenType::Keyword).color = palette.syntax_keyword;
+    theme.format_mut(TokenType::StringLiteral).color = palette.syntax_string;
+    theme.format_mut(TokenType::Literal).color = palette.syntax_number;
+    theme.format_mut(TokenType::Function).color = palette.syntax_function;
+    theme.format_mut(TokenType::Punctuation).color = palette.ink;
+    theme
+}
+
+fn code_layout_job(
+    ctx: &egui::Context,
+    style: &egui::Style,
+    palette: &Palette,
+    code: &FencedCode,
+) -> LayoutJob {
+    highlight(
+        ctx,
+        style,
+        &code_theme(style, palette),
+        &code.text,
+        code.language.as_deref().unwrap_or(""),
+    )
+}
+
+fn show_code_block(
+    ui: &mut Ui,
+    palette: &Palette,
+    code: &FencedCode,
+    index: usize,
+) -> (egui::Response, egui::Response) {
+    let mut content = None;
+    let frame = Frame::new()
+        .fill(palette.code_bg)
+        .stroke(Stroke::new(1.0, palette.border))
+        .corner_radius(4)
+        .inner_margin(Margin::symmetric(10, 8))
+        .show(ui, |ui| {
+            ScrollArea::horizontal()
+                .id_salt(("preview_code_scroll", index))
+                .auto_shrink([false, true])
+                .show(ui, |ui| {
+                    let job = code_layout_job(ui.ctx(), ui.style(), palette, code);
+                    content = Some(
+                        ui.add(
+                            Label::new(job)
+                                .selectable(true)
+                                .wrap_mode(TextWrapMode::Extend),
+                        ),
+                    );
+                });
+        });
+    ui.add_space(4.0);
+    (
+        frame.response,
+        content.expect("code block content is rendered"),
+    )
 }
 
 #[cfg(test)]
