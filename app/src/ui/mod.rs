@@ -1,3 +1,4 @@
+mod find;
 mod palette;
 
 pub use palette::Palette;
@@ -37,6 +38,9 @@ pub struct HexerApp {
     editor_sessions: HashMap<DocumentId, EditorSession>,
     focus_editor: bool,
     pending_selection: Option<(DocumentId, Range<usize>)>,
+    find_open: bool,
+    focus_find: bool,
+    replace_text: String,
     toast: Option<Toast>,
     pending_toast: Option<String>,
     style_applied: bool,
@@ -105,6 +109,9 @@ impl HexerApp {
             editor_sessions: HashMap::new(),
             focus_editor,
             pending_selection: None,
+            find_open: false,
+            focus_find: false,
+            replace_text: String::new(),
             toast: None,
             pending_toast: startup.notice,
             style_applied: false,
@@ -316,6 +323,13 @@ impl HexerApp {
                 .active_document()
                 .is_some_and(|document| document.mode == Mode::Edit);
         }
+        if self
+            .workspace
+            .active_document()
+            .is_none_or(|document| document.mode != Mode::Edit)
+        {
+            self.find_open = false;
+        }
         self.editor_sessions
             .retain(|document_id, _| self.workspace.document(*document_id).is_some());
         self.sync_editor_resources();
@@ -355,6 +369,8 @@ impl HexerApp {
             move_right,
             about,
             format,
+            find,
+            escape,
         ) = ctx.input_mut(|input| {
             let save_as = input.consume_key(Modifiers::COMMAND.plus(Modifiers::SHIFT), Key::S);
             let save = input.consume_key(Modifiers::COMMAND, Key::S);
@@ -375,6 +391,10 @@ impl HexerApp {
             } else {
                 None
             };
+            let find = input.consume_key(Modifiers::COMMAND, Key::F);
+            let escape = self.find_open
+                && !self.about_open
+                && input.consume_key(Modifiers::NONE, Key::Escape);
             // Tab cycling is Ctrl-only, never Cmd.
             let previous_tab = input.consume_key(Modifiers::CTRL.plus(Modifiers::SHIFT), Key::Tab);
             let next_tab = input.consume_key(Modifiers::CTRL, Key::Tab);
@@ -396,6 +416,8 @@ impl HexerApp {
                 move_right,
                 about,
                 format,
+                find,
+                escape,
             )
         });
 
@@ -404,6 +426,20 @@ impl HexerApp {
         }
         if let Some(action) = format {
             self.apply_format(ctx, action);
+        }
+
+        let mut switch_to_edit = false;
+        if find && self.workspace.active_document().is_some() {
+            self.find_open = true;
+            self.focus_find = true;
+            switch_to_edit = self
+                .workspace
+                .active_document()
+                .is_some_and(|document| document.mode == Mode::Preview);
+        }
+        if escape {
+            self.find_open = false;
+            self.focus_editor = true;
         }
 
         let active = self.workspace.active_document().map(|document| document.id);
@@ -415,6 +451,9 @@ impl HexerApp {
         });
 
         let mut commands = Vec::new();
+        if switch_to_edit {
+            commands.push(Command::SetMode(Mode::Edit));
+        }
         if save_as {
             commands.push(Command::SaveAs);
         } else if save {
@@ -1000,6 +1039,7 @@ impl eframe::App for HexerApp {
         commands.extend(self.show_tab_bar(ui));
         if self.workspace.guard().is_none() {
             commands.extend(self.show_toolbar(ui));
+            commands.extend(self.show_find_panel(ui));
         }
         // Mode, Tab, and New/Open commands can run before painting so the new
         // state is visible this frame. Save and close must wait for the editor.

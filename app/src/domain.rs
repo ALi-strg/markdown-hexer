@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
 
+use crate::find::{self, FindState};
 use crate::platform::ReadError;
 
 pub const APP_NAME: &str = "Markdown Hexer";
@@ -34,6 +35,8 @@ pub struct Document {
     pub content: String,
     pub saved_content: String,
     pub mode: Mode,
+    /// Query and current match for this Document; kept across Tab switches.
+    pub find: FindState,
     /// Bumped on every content change; editor highlight caches key off it.
     pub revision: u64,
 }
@@ -48,6 +51,7 @@ impl Document {
             saved_content: content.clone(),
             content,
             mode: Mode::Preview,
+            find: FindState::default(),
             revision: 0,
         }
     }
@@ -61,6 +65,7 @@ impl Document {
             content: String::new(),
             saved_content: String::new(),
             mode: Mode::Edit,
+            find: FindState::default(),
             revision: 0,
         }
     }
@@ -262,22 +267,26 @@ impl Workspace {
                 content,
             } => {
                 let title_before = self.window_title();
-                if let Some(document) = self
-                    .tabs
-                    .iter_mut()
-                    .map(|tab| &mut tab.document)
-                    .find(|document| document.id == document_id)
-                    && document.content != content
-                {
-                    document.content = content;
-                    document.revision += 1;
-                }
+                self.set_content(document_id, content);
                 if self.window_title() != title_before {
                     vec![Effect::SetWindowTitle(self.window_title())]
                 } else {
                     Vec::new()
                 }
             }
+            Command::Find { query } => {
+                if let Some(document) = self.active_document_mut()
+                    && document.find.query != query
+                {
+                    document.find.query = query;
+                    document.find.current = 0;
+                }
+                Vec::new()
+            }
+            Command::FindNext => self.move_find(1),
+            Command::FindPrevious => self.move_find(-1),
+            Command::Replace { replacement } => self.replace(&replacement),
+            Command::ReplaceAll { replacement } => self.replace_all(&replacement),
             Command::ActivateTab(document_id) => self.activate_tab(document_id),
             Command::CloseTab(document_id) => self.close_tab(document_id),
             Command::MoveTab { from, to } => self.move_tab(from, to),
@@ -353,6 +362,89 @@ impl Workspace {
     fn allocate_id(&mut self) -> DocumentId {
         self.next_id += 1;
         self.next_id
+    }
+
+    /// The single content-change path, shared by the editor and replace commands.
+    fn set_content(&mut self, document_id: DocumentId, content: String) -> bool {
+        if let Some(document) = self
+            .tabs
+            .iter_mut()
+            .map(|tab| &mut tab.document)
+            .find(|document| document.id == document_id)
+            && document.content != content
+        {
+            document.content = content;
+            document.revision += 1;
+            true
+        } else {
+            false
+        }
+    }
+
+    fn move_find(&mut self, delta: i32) -> Vec<Effect> {
+        if let Some(document) = self.active_document_mut() {
+            let count = find::matches(&document.content, &document.find.query).len();
+            document.find.current = if count == 0 {
+                0
+            } else {
+                let current = document.find.current.min(count - 1) as i32;
+                (current + delta).rem_euclid(count as i32) as usize
+            };
+        }
+        Vec::new()
+    }
+
+    fn replace(&mut self, replacement: &str) -> Vec<Effect> {
+        let title_before = self.window_title();
+        let Some(document) = self.active_document() else {
+            return Vec::new();
+        };
+        let document_id = document.id;
+        let ranges = find::matches(&document.content, &document.find.query);
+        let current = document.find.current.min(ranges.len().saturating_sub(1));
+        let Some(range) = ranges.get(current) else {
+            return Vec::new();
+        };
+        let mut content = String::with_capacity(document.content.len() + replacement.len());
+        content.push_str(&document.content[..range.start]);
+        content.push_str(replacement);
+        content.push_str(&document.content[range.end..]);
+        let old_current = document.find.current;
+        self.set_content(document_id, content);
+        if let Some(document) = self.active_document_mut() {
+            let count = find::matches(&document.content, &document.find.query).len();
+            document.find.current = if count == 0 {
+                0
+            } else {
+                old_current.min(count - 1)
+            };
+        }
+        if self.window_title() != title_before {
+            vec![Effect::SetWindowTitle(self.window_title())]
+        } else {
+            Vec::new()
+        }
+    }
+
+    fn replace_all(&mut self, replacement: &str) -> Vec<Effect> {
+        let title_before = self.window_title();
+        let Some(document) = self.active_document() else {
+            return Vec::new();
+        };
+        let document_id = document.id;
+        let (content, count) =
+            find::replace_all(&document.content, &document.find.query, replacement);
+        if count > 0 {
+            self.set_content(document_id, content);
+            if let Some(document) = self.active_document_mut() {
+                document.find.current = 0;
+            }
+        }
+        if self.window_title() != title_before {
+            vec![Effect::SetWindowTitle(self.window_title())]
+        } else {
+            Vec::new()
+        }
     }
 
     fn new_untitled(&mut self) -> Vec<Effect> {
@@ -794,6 +886,17 @@ pub enum Command {
     ContentChanged {
         document_id: DocumentId,
         content: String,
+    },
+    Find {
+        query: String,
+    },
+    FindNext,
+    FindPrevious,
+    Replace {
+        replacement: String,
+    },
+    ReplaceAll {
+        replacement: String,
     },
     ActivateTab(DocumentId),
     CloseTab(DocumentId),
@@ -1934,5 +2037,79 @@ mod tests {
         assert!(workspace.guard().is_none());
         workspace.apply(Command::WindowCloseRequested);
         assert_eq!(workspace.guard().unwrap().document_id, draft);
+    }
+
+    #[test]
+    fn find_matches_literally_ignores_case_and_wraps() {
+        let mut workspace = loaded_workspace("notes.md", "Alpha alpha ALPHA");
+        workspace.apply(Command::Find {
+            query: "alpha".to_owned(),
+        });
+        assert_eq!(workspace.active_document().unwrap().find.current, 0);
+
+        workspace.apply(Command::FindNext);
+        assert_eq!(workspace.active_document().unwrap().find.current, 1);
+        workspace.apply(Command::FindNext);
+        assert_eq!(workspace.active_document().unwrap().find.current, 2);
+        workspace.apply(Command::FindNext);
+        assert_eq!(workspace.active_document().unwrap().find.current, 0);
+        workspace.apply(Command::FindPrevious);
+        assert_eq!(workspace.active_document().unwrap().find.current, 2);
+    }
+
+    #[test]
+    fn find_without_a_match_never_changes_content() {
+        let mut workspace = loaded_workspace("notes.md", "hello");
+        let revision = workspace.active_document().unwrap().revision;
+        workspace.apply(Command::Find {
+            query: "missing".to_owned(),
+        });
+        workspace.apply(Command::FindNext);
+        workspace.apply(Command::Replace {
+            replacement: "x".to_owned(),
+        });
+        workspace.apply(Command::ReplaceAll {
+            replacement: "x".to_owned(),
+        });
+
+        let document = workspace.active_document().unwrap();
+        assert_eq!(document.content, "hello");
+        assert_eq!(document.revision, revision);
+        assert_eq!(document.find.current, 0);
+        assert!(!document.is_dirty());
+    }
+
+    #[test]
+    fn replace_changes_only_the_active_document() {
+        let (mut workspace, ids) = workspace_with_files(&["one.md", "two.md"]);
+        workspace.apply(Command::ActivateTab(ids[0]));
+        workspace.apply(Command::Find {
+            query: "one".to_owned(),
+        });
+        workspace.apply(Command::Replace {
+            replacement: "ONE".to_owned(),
+        });
+
+        assert_eq!(workspace.document(ids[0]).unwrap().content, "ONE.md");
+        assert_eq!(workspace.document(ids[1]).unwrap().content, "two.md");
+        assert!(workspace.document(ids[0]).unwrap().is_dirty());
+        assert!(!workspace.document(ids[1]).unwrap().is_dirty());
+    }
+
+    #[test]
+    fn replace_all_replaces_every_match_and_marks_dirty() {
+        let mut workspace = loaded_workspace("notes.md", "foo Foo foo");
+        workspace.apply(Command::Find {
+            query: "foo".to_owned(),
+        });
+        workspace.apply(Command::ReplaceAll {
+            replacement: "bar".to_owned(),
+        });
+
+        let document = workspace.active_document().unwrap();
+        assert_eq!(document.content, "bar bar bar");
+        assert!(document.is_dirty());
+        assert_eq!(document.find.current, 0);
+        assert!(find::matches(&document.content, "foo").is_empty());
     }
 }
