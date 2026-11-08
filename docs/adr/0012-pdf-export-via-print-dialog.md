@@ -1,5 +1,7 @@
 # Print Export via the OS print dialog
 
+**Status: deferred to 2.1; the `window.print()` mechanism is superseded by ADR-0014.**
+
 Technical authors want PDF output of a rendered Document. Programmatic PDF
 generation in Rust (headless renderer or a PDF-writing crate) would mean new
 heavy dependencies, font/typography work, and a second rendering path that can

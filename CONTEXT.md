@@ -1,20 +1,16 @@
 # Markdown Editor
 
-A cross-platform Tauri 2 desktop app: a distraction-free Markdown editor with a live rendered preview and native file-system integration.
+A cross-platform desktop Markdown editor: a distraction-free editor with a native rendered preview and native file-system integration.
 
 ## Language
 
-**Editor Pane**:
-The left-hand panel containing the Markdown source, built on CodeMirror 6.
-_Avoid_: Editor, code editor, text area
+**Editor View**:
+The view containing the Markdown source. It fills the window in Edit Mode.
+_Avoid_: Editor, code editor, text area, Editor Pane
 
-**Preview Pane**:
-The right-hand panel showing the rendered HTML output of the current document.
-_Avoid_: Preview, rendered view
-
-**Synced Scrolling**:
-The editor-driven behavior where scrolling the Editor Pane scrolls the Preview Pane to the corresponding block. One-way (editor → preview) and block-anchored, never proportional.
-_Avoid_: Scroll sync, synchronized scrollbars
+**Preview View**:
+The view showing the current document rendered through the Native Preview. It fills the window in Preview Mode.
+_Avoid_: Preview, rendered view, Preview Pane
 
 **Document**:
 A Markdown file open in a Tab, plus its in-memory unsaved changes. There is exactly one Document per Tab and one Tab per Document.
@@ -39,15 +35,15 @@ _Avoid_: Save copy, export
 ## Tabs
 
 **Tab**:
-The slot in the Tab Bar holding one Document. Each Tab keeps its own Document state — content, Dirty state, canonical path, Layout Mode, Find & Replace state, collapsed Sections, and the editor's cursor, scroll, and undo history — for the session. `New` inserts the new Tab after the active one and makes it Active. Tabs can be reordered within the Tab Bar by dragging (Tabs shift aside as the drag crosses them; a drop right of the last Tab moves it to the end) or with Cmd/Ctrl+Shift+PageUp/PageDown, which move the Active Tab one position left or right. Dragging never makes a Tab Active. Order is session-only.
+The slot in the Tab Bar holding one Document. Each Tab keeps its own Document state — content, Dirty state, canonical path, Mode, Find & Replace state, collapsed Sections, and the editor's cursor, scroll, and undo history — for the session. `New` inserts the new Tab after the active one and makes it Active. Tabs can be reordered within the Tab Bar by dragging (Tabs shift aside as the drag crosses them; a drop right of the last Tab moves it to the end) or with Cmd/Ctrl+Shift+PageUp/PageDown, which move the Active Tab one position left or right. Dragging never makes a Tab Active. Order is session-only.
 _Avoid_: File tab, buffer
 
 **Tab Bar**:
-The strip at the very top of the window, above the toolbar, showing every open Tab in the user's chosen order (initially insertion order). Each Tab is labelled with its Document's filename (with the parent folder added when two open Documents share a basename) and a Dirty marker, and carries its own close control. Always visible in every Layout Mode; clicking a Tab makes it Active. A `+` affordance creates a New (Untitled) Tab. Tab shortcuts: Cmd/Ctrl+T New Tab, Cmd/Ctrl+W Close Tab, Ctrl+Tab / Ctrl+Shift+Tab next / previous Tab, Cmd/Ctrl+Shift+PageUp/PageDown move Tab left / right.
+The strip at the very top of the window, above the toolbar, showing every open Tab in the user's chosen order (initially insertion order). Each Tab is labelled with its Document's filename (with the parent folder added when two open Documents share a basename) and a Dirty marker, and carries its own close control. Always visible in both Modes; clicking a Tab makes it Active. A `+` affordance creates a New (Untitled) Tab. Tab shortcuts: Cmd/Ctrl+T New Tab, Cmd/Ctrl+W Close Tab, Ctrl+Tab / Ctrl+Shift+Tab next / previous Tab, Cmd/Ctrl+Shift+PageUp/PageDown move Tab left / right.
 _Avoid_: Tab strip, tabs row
 
 **Active Document**:
-The Document in the focused Tab — the one the window's panes, Toolbar, and title reflect. The window displays the Active Document's Layout Mode and switches to it on Tab switch.
+The Document in the focused Tab — the one the window's views, Toolbar, and title reflect. The window displays the Active Document's Mode and switches to it on Tab switch.
 _Avoid_: Current document, open document
 
 **Close Tab**:
@@ -55,45 +51,57 @@ Remove a Tab and its Document. If the Document is Dirty, the Confirm-Discard Gua
 _Avoid_: Close file, destroy tab
 
 **Find & Replace**:
-The app-hosted search panel that operates on the Active Document. Each Tab keeps its own Find & Replace state (query and current match), so switching Tabs swaps the panel to that Tab's state. Preview Only gives no highlight or scroll feedback (its Editor Pane is hidden), so opening Find, typing a query, cycling matches, or triggering a replace first switches the Active Document to Split View.
+The app-hosted search panel that operates on the Active Document in Edit Mode. Each Tab keeps its own Find & Replace state (query and current match), so switching Tabs swaps the panel to that Tab's state. Invoking Find & Replace from Preview Mode first switches the Active Document to Edit Mode; there is no split view and no cross-view highlight.
 _Avoid_: Search box, search-and-replace
 
-## Layout Modes
+## Modes
 
-The Layout Mode is a property of each Document, not of the window; the window displays the Active Document's mode.
+The Mode is a property of each Document, not of the window; the window displays the Active Document's Mode. There are two Modes: Preview and Edit.
 
-**Split View**:
-The default layout with both panes visible side by side. Chosen automatically when a New Document is created. The only mode in which Synced Scrolling is active.
-_Avoid_: Split screen, side-by-side
+**Preview**:
+The default Mode for an opened Document. The Preview View fills the window. No editor is initialized: the first entry into Edit Mode is what loads the editor. Copy-on-Select and the Code Copy Button are active.
+_Avoid_: Reading mode, view mode, Preview Only
 
-**Preview Only**:
-The layout with the Editor Pane hidden and the Preview Pane filling the window. Chosen automatically when an existing file is opened. No Synced Scrolling in this mode.
-_Avoid_: Reading mode, view mode
+**Edit**:
+The authoring Mode. The Editor View fills the window and there is no live rendered view. The editor initializes lazily on the first switch to Edit. Find & Replace and the Formatting Buttons are available.
+_Avoid_: Writing mode, Focus Mode, source mode
 
-**Focus Mode**:
-The layout with the Preview Pane hidden and the Editor Pane filling the window.
-_Avoid_: Writing mode, Zen mode
-
-**Layout Switcher**:
-The toolbar segmented control (Split / Preview / Focus) that sets the Active Document's Layout Mode directly. Always visible and enabled in every Layout Mode — it is the way out of Preview Only. The keyboard shortcut Cmd/Ctrl+Shift+P cycles the Active Document's modes.
-_Avoid_: View toggle, mode selector, segmented buttons
+**Mode Switcher**:
+The toolbar segmented control (Preview / Edit) that sets the Active Document's Mode directly. Always visible and enabled in both Modes. The keyboard shortcut Cmd/Ctrl+E toggles the Active Document's Mode.
+_Avoid_: View toggle, mode selector, segmented buttons, Layout Switcher
 
 **Formatting Buttons**:
-The toolbar's Bold, Italic, Heading, List, Link, and Code controls. Visible in Split View and Focus Mode; hidden in Preview Only, where there is no Editor Pane to format. The Bold/Italic keyboard shortcuts no-op in Preview Only.
+The toolbar's Bold, Italic, Heading, List, Link, and Code controls. Visible in Edit Mode; hidden in Preview Mode, where there is no Editor View to format. The Bold/Italic keyboard shortcuts no-op in Preview Mode.
 _Avoid_: Edit buttons, markup buttons
 
-Each Document carries its own Layout Mode. When a Tab is created, the mode is auto-chosen (Open → Preview Only, New → Split View); afterwards the Layout Switcher sets only the Active Document's mode, remembered for that Tab's session. Save As does not change the Layout Mode. Modes are not persisted across launches (the app does not restore the previous session).
+Each Document carries its own Mode. When a Tab is created, the Mode is auto-chosen (Open → Preview, New → Edit); the launch Tab (an empty Untitled Document) is Edit, and a file opened at launch is Preview. Afterwards the Mode Switcher sets only the Active Document's Mode, remembered for that Tab's session. Save As does not change the Mode. Modes are not persisted across launches (the app does not restore the previous session).
+
+## Preview
+
+**Native Preview**:
+The renderer that draws the Preview View from the Document's Markdown without a webview or HTML/CSS engine. It renders CommonMark plus GFM tables, strikethrough, task lists, and footnotes; headings, paragraphs, emphasis, lists, blockquotes, rules, fenced code with syntax colors, inline code, images, and links. Raw HTML is not rendered.
+_Avoid_: HTML preview, webview, browser view
+
+## Performance
+
+**Cold Start**:
+The time from process start to the first presented frame in which the Active Document is readable. The 2.0 targets are p95 ≤ 200 ms on Windows, ≤ 250 ms on Linux, and, on macOS, ≤ 200 ms to window chrome and ≤ 250 ms to a readable document, with a warm page cache. Windows is the primary gate; macOS is validated before release.
+_Avoid_: Launch time, startup time
+
+**Lazy Edit**:
+The guarantee that a Preview launch constructs no editor state. The editor initializes on the first switch to Edit Mode; the budget is ≤ 150 ms to a usable editor for a 100 KB document.
+_Avoid_: Deferred loading, code splitting
 
 ## Sections
 
 **Section**:
-A collapsible region of the Preview Pane spanning one heading and everything under it until the next heading of the same or higher level. Every heading of any level — ATX (`#`) or Setext — starts a Section; content before the first heading belongs to no Section and is never collapsible. Headings nested inside lists or blockquotes do not start a Section. A Section is collapsed or expanded via a chevron in the heading's left margin; a heading with no content under it has no chevron. Collapsing a Section hides its entire subtree, including nested Sections. Collapse state is session-only per Tab, survives edits and re-renders, and is not persisted across launches. Synced Scrolling and Find & Replace auto-expand a collapsed Section when they target content inside it.
+A collapsible region of the Preview View spanning one heading and everything under it until the next heading of the same or higher level. Every heading of any level — ATX (`#`) or Setext — starts a Section; content before the first heading belongs to no Section and is never collapsible. Headings nested inside lists or blockquotes do not start a Section. A Section is collapsed or expanded via a chevron in the heading's left margin; a heading with no content under it has no chevron. Collapsing a Section hides its entire subtree, including nested Sections. Collapse state is session-only per Tab, survives edits, re-renders, and Mode switches, and is not persisted across launches.
 _Avoid_: fold, block group, outline
 
 ## Copying
 
 **Copy-on-Select**:
-The always-on Preview Pane behavior: when a mouse selection gesture ends (mouse-up after a drag, or a double-click selecting a word), the selected text is copied to the clipboard as plain text and confirmed by the Copy Toast near the cursor. Preview Pane only — selecting in the Editor Pane is an editing gesture and never copies. Keyboard copy (Ctrl/Cmd+C) copies natively and stays silent. No setting exists to turn it off.
+The always-on Preview View behavior: when a mouse selection gesture ends (mouse-up after a drag, or a double-click selecting a word), the selected text is copied to the clipboard as plain text and confirmed by the Copy Toast near the cursor. Preview View only — selecting in the Editor View is an editing gesture and never copies. Keyboard copy (Ctrl/Cmd+C) copies natively and stays silent. No setting exists to turn it off.
 _Avoid_: auto-copy, select-to-copy
 
 **Copy Toast**:
@@ -101,13 +109,13 @@ The small transient label confirming a mouse-driven copy, shown near the cursor 
 _Avoid_: notification, tooltip, popup
 
 **Code Copy Button**:
-The hover-revealed control in the top-right corner of every fenced code block in the Preview Pane. Copies the block's text content (trailing newline trimmed) as plain text and shows the Copy Toast at the click position. Keyboard-focusable.
+The hover-revealed control in the top-right corner of every fenced code block in the Preview View. Copies the block's text content (trailing newline trimmed) as plain text and shows the Copy Toast at the click position. Keyboard-focusable.
 _Avoid_: copy icon, clipboard button
 
 ## Appearance
 
 **Theme**:
-The appearance preference shown in the toolbar. Seven states: System (default) or one of six curated Palettes — Light (warm beige), House (cool paper with green-gray ink), Dark (deep navy), High Contrast (near-black), Nord (cool arctic blue-grey), or Terminal Green (green-on-black). A manual choice persists until changed. Persisted in localStorage.
+The appearance preference shown in the toolbar. Seven states: System (default) or one of six curated Palettes — Light (warm beige), House (cool paper with green-gray ink), Dark (deep navy), High Contrast (near-black), Nord (cool arctic blue-grey), or Terminal Green (green-on-black). A manual choice persists until changed.
 _Avoid_: Color mode, dark mode toggle
 
 **Palette**:
@@ -115,15 +123,15 @@ A concrete color scheme, one of the six: Light, House, Dark, High Contrast, Nord
 _Avoid_: Theme (the seven-state preference; System is a Theme but not a Palette)
 
 **Design language**:
-The shared visual treatment of the app chrome: Helvetica Neue or its fallback, monospace uppercase micro-labels, hairline borders, and flat surfaces with no radius or shadow. It follows the alitools-pages House style. The Design language does not replace a Palette and does not control the Editor Pane or Preview Pane content fonts.
+The shared visual treatment of the app chrome: Helvetica Neue or its fallback, monospace uppercase micro-labels, hairline borders, and flat surfaces with no radius or shadow. It follows the alitools-pages House style. The Design language does not replace a Palette and does not control the Editor View or Preview View content fonts.
 _Avoid_: look-and-feel, skin, theme
 
 **System**:
-The default Theme state. Not a Palette: it follows the OS live and resolves to the Light Palette for light mode or the Dark Palette for dark mode. House is an explicit Palette and is not selected by System. Persisted in localStorage.
+The default Theme state. Not a Palette: it follows the OS live and resolves to the Light Palette for light mode or the Dark Palette for dark mode. House is an explicit Palette and is not selected by System.
 _Avoid_: Auto theme, OS theme
 
 **Text Size**:
-The shared preference controlling how large text renders in the Editor Pane and the Preview Pane. Three choices — Small, Medium (default), Large — a single pick applies to both panes. Persisted in localStorage.
+The shared preference controlling how large text renders in the Editor View and the Preview View. Three choices — Small, Medium (default), Large — a single pick applies to both views.
 _Avoid_: Font size (the typeface choice, not its size)
 
 ## File Lifecycle
@@ -139,19 +147,19 @@ _Avoid_: File changed, stale file
 ## Export
 
 **Export**:
-Producing a standalone artifact from the Active Document's in-memory content — including Dirty changes; what you see is what you export. Export never modifies the Document and never triggers the Confirm-Discard Guard. Available in every Layout Mode.
+Producing a standalone artifact from the Active Document's in-memory content — including Dirty changes; what you see is what you export. Export never modifies the Document and never triggers the Confirm-Discard Guard. Available in both Modes.
 _Avoid_: save as PDF, download, share
 
 **Print Export**:
-An Export that renders a Print Render of the Active Document and hands it to the OS print dialog, where the user chooses Save-as-PDF (or a physical printer). The app never writes the PDF itself.
+Deferred to 2.1. The 2.0 app has no print path; when it returns, it will render a Print Render and hand it to the OS print dialog, where the user chooses Save-as-PDF (or a physical printer). The app never writes the PDF itself.
 _Avoid_: PDF export (the PDF is one outcome of printing, not the feature), direct PDF export
 
 **HTML Export**:
-An Export that writes a self-contained `.html` file through the Save As flow — native save dialog, then the same write path as Save. Styles are embedded so the file renders correctly on its own. Local images are inlined as base64 data URLs at export time, read through the same Document-directory scope the `asset://` protocol enforces; remote image URLs pass through untouched; an unreadable or missing image is omitted, never failing the export.
+An Export that writes a self-contained `.html` file through the Save As flow — native save dialog, then the same write path as Save. Styles are embedded so the file renders correctly on its own. Local images are inlined as base64 data URLs at export time, read through the same Document-directory scope used for Preview images; remote image URLs pass through untouched; an unreadable or missing image is omitted, never failing the export.
 _Avoid_: export page, HTML preview
 
 **Print Render**:
-An offscreen, full rendering of a Document's content via the same renderer as the Preview Pane, free of Preview-specific chrome: no Sections, no collapse state, no copy affordances. Identical Markdown → identical Export output regardless of the Preview Pane's current state.
+An offscreen, full rendering of a Document's content via the same renderer as the Preview View, free of Preview-specific chrome: no Sections, no collapse state, no copy affordances. Identical Markdown → identical Export output regardless of the Preview View's current state.
 _Avoid_: preview snapshot, printing the preview DOM
 
 ## Window Title
@@ -192,7 +200,7 @@ _Avoid_: flatpak (the format), the flatpak store
 ## About
 
 **About Dialog**:
-The modal opened by the toolbar's About button or `Ctrl/Cmd+/` (from any Layout Mode) that shows the product name, the Version of the running Bundle, a link to the repository, and the Shortcuts Reference.
+The modal opened by the toolbar's About button or `Ctrl/Cmd+/` (from either Mode) that shows the product name, the Version of the running Bundle, a link to the repository, and the Shortcuts Reference.
 _Avoid_: Help dialog, about box, shortcuts modal
 
 ## Development
