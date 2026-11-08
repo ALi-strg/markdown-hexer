@@ -1,7 +1,8 @@
 //! Drive the real editor for ten seconds with typing, selection, and scrolling.
 //!
-//! Set `HEXER_EDITOR_BENCH_LOG` to a CSV path. `tools/editor_bench.py` runs
-//! this example and reports the frame budget.
+//! Set `HEXER_EDITOR_BENCH_LOG` to a CSV path and `HEXER_EDITOR_BENCH_ANCHOR`
+//! to `start` (default `end`) to choose where typing happens.
+//! `tools/editor_bench.py` runs this example and reports the frame budget.
 
 use std::io::Write as _;
 use std::path::PathBuf;
@@ -14,7 +15,8 @@ use markdown_hexer::ui::HexerApp;
 // One second of pinning down the first shaping pass, then four seconds of
 // typing. The cold first edit is measured separately by the First Edit gate;
 // the longer warm-up also keeps one-off process startup and virus-scanner work
-// out of the steady-state window.
+// out of the steady-state window. Typing runs at the same anchor during warm-up
+// so the measured window shows growth, not the one-time initial shape.
 const WARMUP: Duration = Duration::from_secs(5);
 const MEASURE: Duration = Duration::from_secs(10);
 
@@ -84,7 +86,13 @@ impl eframe::App for BenchApp {
 
     fn raw_input_hook(&mut self, _ctx: &egui::Context, raw_input: &mut egui::RawInput) {
         if self.hooks < 2 {
-            let key = if self.hooks == 0 { Key::E } else { Key::End };
+            let key = if self.hooks == 0 {
+                Key::E
+            } else if std::env::var("HEXER_EDITOR_BENCH_ANCHOR").as_deref() == Ok("start") {
+                Key::Home
+            } else {
+                Key::End
+            };
             self.hooks += 1;
             raw_input.events.push(Event::Key {
                 key,

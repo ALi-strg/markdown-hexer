@@ -14,7 +14,6 @@ import os
 import statistics
 import subprocess
 import sys
-import tempfile
 import time
 from pathlib import Path
 
@@ -49,6 +48,12 @@ def main() -> int:
         default=root / "tests" / "fixtures" / "editor-100kb-5000.md",
     )
     parser.add_argument("--limit", type=float, default=150.0)
+    parser.add_argument(
+        "--log-dir",
+        type=Path,
+        default=root / "target" / "bench-logs" / "first-edit",
+        help="where the per-run first-edit CSVs are kept",
+    )
     args = parser.parse_args()
 
     if not args.exe.is_file():
@@ -57,32 +62,32 @@ def main() -> int:
         raise SystemExit(f"fixture not found: {args.fixture}")
 
     samples: list[float] = []
-    with tempfile.TemporaryDirectory(prefix="hexer-first-edit-") as temp:
-        for run in range(args.runs):
-            log = Path(temp) / f"first-edit-{run}.csv"
-            env = os.environ.copy()
-            env["HEXER_FIRST_EDIT_LOG"] = str(log)
-            proc = subprocess.Popen([str(args.exe), str(args.fixture)], env=env)
-            started = time.monotonic()
-            value = None
-            while time.monotonic() - started < 15.0:
-                value = read_ms(log)
-                if value is not None:
-                    break
-                if proc.poll() is not None:
-                    break
-                time.sleep(0.002)
-            try:
-                proc.wait(timeout=15)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-                proc.wait(timeout=10)
-                raise SystemExit(f"run {run}: app did not close itself")
-            if value is None:
-                raise SystemExit(
-                    f"run {run}: no first-edit row (exit {proc.returncode})"
-                )
-            samples.append(value)
+    args.log_dir.mkdir(parents=True, exist_ok=True)
+    for run in range(args.runs):
+        log = args.log_dir / f"first-edit-{run}.csv"
+        env = os.environ.copy()
+        env["HEXER_FIRST_EDIT_LOG"] = str(log)
+        proc = subprocess.Popen([str(args.exe), str(args.fixture)], env=env)
+        started = time.monotonic()
+        value = None
+        while time.monotonic() - started < 15.0:
+            value = read_ms(log)
+            if value is not None:
+                break
+            if proc.poll() is not None:
+                break
+            time.sleep(0.002)
+        try:
+            proc.wait(timeout=15)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=10)
+            raise SystemExit(f"run {run}: app did not close itself")
+        if value is None:
+            raise SystemExit(
+                f"run {run}: no first-edit row (exit {proc.returncode})"
+            )
+        samples.append(value)
 
     p95 = percentile(samples, 0.95)
     print(f"runs: {len(samples)}")
