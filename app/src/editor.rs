@@ -14,6 +14,7 @@ pub enum TokenStyle {
     Text,
     Heading,
     Marker,
+    Emphasis,
     Code,
     Link,
 }
@@ -229,7 +230,7 @@ fn scan_inline(spans: &mut Spans, line: &str, base: usize, mut index: usize, end
                 let delimiter = if run >= 2 { 2 } else { 1 };
                 if let Some(close) = find_delimiter(line, index + delimiter, end, byte, delimiter) {
                     spans.push(base + index..base + index + delimiter, TokenStyle::Marker);
-                    spans.push(base + index + delimiter..base + close, TokenStyle::Text);
+                    spans.push(base + index + delimiter..base + close, TokenStyle::Emphasis);
                     spans.push(base + close..base + close + delimiter, TokenStyle::Marker);
                     index = close + delimiter;
                 } else {
@@ -321,13 +322,11 @@ impl MarkdownHighlighter {
         &self,
         ui: &Ui,
         text: &str,
-        revision: u64,
         wrap_width: f32,
         cache: &mut HighlightCache,
     ) -> Arc<Galley> {
         let text_hash = hash_text(text);
-        if cache.revision == Some(revision)
-            && cache.text_hash == text_hash
+        if cache.text_hash == text_hash
             && (cache.wrap_width - wrap_width).abs() < 0.5
             && let Some(galley) = &cache.galley
         {
@@ -344,7 +343,14 @@ impl MarkdownHighlighter {
         job.halign = Align::LEFT;
         job.keep_trailing_whitespace = true;
 
-        let tokens = scan_markdown(text);
+        if cache.text_hash != text_hash {
+            cache.tokens = scan_markdown(text);
+            #[cfg(test)]
+            {
+                cache.scans += 1;
+            }
+        }
+        let tokens = &cache.tokens;
         if tokens.is_empty() {
             job.sections.push(LayoutSection {
                 leading_space: 0.0,
@@ -361,7 +367,6 @@ impl MarkdownHighlighter {
         }
 
         let galley = ui.fonts_mut(|fonts| fonts.layout_job(job));
-        cache.revision = Some(revision);
         cache.text_hash = text_hash;
         cache.wrap_width = wrap_width;
         cache.galley = Some(galley.clone());
@@ -373,6 +378,7 @@ impl MarkdownHighlighter {
             TokenStyle::Text => self.palette.ink,
             TokenStyle::Heading => self.palette.accent,
             TokenStyle::Marker => self.palette.muted,
+            TokenStyle::Emphasis => self.palette.ink,
             TokenStyle::Code => self.palette.accent,
             TokenStyle::Link => self.palette.link,
         };
@@ -382,16 +388,19 @@ impl MarkdownHighlighter {
             ..Default::default()
         };
         format.line_height = Some(line_height);
+        format.italics = style == TokenStyle::Emphasis;
         format
     }
 }
 
 #[derive(Default)]
 pub struct HighlightCache {
-    revision: Option<u64>,
     text_hash: u64,
     wrap_width: f32,
+    tokens: Vec<Token>,
     galley: Option<Arc<Galley>>,
+    #[cfg(test)]
+    scans: usize,
 }
 
 fn hash_text(text: &str) -> u64 {
@@ -452,7 +461,43 @@ mod tests {
         assert!(tokens.contains(&(0..2, TokenStyle::Marker)));
         assert!(tokens.contains(&(2..7, TokenStyle::Heading)));
         assert!(tokens.contains(&(14..16, TokenStyle::Marker)));
+        assert!(tokens.contains(&(16..20, TokenStyle::Emphasis)));
         assert_covers(text);
+    }
+
+    #[test]
+    fn emphasis_content_is_italic() {
+        let text = "*italic* and **bold**\n";
+        let tokens = styles(text);
+
+        assert!(tokens.contains(&(1..7, TokenStyle::Emphasis)));
+        assert!(tokens.contains(&(15..19, TokenStyle::Emphasis)));
+        assert_covers(text);
+
+        let highlighter =
+            MarkdownHighlighter::new(Palette::default_light(), FontId::monospace(15.0));
+        let format = highlighter.format(TokenStyle::Emphasis, 20.0);
+        assert!(format.italics);
+        assert_eq!(format.color, Palette::default_light().ink);
+    }
+
+    #[test]
+    fn reuses_scan_and_galley_for_unchanged_text() {
+        let highlighter =
+            MarkdownHighlighter::new(Palette::default_light(), FontId::monospace(15.0));
+        let mut cache = HighlightCache::default();
+        let mut first = None;
+        let mut second = None;
+        egui::__run_test_ui(|ui| {
+            first = Some(highlighter.layout(ui, "# Title\n\nBody", 400.0, &mut cache));
+            second = Some(highlighter.layout(ui, "# Title\n\nBody", 400.0, &mut cache));
+        });
+
+        assert_eq!(cache.scans, 1);
+        assert!(Arc::ptr_eq(
+            first.as_ref().unwrap(),
+            second.as_ref().unwrap()
+        ));
     }
 
     #[test]
