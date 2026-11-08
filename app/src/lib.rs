@@ -4,6 +4,7 @@ pub mod editor;
 pub mod find;
 pub mod first_edit;
 pub mod format;
+pub mod image;
 pub mod platform;
 pub mod preview;
 pub mod startup;
