@@ -35,7 +35,10 @@ pub fn launch(path: Option<PathBuf>, fs: &dyn FileSystem) -> Startup {
             }
             Effect::ShowToast(message) => notice = Some(message),
             Effect::SetWindowTitle(_) => {}
-            Effect::WriteFile { .. } | Effect::ShowSaveDialog { .. } | Effect::CloseWindow => {}
+            Effect::WriteFile { .. }
+            | Effect::ShowOpenDialog
+            | Effect::ShowSaveDialog { .. }
+            | Effect::CloseWindow => {}
         }
     }
 
