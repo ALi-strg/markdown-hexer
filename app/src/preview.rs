@@ -2,13 +2,24 @@ use std::ops::Range;
 
 use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 
-/// A preview artifact derived from a Document's content. The sanitized
-/// markdown is what egui_commonmark renders; the tree is the app-side seam for
-/// tests and later Preview features.
+/// A preview artifact derived from a Document's content. `markdown` is the
+/// sanitized source, `render_markdown` is what egui_commonmark renders (fenced
+/// code replaced by app-rendered sentinels), and the tree is the app-side seam
+/// for tests and later Preview features.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PreparedPreview {
     pub markdown: String,
+    pub render_markdown: String,
+    pub code_blocks: Vec<FencedCode>,
     pub tree: RenderTree,
+}
+
+/// A fenced code block whose body is rendered by the app so it can use the
+/// active palette and scroll independently of the page.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FencedCode {
+    pub language: Option<String>,
+    pub text: String,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -32,6 +43,8 @@ pub enum BlockKind {
     Paragraph,
     Rule,
     CodeBlock,
+    TableCell,
+    FootnoteDefinition,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -45,6 +58,11 @@ pub struct Block {
     pub emphasis: bool,
     pub strong: bool,
     pub inline_code: bool,
+    pub strikethrough: bool,
+    pub task: Option<bool>,
+    pub table_header: bool,
+    pub footnote: Option<String>,
+    pub footnote_ref: Option<String>,
     pub language: Option<String>,
 }
 
@@ -60,6 +78,11 @@ impl Block {
             emphasis: false,
             strong: false,
             inline_code: false,
+            strikethrough: false,
+            task: None,
+            table_header: false,
+            footnote: None,
+            footnote_ref: None,
             language: None,
         }
     }
@@ -78,34 +101,83 @@ impl Block {
 pub fn prepare(source: &str) -> PreparedPreview {
     let mut tree = RenderTree::default();
     let mut html_ranges = Vec::new();
-    parse_events(source, &mut tree, &mut html_ranges);
+    let mut code_blocks = Vec::new();
+    let mut code_ranges = Vec::new();
+    parse_events(
+        source,
+        &mut tree,
+        &mut html_ranges,
+        &mut code_blocks,
+        &mut code_ranges,
+    );
 
     PreparedPreview {
         markdown: strip_ranges(source, &html_ranges),
+        render_markdown: build_render_markdown(source, &html_ranges, &code_ranges),
+        code_blocks,
         tree,
     }
 }
 
-fn parse_events(source: &str, tree: &mut RenderTree, html_ranges: &mut Vec<Range<usize>>) {
+fn parse_events(
+    source: &str,
+    tree: &mut RenderTree,
+    html_ranges: &mut Vec<Range<usize>>,
+    code_blocks: &mut Vec<FencedCode>,
+    code_ranges: &mut Vec<(Range<usize>, usize)>,
+) {
     let mut current = None;
     let mut list_stack: Vec<bool> = Vec::new();
     let mut quote_depth = 0usize;
+    let mut table_header = false;
+    let mut fenced_code = false;
+    let mut footnote: Option<String> = None;
+    let options = Options::ENABLE_TABLES
+        | Options::ENABLE_STRIKETHROUGH
+        | Options::ENABLE_TASKLISTS
+        | Options::ENABLE_FOOTNOTES;
 
-    for (event, range) in Parser::new_ext(source, Options::empty()).into_offset_iter() {
+    for (event, range) in Parser::new_ext(source, options).into_offset_iter() {
         match event {
             Event::Start(tag) => match tag {
                 Tag::Paragraph => {
-                    let block = Block::paragraph(
-                        list_stack.len(),
-                        list_stack.last().copied().unwrap_or(false),
-                        quote_depth > 0,
+                    let block = with_footnote(
+                        Block::paragraph(
+                            list_stack.len(),
+                            list_stack.last().copied().unwrap_or(false),
+                            quote_depth > 0,
+                        ),
+                        &footnote,
                     );
                     tree.blocks.push(block);
                     current = Some(tree.blocks.len() - 1);
                 }
                 Tag::Heading { level, .. } => {
-                    tree.blocks
-                        .push(Block::heading(level, list_stack.len(), quote_depth > 0));
+                    let block = with_footnote(
+                        Block::heading(level, list_stack.len(), quote_depth > 0),
+                        &footnote,
+                    );
+                    tree.blocks.push(block);
+                    current = Some(tree.blocks.len() - 1);
+                }
+                Tag::Table(_) => {
+                    table_header = false;
+                    current = None;
+                }
+                Tag::TableHead => {
+                    table_header = true;
+                    current = None;
+                }
+                Tag::TableRow => {
+                    table_header = false;
+                    current = None;
+                }
+                Tag::TableCell => {
+                    let mut block =
+                        with_footnote(Block::paragraph(0, false, quote_depth > 0), &footnote);
+                    block.kind = BlockKind::TableCell;
+                    block.table_header = table_header;
+                    tree.blocks.push(block);
                     current = Some(tree.blocks.len() - 1);
                 }
                 Tag::BlockQuote(_) => {
@@ -113,17 +185,21 @@ fn parse_events(source: &str, tree: &mut RenderTree, html_ranges: &mut Vec<Range
                     current = None;
                 }
                 Tag::CodeBlock(kind) => {
+                    fenced_code = matches!(kind, pulldown_cmark::CodeBlockKind::Fenced(_));
                     let language = match kind {
                         pulldown_cmark::CodeBlockKind::Fenced(info) => {
                             info.split_whitespace().next().map(str::to_owned)
                         }
                         pulldown_cmark::CodeBlockKind::Indented => None,
                     };
-                    tree.blocks.push(Block {
-                        kind: BlockKind::CodeBlock,
-                        language,
-                        ..Block::paragraph(0, false, false)
-                    });
+                    tree.blocks.push(with_footnote(
+                        Block {
+                            kind: BlockKind::CodeBlock,
+                            language,
+                            ..Block::paragraph(0, false, false)
+                        },
+                        &footnote,
+                    ));
                     current = Some(tree.blocks.len() - 1);
                 }
                 Tag::List(start) => {
@@ -133,10 +209,46 @@ fn parse_events(source: &str, tree: &mut RenderTree, html_ranges: &mut Vec<Range
                 Tag::Item => current = None,
                 Tag::Emphasis => mark(&mut tree.blocks, current, |block| block.emphasis = true),
                 Tag::Strong => mark(&mut tree.blocks, current, |block| block.strong = true),
+                Tag::Strikethrough => mark(&mut tree.blocks, current, |block| {
+                    block.strikethrough = true
+                }),
+                Tag::FootnoteDefinition(label) => {
+                    let mut block = Block::paragraph(0, false, quote_depth > 0);
+                    block.kind = BlockKind::FootnoteDefinition;
+                    block.footnote = Some(label.to_string());
+                    tree.blocks.push(block);
+                    footnote = Some(label.to_string());
+                    current = None;
+                }
                 _ => {}
             },
             Event::End(tag) => match tag {
-                TagEnd::Paragraph | TagEnd::Heading(_) | TagEnd::CodeBlock => current = None,
+                TagEnd::Paragraph | TagEnd::Heading(_) => current = None,
+                TagEnd::CodeBlock => {
+                    if fenced_code && let Some(index) = current {
+                        let block = &tree.blocks[index];
+                        let code_index = code_blocks.len();
+                        code_blocks.push(FencedCode {
+                            language: block.language.clone(),
+                            text: block.text.clone(),
+                        });
+                        code_ranges.push((range, code_index));
+                    }
+                    current = None;
+                    fenced_code = false;
+                }
+                TagEnd::Table => {
+                    current = None;
+                }
+                TagEnd::TableHead | TagEnd::TableRow => {
+                    table_header = false;
+                    current = None;
+                }
+                TagEnd::TableCell => current = None,
+                TagEnd::FootnoteDefinition => {
+                    footnote = None;
+                    current = None;
+                }
                 TagEnd::Item => current = None,
                 TagEnd::BlockQuote(_) => quote_depth = quote_depth.saturating_sub(1),
                 TagEnd::List(_) => {
@@ -165,6 +277,27 @@ fn parse_events(source: &str, tree: &mut RenderTree, html_ranges: &mut Vec<Range
                 tree.blocks[index].text.push_str(&text);
                 tree.blocks[index].inline_code = true;
             }
+            Event::TaskListMarker(checked) => {
+                let index = ensure_block(
+                    tree,
+                    &mut current,
+                    list_stack.len(),
+                    list_stack.last().copied().unwrap_or(false),
+                    quote_depth > 0,
+                );
+                tree.blocks[index].task = Some(checked);
+            }
+            Event::FootnoteReference(label) => {
+                let index = ensure_block(
+                    tree,
+                    &mut current,
+                    list_stack.len(),
+                    list_stack.last().copied().unwrap_or(false),
+                    quote_depth > 0,
+                );
+                tree.blocks[index].text.push_str(&format!("[^{label}]"));
+                tree.blocks[index].footnote_ref = Some(label.to_string());
+            }
             Event::SoftBreak => append(&mut tree.blocks, current, " "),
             Event::HardBreak => append(&mut tree.blocks, current, "\n"),
             Event::Rule => tree.blocks.push(Block {
@@ -175,6 +308,11 @@ fn parse_events(source: &str, tree: &mut RenderTree, html_ranges: &mut Vec<Range
             _ => {}
         }
     }
+}
+
+fn with_footnote(mut block: Block, footnote: &Option<String>) -> Block {
+    block.footnote.clone_from(footnote);
+    block
 }
 
 fn mark(blocks: &mut [Block], current: Option<usize>, change: impl FnOnce(&mut Block)) {
@@ -208,6 +346,49 @@ fn append(blocks: &mut [Block], current: Option<usize>, text: &str) {
     }
 }
 
+/// Build widget input: raw HTML removed, fenced code replaced by sentinel
+/// blocks that the app renderer handles.
+fn build_render_markdown(
+    source: &str,
+    html_ranges: &[Range<usize>],
+    code_ranges: &[(Range<usize>, usize)],
+) -> String {
+    struct Edit {
+        range: Range<usize>,
+        code_index: Option<usize>,
+    }
+
+    let mut edits: Vec<Edit> = html_ranges
+        .iter()
+        .cloned()
+        .map(|range| Edit {
+            range,
+            code_index: None,
+        })
+        .chain(code_ranges.iter().map(|(range, index)| Edit {
+            range: range.clone(),
+            code_index: Some(*index),
+        }))
+        .collect();
+    edits.sort_by_key(|edit| edit.range.start);
+
+    let mut output = String::with_capacity(source.len());
+    let mut cursor = 0;
+    for edit in edits {
+        let range = edit.range;
+        if range.start < cursor || range.end > source.len() {
+            continue;
+        }
+        output.push_str(&source[cursor..range.start]);
+        if let Some(index) = edit.code_index {
+            output.push_str(&format!("<div data-hexer-code=\"{index}\"></div>\n"));
+        }
+        cursor = range.end;
+    }
+    output.push_str(&source[cursor..]);
+    output
+}
+
 /// Remove raw HTML byte ranges, preserving every other byte of the source.
 fn strip_ranges(source: &str, ranges: &[Range<usize>]) -> String {
     let mut output = String::with_capacity(source.len());
@@ -227,6 +408,262 @@ fn strip_ranges(source: &str, ranges: &[Range<usize>]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn snapshot(tree: &RenderTree) -> String {
+        tree.blocks
+            .iter()
+            .map(|block| {
+                let kind = match block.kind {
+                    BlockKind::Heading => format!("heading h{}", block.level),
+                    BlockKind::Paragraph => "paragraph".to_owned(),
+                    BlockKind::Rule => "rule".to_owned(),
+                    BlockKind::CodeBlock => "code-block".to_owned(),
+                    BlockKind::TableCell => "table-cell".to_owned(),
+                    BlockKind::FootnoteDefinition => "footnote-definition".to_owned(),
+                };
+                let mut flags = Vec::new();
+                if block.depth > 0 {
+                    flags.push(format!("depth={}", block.depth));
+                }
+                if block.ordered {
+                    flags.push("ordered".to_owned());
+                }
+                if block.in_blockquote {
+                    flags.push("quote".to_owned());
+                }
+                if block.emphasis {
+                    flags.push("emphasis".to_owned());
+                }
+                if block.strong {
+                    flags.push("strong".to_owned());
+                }
+                if block.inline_code {
+                    flags.push("inline-code".to_owned());
+                }
+                if block.strikethrough {
+                    flags.push("strikethrough".to_owned());
+                }
+                if let Some(task) = block.task {
+                    flags.push(
+                        if task {
+                            "task=checked"
+                        } else {
+                            "task=unchecked"
+                        }
+                        .to_owned(),
+                    );
+                }
+                if block.table_header {
+                    flags.push("header".to_owned());
+                }
+                if let Some(footnote) = &block.footnote {
+                    flags.push(format!("footnote={footnote}"));
+                }
+                if let Some(reference) = &block.footnote_ref {
+                    flags.push(format!("ref={reference}"));
+                }
+                if let Some(language) = &block.language {
+                    flags.push(format!("lang={language}"));
+                }
+                format!("{kind} [{}] {:?}", flags.join(","), block.text)
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    #[test]
+    fn parses_gfm_tables() {
+        let preview = prepare(
+            "\
+| Name | Value |
+| :--- | ---: |
+| alpha | 1 |
+| beta | 2 |
+",
+        );
+
+        assert_eq!(
+            snapshot(&preview.tree),
+            r#"table-cell [header] "Name"
+table-cell [header] "Value"
+table-cell [] "alpha"
+table-cell [] "1"
+table-cell [] "beta"
+table-cell [] "2""#
+        );
+    }
+
+    #[test]
+    fn parses_gfm_strikethrough() {
+        let preview = prepare("before ~~gone~~ after");
+
+        assert_eq!(
+            snapshot(&preview.tree),
+            r#"paragraph [strikethrough] "before gone after""#
+        );
+    }
+
+    #[test]
+    fn parses_gfm_task_lists() {
+        let preview = prepare("- [x] done\n- [ ] todo\n");
+
+        assert_eq!(
+            snapshot(&preview.tree),
+            r#"paragraph [depth=1,task=checked] "done"
+paragraph [depth=1,task=unchecked] "todo""#
+        );
+    }
+
+    #[test]
+    fn parses_gfm_footnotes() {
+        let preview = prepare("See note[^1].\n\n[^1]: Footnote text.\n");
+
+        assert_eq!(
+            snapshot(&preview.tree),
+            r#"paragraph [ref=1] "See note[^1]."
+footnote-definition [footnote=1] ""
+paragraph [footnote=1] "Footnote text.""#
+        );
+    }
+
+    #[test]
+    fn keeps_inline_code_monospaced_in_the_tree() {
+        let preview = prepare("Use `cargo test` now.");
+
+        assert_eq!(
+            snapshot(&preview.tree),
+            r#"paragraph [inline-code] "Use cargo test now.""#
+        );
+    }
+
+    #[test]
+    fn replaces_fenced_code_with_sentinels_for_the_renderer() {
+        let source = "\
+Intro.
+
+```rust
+fn main() {}
+```
+
+<!-- hidden -->
+
+After.
+";
+        let preview = prepare(source);
+
+        assert!(preview.markdown.contains("```rust"));
+        assert!(preview.markdown.contains("fn main"));
+        assert!(!preview.markdown.contains("hidden"));
+        assert_eq!(
+            preview.code_blocks,
+            vec![FencedCode {
+                language: Some("rust".to_owned()),
+                text: "fn main() {}\n".to_owned(),
+            }]
+        );
+        assert!(preview.render_markdown.contains("Intro."));
+        assert!(
+            preview
+                .render_markdown
+                .contains("<div data-hexer-code=\"0\"></div>")
+        );
+        assert!(!preview.render_markdown.contains("```"));
+        assert!(!preview.render_markdown.contains("fn main"));
+        assert!(!preview.render_markdown.contains("hidden"));
+        assert!(preview.render_markdown.contains("After."));
+    }
+
+    #[test]
+    fn fenced_code_sentinels_are_one_per_code_block() {
+        let source = "\
+```sh
+echo one
+```
+
+text
+
+```js
+let two = 2;
+```
+";
+        let preview = prepare(source);
+
+        assert_eq!(preview.code_blocks.len(), 2);
+        assert_eq!(
+            preview.render_markdown.matches("data-hexer-code").count(),
+            2
+        );
+        assert!(preview.render_markdown.contains("data-hexer-code=\"0\""));
+        assert!(preview.render_markdown.contains("data-hexer-code=\"1\""));
+        assert_eq!(preview.code_blocks[0].language.as_deref(), Some("sh"));
+        assert_eq!(preview.code_blocks[1].text, "let two = 2;\n");
+    }
+
+    #[test]
+    fn fenced_code_in_containers_gets_sentinels() {
+        let preview = prepare(
+            "> ```sh
+> echo hi
+> ```
+
+1. item
+
+   ```js
+   let x = 1;
+   ```
+",
+        );
+
+        assert_eq!(preview.code_blocks.len(), 2);
+        assert_eq!(
+            preview.render_markdown.matches("data-hexer-code").count(),
+            2
+        );
+        assert_eq!(preview.code_blocks[0].language.as_deref(), Some("sh"));
+        assert_eq!(preview.code_blocks[1].language.as_deref(), Some("js"));
+    }
+
+    #[test]
+    fn drops_user_supplied_code_sentinels_as_raw_html() {
+        let source = "\
+<div data-hexer-code=\"0\"></div>
+
+```rust
+fn main() {}
+```
+";
+        let preview = prepare(source);
+
+        assert_eq!(preview.code_blocks.len(), 1);
+        assert_eq!(
+            preview.render_markdown.matches("data-hexer-code").count(),
+            1
+        );
+        assert!(!preview.markdown.contains("<div"));
+    }
+
+    #[test]
+    fn readme_fixture_contains_rendered_constructs() {
+        let preview = prepare(include_str!("../tests/fixtures/readme.md"));
+
+        assert!(
+            preview
+                .tree
+                .blocks
+                .iter()
+                .any(|block| block.kind == BlockKind::TableCell)
+        );
+        assert!(
+            preview
+                .code_blocks
+                .iter()
+                .any(|code| code.language.as_deref() == Some("sh"))
+        );
+        assert_eq!(
+            preview.render_markdown.matches("data-hexer-code").count(),
+            preview.code_blocks.len()
+        );
+    }
 
     #[test]
     fn parses_commonmark_basics() {
@@ -340,6 +777,11 @@ Hello <b>world</b>.
             "<div",
             "**",
             "\u{feff}# bom heading",
+            "| a | b |\n|---|---|\n|",
+            "- [x]",
+            "~~unclosed",
+            "[^1]: no reference",
+            "```\n<not html>",
         ] {
             let _ = prepare(source);
         }

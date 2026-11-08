@@ -5,11 +5,13 @@ pub use palette::Palette;
 use std::collections::{HashMap, VecDeque};
 use std::time::{Duration, Instant};
 
+use egui::text::LayoutJob;
 use egui::{
     Align2, CentralPanel, Frame, Id, Key, Label, Margin, Modal, Modifiers, Panel, RichText,
-    ScrollArea, Sense, Stroke, TextBuffer, TextEdit, Ui, ViewportCommand,
+    ScrollArea, Sense, Stroke, TextBuffer, TextEdit, TextWrapMode, Ui, ViewportCommand,
 };
 use egui_commonmark::CommonMarkViewer;
+use egui_extras::syntax_highlighting::{CodeTheme, TokenType, highlight};
 
 use crate::dialogs::{Dialogs, NativeDialogs};
 use crate::domain::{Command, DocumentId, Mode, Workspace};
@@ -17,7 +19,7 @@ use crate::editor::{EditorResources, EditorSession};
 use crate::first_edit::FirstEditProbe;
 use crate::platform::instance::InstanceServer;
 use crate::platform::{FileSystem, NativeFileSystem};
-use crate::preview::{self, PreparedPreview};
+use crate::preview::{self, FencedCode, PreparedPreview};
 use crate::startup::{Startup, StartupTimer};
 
 const REPOSITORY: &str = "https://github.com/ALi-strg/markdown-hexer";
@@ -697,11 +699,21 @@ impl HexerApp {
             .inner_margin(Margin::symmetric(28, 20))
             .show(ui, |ui| {
                 if let (Some(preview), Some(document_id)) = (preview, document_id) {
+                    let code_blocks = preview.code_blocks.clone();
+                    let render_code = move |ui: &mut Ui, html: &str| {
+                        if let Some(index) = code_sentinel_index(html)
+                            && let Some(code) = code_blocks.get(index)
+                        {
+                            show_code_block(ui, &palette, code, index);
+                        }
+                    };
                     ScrollArea::vertical()
                         .id_salt(preview_scroll_id(document_id))
                         .auto_shrink([false, false])
                         .show(ui, |ui| {
-                            CommonMarkViewer::new().show(ui, cache, &preview.markdown);
+                            CommonMarkViewer::new()
+                                .render_html_fn(Some(&render_code))
+                                .show(ui, cache, &preview.render_markdown);
                         });
                 } else {
                     ui.centered_and_justified(|ui| {
@@ -924,6 +936,74 @@ impl eframe::App for HexerApp {
     fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
         self.palette.bg.to_normalized_gamma_f32()
     }
+}
+
+fn code_sentinel_index(html: &str) -> Option<usize> {
+    html.trim()
+        .strip_prefix("<div data-hexer-code=\"")?
+        .strip_suffix("\"></div>")?
+        .parse()
+        .ok()
+}
+
+fn code_theme(style: &egui::Style, palette: &Palette) -> CodeTheme {
+    let mut theme = CodeTheme::light(egui::TextStyle::Monospace.resolve(style).size);
+    theme.format_mut(TokenType::Comment).color = palette.syntax_comment;
+    theme.format_mut(TokenType::Keyword).color = palette.syntax_keyword;
+    theme.format_mut(TokenType::StringLiteral).color = palette.syntax_string;
+    theme.format_mut(TokenType::Literal).color = palette.syntax_number;
+    theme.format_mut(TokenType::Function).color = palette.syntax_function;
+    theme.format_mut(TokenType::Punctuation).color = palette.ink;
+    theme
+}
+
+fn code_layout_job(
+    ctx: &egui::Context,
+    style: &egui::Style,
+    palette: &Palette,
+    code: &FencedCode,
+) -> LayoutJob {
+    highlight(
+        ctx,
+        style,
+        &code_theme(style, palette),
+        &code.text,
+        code.language.as_deref().unwrap_or(""),
+    )
+}
+
+fn show_code_block(
+    ui: &mut Ui,
+    palette: &Palette,
+    code: &FencedCode,
+    index: usize,
+) -> (egui::Response, egui::Response) {
+    let mut content = None;
+    let frame = Frame::new()
+        .fill(palette.code_bg)
+        .stroke(Stroke::new(1.0, palette.border))
+        .corner_radius(4)
+        .inner_margin(Margin::symmetric(10, 8))
+        .show(ui, |ui| {
+            ScrollArea::horizontal()
+                .id_salt(("preview_code_scroll", index))
+                .auto_shrink([false, true])
+                .show(ui, |ui| {
+                    let job = code_layout_job(ui.ctx(), ui.style(), palette, code);
+                    content = Some(
+                        ui.add(
+                            Label::new(job)
+                                .selectable(true)
+                                .wrap_mode(TextWrapMode::Extend),
+                        ),
+                    );
+                });
+        });
+    ui.add_space(4.0);
+    (
+        frame.response,
+        content.expect("code block content is rendered"),
+    )
 }
 
 #[cfg(test)]

@@ -12,6 +12,11 @@ pub struct Palette {
     pub accent: Color32,
     pub accent_contrast: Color32,
     pub code_bg: Color32,
+    pub syntax_comment: Color32,
+    pub syntax_keyword: Color32,
+    pub syntax_string: Color32,
+    pub syntax_number: Color32,
+    pub syntax_function: Color32,
     pub link: Color32,
     pub selection: Color32,
 }
@@ -26,6 +31,11 @@ impl Palette {
         accent: Color32::from_rgb(0xa0, 0x52, 0x2d),
         accent_contrast: Color32::from_rgb(0xff, 0xfa, 0xf0),
         code_bg: Color32::from_rgb(0xef, 0xe6, 0xd2),
+        syntax_comment: Color32::from_rgb(0x6a, 0x73, 0x7d),
+        syntax_keyword: Color32::from_rgb(0xd7, 0x3a, 0x49),
+        syntax_string: Color32::from_rgb(0x03, 0x2f, 0x62),
+        syntax_number: Color32::from_rgb(0x00, 0x5c, 0xc5),
+        syntax_function: Color32::from_rgb(0x6f, 0x42, 0xc1),
         link: Color32::from_rgb(0xa0, 0x52, 0x2d),
         selection: Color32::from_rgb(0xe6, 0xcb, 0xa5),
     };

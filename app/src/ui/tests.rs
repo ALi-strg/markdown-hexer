@@ -992,6 +992,36 @@ fn dropped_files_open_in_order_and_last_is_active() {
 }
 
 #[test]
+fn code_theme_uses_palette_syntax_colors() {
+    let theme = code_theme(&egui::Style::default(), &Palette::LIGHT);
+
+    assert_eq!(
+        theme.format(TokenType::Keyword).color,
+        Palette::LIGHT.syntax_keyword
+    );
+    assert_eq!(
+        theme.format(TokenType::StringLiteral).color,
+        Palette::LIGHT.syntax_string
+    );
+    assert_eq!(
+        theme.format(TokenType::Comment).color,
+        Palette::LIGHT.syntax_comment
+    );
+    assert_eq!(
+        theme.format(TokenType::Literal).color,
+        Palette::LIGHT.syntax_number
+    );
+    assert_eq!(
+        theme.format(TokenType::Function).color,
+        Palette::LIGHT.syntax_function
+    );
+    assert_eq!(
+        theme.format(TokenType::Punctuation).color,
+        Palette::LIGHT.ink
+    );
+}
+
+#[test]
 fn dropping_an_open_file_focuses_its_tab() {
     let files = MemoryFiles::default();
     let mut h = harness(file_app(
@@ -1101,4 +1131,91 @@ fn instance_paths_open_and_focus_the_window() {
         Some(notes_path().as_path())
     );
     assert!(!h.state().focus_window);
+}
+
+#[test]
+fn highlighted_code_does_not_wrap() {
+    let ctx = egui::Context::default();
+    let style = egui::Style::default();
+    let code = FencedCode {
+        language: Some("rust".to_owned()),
+        text: "fn main() {\n    let name = \"hexer\"; // note\n}\n".to_owned(),
+    };
+    let job = code_layout_job(&ctx, &style, &Palette::LIGHT, &code);
+
+    assert!(job.wrap.max_width.is_infinite());
+    let colors: Vec<egui::Color32> = job
+        .sections
+        .iter()
+        .map(|section| section.format.color)
+        .collect();
+    assert!(colors.contains(&Palette::LIGHT.syntax_keyword));
+    assert!(colors.contains(&Palette::LIGHT.syntax_string));
+    assert!(colors.contains(&Palette::LIGHT.syntax_comment));
+}
+
+#[test]
+fn code_blocks_scroll_inside_the_page_instead_of_widening_it() {
+    let widths = Rc::new(Cell::new((0.0, 0.0)));
+    let widths_for_ui = widths.clone();
+    let code = FencedCode {
+        language: Some("rust".to_owned()),
+        text: "let value = 1234567890; ".repeat(40),
+    };
+    let mut h = Harness::builder()
+        .with_size(egui::vec2(320.0, 240.0))
+        .build_ui(move |ui| {
+            ui.set_max_width(300.0);
+            let (frame, content) = show_code_block(ui, &Palette::LIGHT, &code, 0);
+            widths_for_ui.set((frame.rect.width(), content.rect.width()));
+        });
+    h.run_steps(1);
+
+    let (outer_width, content_width) = widths.get();
+    assert!(outer_width <= 301.0, "code frame width was {outer_width}");
+    assert!(
+        content_width > 600.0,
+        "code content width was {content_width}"
+    );
+}
+
+#[test]
+fn readme_fixture_renders_tables_and_code_in_preview() {
+    let files = MemoryFiles::default();
+    let app = file_app(
+        notes_path(),
+        include_str!("../../tests/fixtures/readme.md"),
+        &files,
+        FakeDialogs::default(),
+    );
+    let mut h = Harness::builder()
+        .with_size(egui::vec2(900.0, 700.0))
+        .allow_missing_glyphs()
+        .build_eframe(|_cc| app);
+    h.run_steps(1);
+    h.get_by_label("Preview").click();
+    h.run_steps(2);
+
+    h.get_by_label("Tech Stack");
+    h.get_by_label_contains("npm install");
+}
+
+#[test]
+fn malformed_markdown_renders_without_panicking() {
+    let files = MemoryFiles::default();
+    let app = file_app(
+        notes_path(),
+        "Still here.\n\n| a | b |\n|---|---|\n| 1 |\n\n[^1]: no ref\n\n~~open\n\n```\n<not html>\n\n<div>raw</div>\n",
+        &files,
+        FakeDialogs::default(),
+    );
+    let mut h = Harness::builder()
+        .with_size(egui::vec2(900.0, 700.0))
+        .allow_missing_glyphs()
+        .build_eframe(|_cc| app);
+    h.run_steps(1);
+    h.get_by_label("Preview").click();
+    h.run_steps(2);
+
+    h.get_by_label_contains("Still here.");
 }
