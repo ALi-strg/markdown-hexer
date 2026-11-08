@@ -10,6 +10,27 @@ on:
   workflow_dispatch:
 
 jobs:
+  native-shell:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: ./app
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./app -> target"
+
+      - name: run native shell tests
+        run: cargo test --all-targets
+
+      - name: build native shell
+        run: cargo build --release
+
   # Ubuntu is the CI gate: it is the only platform that runs the WebDriver
   # end-to-end suite (WebKitGTK under xvfb), and it also builds the Linux
   # release bundle. Windows and macOS only build and release after this job
