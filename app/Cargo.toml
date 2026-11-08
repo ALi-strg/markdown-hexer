@@ -136,7 +136,7 @@ url = "https://github.com/ALi-strg/markdown-hexer"
 vendor = "Adrian Link"
 auto-req = "builtin"
 # MIME and desktop databases are rebuilt by these packages' file triggers.
-requires = ["shared-mime-info", "desktop-file-utils"]
+requires = { shared-mime-info = "*", desktop-file-utils = "*" }
 assets = [
     { source = "target/release/markdown-hexer", dest = "/usr/bin/markdown-hexer", mode = "755" },
     { source = "packaging/linux/markdown-hexer.desktop", dest = "/usr/share/applications/markdown-hexer.desktop", mode = "644" },
