@@ -66,6 +66,46 @@ struct Toast {
 
 type PreviewKey = (DocumentId, u64, Option<PathBuf>);
 
+/// The bundled fonts have no CJK glyphs, so composition previews would draw
+/// tofu (or panic in tests). Load one system CJK face as a fallback.
+fn install_cjk_font(ctx: &egui::Context) {
+    let candidates: &[&str] = if cfg!(windows) {
+        &[
+            r"C:\Windows\Fonts\YuGothR.ttc",
+            r"C:\Windows\Fonts\msyh.ttc",
+            r"C:\Windows\Fonts\msgothic.ttc",
+            r"C:\Windows\Fonts\simsun.ttc",
+        ]
+    } else if cfg!(target_os = "macos") {
+        &[
+            "/System/Library/Fonts/PingFang.ttc",
+            "/System/Library/Fonts/Hiragino Sans GB.ttc",
+        ]
+    } else {
+        &[
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
+        ]
+    };
+    let Some(bytes) = candidates.iter().find_map(|path| std::fs::read(path).ok()) else {
+        return;
+    };
+    let mut fonts = egui::FontDefinitions::default();
+    fonts.font_data.insert(
+        "cjk-fallback".to_owned(),
+        std::sync::Arc::new(egui::FontData::from_owned(bytes)),
+    );
+    for family in [egui::FontFamily::Proportional, egui::FontFamily::Monospace] {
+        fonts
+            .families
+            .entry(family)
+            .or_default()
+            .push("cjk-fallback".to_owned());
+    }
+    ctx.set_fonts(fonts);
+}
+
 fn preview_scroll_id(document_id: DocumentId) -> Id {
     Id::unique(("preview_scroll", document_id))
 }
@@ -215,6 +255,7 @@ impl HexerApp {
         }
         self.style_applied = true;
 
+        install_cjk_font(ctx);
         ctx.set_theme(egui::ThemePreference::Light);
         let mut visuals = egui::Visuals::light();
         visuals.panel_fill = self.palette.bg;
@@ -704,7 +745,6 @@ impl HexerApp {
             return;
         };
         let document_id = document.id;
-        let revision = document.revision;
         let mut content = document.content.clone();
 
         let focus = std::mem::take(&mut self.focus_editor);
@@ -716,13 +756,7 @@ impl HexerApp {
             let highlighter = &editor.highlighter;
             let font = editor.font.clone();
             let mut layouter = |ui: &Ui, buffer: &dyn TextBuffer, wrap_width: f32| {
-                highlighter.layout(
-                    ui,
-                    buffer.as_str(),
-                    revision,
-                    wrap_width,
-                    &mut session.cache,
-                )
+                highlighter.layout(ui, buffer.as_str(), wrap_width, &mut session.cache)
             };
 
             ScrollArea::vertical()
