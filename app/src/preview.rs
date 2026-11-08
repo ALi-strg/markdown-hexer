@@ -26,6 +26,17 @@ pub struct FencedCode {
     pub text: String,
 }
 
+impl FencedCode {
+    /// Clipboard payload: the body without exactly one trailing newline.
+    pub fn copy_text(&self) -> String {
+        let mut text = self.text.as_str();
+        if let Some(stripped) = text.strip_suffix('\n') {
+            text = stripped.strip_suffix('\r').unwrap_or(stripped);
+        }
+        text.to_owned()
+    }
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct RenderTree {
     pub blocks: Vec<Block>,
@@ -970,6 +981,23 @@ Hello <b>world</b>.
         assert!(!preview.tree.text().contains("hidden"));
         assert!(preview.tree.text().contains("before"));
         assert!(preview.tree.text().contains("after"));
+    }
+
+    #[test]
+    fn code_copy_payload_trims_exactly_one_trailing_newline() {
+        let payload = |text: &str| {
+            FencedCode {
+                language: None,
+                text: text.to_owned(),
+            }
+            .copy_text()
+        };
+
+        assert_eq!(payload("one\n"), "one");
+        assert_eq!(payload("one\r\n"), "one");
+        assert_eq!(payload("one"), "one");
+        assert_eq!(payload("one\n\n"), "one\n");
+        assert_eq!(payload("one\r"), "one\r");
     }
 
     #[test]

@@ -1,7 +1,7 @@
 use super::*;
 use crate::domain::{Command, DocumentId, ExternalChoice, GuardChoice, Mode};
 use crate::platform::instance::{InstanceRequest, InstanceServer};
-use crate::platform::{ReadError, WriteError};
+use crate::platform::{Clipboard, ReadError, WriteError};
 use crate::startup;
 use egui::accesskit::Role;
 use egui_kittest::Harness;
@@ -118,6 +118,28 @@ impl Dialogs for FakeDialogs {
     }
 }
 
+#[derive(Clone, Default)]
+struct FakeClipboard {
+    text: Rc<RefCell<Option<String>>>,
+    fail: Rc<Cell<bool>>,
+}
+
+impl FakeClipboard {
+    fn copied(&self) -> Option<String> {
+        self.text.borrow().clone()
+    }
+}
+
+impl Clipboard for FakeClipboard {
+    fn set_text(&mut self, text: &str) -> Result<(), String> {
+        if self.fail.get() {
+            return Err("clipboard unavailable".to_owned());
+        }
+        *self.text.borrow_mut() = Some(text.to_owned());
+        Ok(())
+    }
+}
+
 fn harness(app: HexerApp) -> Harness<'static, HexerApp> {
     Harness::builder()
         .with_size(egui::vec2(900.0, 700.0))
@@ -175,6 +197,16 @@ fn untitled_app(files: &MemoryFiles, dialogs: FakeDialogs) -> HexerApp {
         Box::new(files.clone()),
         Box::new(dialogs),
     )
+}
+
+fn file_app_with_clipboard(
+    content: &str,
+    files: &MemoryFiles,
+    clipboard: FakeClipboard,
+) -> HexerApp {
+    let mut app = file_app(notes_path(), content, files, FakeDialogs::default());
+    app.clipboard = Box::new(clipboard);
+    app
 }
 
 fn notes_path() -> PathBuf {
@@ -1330,7 +1362,8 @@ fn code_blocks_scroll_inside_the_page_instead_of_widening_it() {
         .with_size(egui::vec2(320.0, 240.0))
         .build_ui(move |ui| {
             ui.set_max_width(300.0);
-            let (frame, content) = show_code_block(ui, &Palette::LIGHT, &code, 0);
+            let (frame, content) =
+                show_code_block(ui, &Palette::LIGHT, &code, 0, &RefCell::new(None));
             widths_for_ui.set((frame.rect.width(), content.rect.width()));
         });
     h.run_steps(1);
@@ -1340,6 +1373,123 @@ fn code_blocks_scroll_inside_the_page_instead_of_widening_it() {
     assert!(
         content_width > 600.0,
         "code content width was {content_width}"
+    );
+}
+
+#[test]
+fn code_copy_button_writes_clipboard_and_shows_the_copy_toast() {
+    let files = MemoryFiles::default();
+    let clipboard = FakeClipboard::default();
+    let source = "# Code\n\n```rust\nfn main() {}\n```\n";
+    let app = file_app_with_clipboard(source, &files, clipboard.clone());
+    let mut h = harness(app);
+    h.run_steps(2);
+
+    h.get_by_label("Copy").click();
+    h.run_steps(1);
+
+    assert_eq!(clipboard.copied().as_deref(), Some("fn main() {}"));
+    assert_eq!(
+        h.state().toast.as_ref().map(|toast| toast.message.as_str()),
+        Some("Copied")
+    );
+    assert_eq!(document_content(&h), source);
+}
+
+#[test]
+fn code_copy_button_is_keyboard_reachable() {
+    let files = MemoryFiles::default();
+    let clipboard = FakeClipboard::default();
+    let app = file_app_with_clipboard("```\nkeyboard copy\n```\n", &files, clipboard.clone());
+    let mut h = harness(app);
+    h.run_steps(2);
+
+    h.get_by_label("Copy").focus();
+    h.run_steps(1);
+    assert!(h.get_by_label("Copy").is_focused());
+    h.key_press(Key::Enter);
+    h.run_steps(1);
+
+    assert_eq!(clipboard.copied().as_deref(), Some("keyboard copy"));
+    assert_eq!(
+        h.state().toast.as_ref().map(|toast| toast.message.as_str()),
+        Some("Copied")
+    );
+}
+
+#[test]
+fn clipboard_failure_shows_a_toast_and_keeps_the_document() {
+    let files = MemoryFiles::default();
+    let clipboard = FakeClipboard::default();
+    clipboard.fail.set(true);
+    let source = "```\ncannot copy\n```\n";
+    let app = file_app_with_clipboard(source, &files, clipboard.clone());
+    let mut h = harness(app);
+    h.run_steps(2);
+
+    h.get_by_label("Copy").click();
+    h.run_steps(1);
+
+    assert!(clipboard.copied().is_none());
+    assert_eq!(
+        h.state().toast.as_ref().map(|toast| toast.message.as_str()),
+        Some("Could not copy")
+    );
+    assert_eq!(document_content(&h), source);
+}
+
+#[test]
+fn edit_mode_selection_is_not_auto_copied() {
+    let files = MemoryFiles::default();
+    let clipboard = FakeClipboard::default();
+    let source = "# Notes\n\nBody.";
+    let app = file_app_with_clipboard(source, &files, clipboard.clone());
+    let mut h = harness(app);
+    h.run_steps(1);
+
+    h.get_by_label("Edit").click();
+    h.run_steps(2);
+    assert_eq!(
+        h.state().workspace.active_document().map(|doc| doc.mode),
+        Some(Mode::Edit)
+    );
+
+    let ctx = h.ctx.clone();
+    h.state_mut().handle_selection_settled(&ctx, "Body.");
+
+    assert!(clipboard.copied().is_none());
+    assert!(h.state().toast.is_none());
+    assert_eq!(document_content(&h), source);
+}
+
+#[test]
+fn preview_drag_selection_is_copied_on_release() {
+    let files = MemoryFiles::default();
+    let clipboard = FakeClipboard::default();
+    let app = file_app_with_clipboard("Copy this sentence.", &files, clipboard.clone());
+    let mut h = harness(app);
+    h.run_steps(2);
+
+    let rect = h.get_by_label_contains("Copy this sentence").rect();
+    let start = rect.left_center() + egui::vec2(2.0, 0.0);
+    let end = rect.right_center();
+    h.drag_at(start);
+    h.run_steps(1);
+    h.hover_at(end);
+    h.run_steps(1);
+    h.drop_at(end);
+    h.run_steps(2);
+
+    assert_eq!(clipboard.copied().as_deref(), Some("Copy this sentence."));
+    assert_eq!(
+        h.state().toast.as_ref().map(|toast| toast.message.as_str()),
+        Some("Copied")
+    );
+    assert!(
+        !h.ctx
+            .plugin::<egui::text_selection::LabelSelectionState>()
+            .lock()
+            .has_selection()
     );
 }
 

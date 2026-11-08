@@ -112,6 +112,31 @@ impl FileSystem for NativeFileSystem {
     }
 }
 
+/// System clipboard seam, injected so tests never touch the real clipboard.
+pub trait Clipboard {
+    fn set_text(&mut self, text: &str) -> Result<(), String>;
+}
+
+#[derive(Default)]
+pub struct NativeClipboard {
+    // X11/Wayland clipboard contents live only while the owner is alive.
+    clipboard: Option<arboard::Clipboard>,
+}
+
+impl Clipboard for NativeClipboard {
+    fn set_text(&mut self, text: &str) -> Result<(), String> {
+        let clipboard = match &mut self.clipboard {
+            Some(clipboard) => clipboard,
+            None => self
+                .clipboard
+                .insert(arboard::Clipboard::new().map_err(|error| error.to_string())?),
+        };
+        clipboard
+            .set_text(text.to_owned())
+            .map_err(|error| error.to_string())
+    }
+}
+
 /// Decode UTF-8, dropping one leading byte-order mark if present.
 pub fn decode_utf8(bytes: &[u8]) -> Result<String, ReadError> {
     let bytes = bytes.strip_prefix(UTF8_BOM).unwrap_or(bytes);
