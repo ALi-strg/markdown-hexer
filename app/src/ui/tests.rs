@@ -1219,3 +1219,177 @@ fn malformed_markdown_renders_without_panicking() {
 
     h.get_by_label_contains("Still here.");
 }
+
+#[test]
+fn cmd_f_from_preview_switches_to_edit_and_focuses_the_find_field() {
+    let files = MemoryFiles::default();
+    let mut h = harness(file_app(
+        notes_path(),
+        "# Notes\n\nalpha ALPHA",
+        &files,
+        FakeDialogs::default(),
+    ));
+    h.step();
+
+    h.key_press_modifiers(Modifiers::COMMAND, Key::F);
+    h.step();
+    assert!(h.state().find_open);
+    assert_eq!(
+        h.state().workspace.active_document().map(|d| d.mode),
+        Some(Mode::Edit)
+    );
+
+    // The search field is focused on the next frame.
+    h.step();
+    h.get_by_label("Find");
+    h.get_by_label("Replace All");
+    h.input_mut()
+        .events
+        .push(egui::Event::Text("alpha".to_owned()));
+    h.step();
+    assert_eq!(
+        h.state().workspace.active_document().unwrap().find.query,
+        "alpha"
+    );
+    assert_eq!(document_content(&h), "# Notes\n\nalpha ALPHA");
+    h.get_by_label("1 of 2");
+
+    h.key_press(Key::Escape);
+    h.step();
+    assert!(!h.state().find_open);
+
+    h.input_mut().events.push(egui::Event::Text("X".to_owned()));
+    h.step();
+    assert!(document_content(&h).contains('X'));
+    assert_eq!(
+        h.state().workspace.active_document().unwrap().find.query,
+        "alpha"
+    );
+}
+
+#[test]
+fn cmd_f_opens_find_in_edit_and_no_match_is_shown() {
+    let files = MemoryFiles::default();
+    let mut h = harness(untitled_app(&files, FakeDialogs::default()));
+    h.run_steps(1);
+
+    h.key_press_modifiers(Modifiers::COMMAND, Key::F);
+    h.step();
+    assert!(h.state().find_open);
+    h.get_by_label("Find");
+    h.get_by_label("Replace All");
+
+    h.input_mut()
+        .events
+        .push(egui::Event::Text("missing".to_owned()));
+    h.step();
+    h.get_by_label("No matches");
+    assert_eq!(document_content(&h), "");
+}
+
+#[test]
+fn find_query_and_current_match_are_per_tab() {
+    let files = MemoryFiles::default();
+    let mut h = harness(file_app(
+        notes_path(),
+        "alpha alpha",
+        &files,
+        FakeDialogs::default(),
+    ));
+    add_file(&mut h, other_path(), "beta beta");
+    h.step();
+    let ids = workspace_ids(&h);
+
+    h.state_mut().workspace.apply(Command::ActivateTab(ids[0]));
+    h.state_mut().workspace.apply(Command::SetMode(Mode::Edit));
+    h.key_press_modifiers(Modifiers::COMMAND, Key::F);
+    h.step();
+    h.step();
+    h.input_mut()
+        .events
+        .push(egui::Event::Text("alpha".to_owned()));
+    h.step();
+    h.key_press(Key::Enter);
+    h.step();
+    assert_eq!(
+        h.state().workspace.active_document().unwrap().find.current,
+        1
+    );
+
+    h.state_mut().workspace.apply(Command::ActivateTab(ids[1]));
+    h.state_mut().workspace.apply(Command::SetMode(Mode::Edit));
+    h.state_mut().workspace.apply(Command::Find {
+        query: "beta".to_owned(),
+    });
+    h.step();
+    h.get_by_label("1 of 2");
+
+    h.state_mut().workspace.apply(Command::ActivateTab(ids[0]));
+    h.step();
+    let document = h.state().workspace.active_document().unwrap();
+    assert_eq!(document.find.query, "alpha");
+    assert_eq!(document.find.current, 1);
+    h.get_by_label("2 of 2");
+}
+
+#[test]
+fn enter_and_shift_enter_move_find_matches() {
+    let files = MemoryFiles::default();
+    let mut h = harness(untitled_app(&files, FakeDialogs::default()));
+    h.run_steps(1);
+    h.input_mut()
+        .events
+        .push(egui::Event::Text("x x x".to_owned()));
+    h.step();
+    assert_eq!(document_content(&h), "x x x");
+
+    h.key_press_modifiers(Modifiers::COMMAND, Key::F);
+    h.step();
+    h.input_mut().events.push(egui::Event::Text("x".to_owned()));
+    h.step();
+    h.key_press(Key::Enter);
+    h.step();
+    assert_eq!(
+        h.state().workspace.active_document().unwrap().find.current,
+        1
+    );
+    h.key_press(Key::Enter);
+    h.step();
+    assert_eq!(
+        h.state().workspace.active_document().unwrap().find.current,
+        2
+    );
+    h.key_press_modifiers(Modifiers::SHIFT, Key::Enter);
+    h.step();
+    assert_eq!(
+        h.state().workspace.active_document().unwrap().find.current,
+        1
+    );
+}
+
+#[test]
+fn replace_all_is_a_single_undo_step() {
+    let files = MemoryFiles::default();
+    let mut h = harness(untitled_app(&files, FakeDialogs::default()));
+    h.run_steps(1);
+    h.input_mut()
+        .events
+        .push(egui::Event::Text("foo foo foo".to_owned()));
+    h.step();
+
+    h.key_press_modifiers(Modifiers::COMMAND, Key::F);
+    h.step();
+    h.input_mut()
+        .events
+        .push(egui::Event::Text("foo".to_owned()));
+    h.step();
+    h.state_mut().replace_text = "bar".to_owned();
+    h.get_by_label("Replace All").click();
+    h.step();
+    h.step();
+    assert_eq!(document_content(&h), "bar bar bar");
+
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+    h.step();
+    assert_eq!(document_content(&h), "foo foo foo");
+}
