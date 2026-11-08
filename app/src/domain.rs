@@ -174,6 +174,7 @@ pub struct Workspace {
     external: Option<ExternalState>,
     save_dialog: Option<SaveDialogState>,
     pending_write: Option<PendingWrite>,
+    export_dialog: Option<DocumentId>,
     quit_queue: Vec<DocumentId>,
 }
 
@@ -217,6 +218,10 @@ impl Workspace {
 
     pub fn external_modified_open(&self) -> bool {
         self.external.is_some()
+    }
+
+    pub fn export_dialog_open(&self) -> bool {
+        self.export_dialog.is_some()
     }
 
     /// `<filename> — Markdown Hexer`, with `*` after a dirty filename.
@@ -295,6 +300,15 @@ impl Workspace {
                 Some(id) => self.begin_save(id, AfterWrite::Nothing),
                 None => Vec::new(),
             },
+            Command::ExportHtml => match self.active_document().map(|document| document.id) {
+                Some(id) => self.begin_export(id),
+                None => Vec::new(),
+            },
+            Command::ExportPathChosen(path) => self.export_path_chosen(path),
+            Command::ExportCancelled => {
+                self.export_dialog = None;
+                Vec::new()
+            }
             Command::SaveAs => match self.active_document().map(|document| document.id) {
                 Some(id) => self.begin_save_as(id, AfterWrite::Nothing),
                 None => Vec::new(),
@@ -531,11 +545,7 @@ impl Workspace {
     }
 
     fn close_tab(&mut self, document_id: DocumentId) -> Vec<Effect> {
-        if self.guard.is_some()
-            || self.external.is_some()
-            || self.save_dialog.is_some()
-            || self.pending_write.is_some()
-        {
+        if self.guard.is_some() || self.dialog_open() {
             return Vec::new();
         }
         let Some(index) = self.index_of(document_id) else {
@@ -571,7 +581,7 @@ impl Workspace {
     }
 
     fn begin_save(&mut self, document_id: DocumentId, after: AfterWrite) -> Vec<Effect> {
-        if self.external.is_some() || self.save_dialog.is_some() || self.pending_write.is_some() {
+        if self.dialog_open() {
             return Vec::new();
         }
         let Some(document) = self.document(document_id) else {
@@ -590,13 +600,44 @@ impl Workspace {
     }
 
     fn begin_save_as(&mut self, document_id: DocumentId, after: AfterWrite) -> Vec<Effect> {
-        if self.external.is_some() || self.save_dialog.is_some() || self.pending_write.is_some() {
+        if self.dialog_open() {
             return Vec::new();
         }
         if self.document(document_id).is_none() {
             return Vec::new();
         }
         self.open_save_dialog(document_id, after)
+    }
+
+    fn begin_export(&mut self, document_id: DocumentId) -> Vec<Effect> {
+        if self.guard.is_some() || self.dialog_open() {
+            return Vec::new();
+        }
+        let Some(document) = self.document(document_id) else {
+            return Vec::new();
+        };
+        let suggested_name = export_file_name(document);
+        self.export_dialog = Some(document_id);
+        vec![Effect::ShowExportDialog { suggested_name }]
+    }
+
+    fn export_path_chosen(&mut self, path: PathBuf) -> Vec<Effect> {
+        let Some(document_id) = self.export_dialog.take() else {
+            return Vec::new();
+        };
+        if self.document(document_id).is_none() {
+            return Vec::new();
+        }
+        vec![Effect::WriteExportFile { document_id, path }]
+    }
+
+    /// True while an app-modal dialog owns the window. Export is included so a
+    /// second dialog never stacks on the first.
+    fn dialog_open(&self) -> bool {
+        self.external.is_some()
+            || self.save_dialog.is_some()
+            || self.pending_write.is_some()
+            || self.export_dialog.is_some()
     }
 
     fn open_save_dialog(&mut self, document_id: DocumentId, after: AfterWrite) -> Vec<Effect> {
@@ -739,11 +780,7 @@ impl Workspace {
 
     fn window_close_requested(&mut self) -> Vec<Effect> {
         // The Guard is already app-modal; a second close request must not stack it.
-        if self.guard.is_some()
-            || self.external.is_some()
-            || self.save_dialog.is_some()
-            || self.pending_write.is_some()
-        {
+        if self.guard.is_some() || self.dialog_open() {
             return Vec::new();
         }
         self.quit_queue = self
@@ -868,6 +905,16 @@ fn file_name(path: &Path) -> String {
         .unwrap_or_else(|| UNTITLED_NAME.to_owned())
 }
 
+/// `notes.md` exports as `notes.html`; the name need not be unique.
+fn export_file_name(document: &Document) -> String {
+    let name = document.file_name();
+    let stem = Path::new(&name)
+        .file_stem()
+        .map(|stem| stem.to_string_lossy().into_owned())
+        .unwrap_or(name);
+    format!("{stem}.html")
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Command {
     NewUntitled,
@@ -907,6 +954,9 @@ pub enum Command {
     CycleTab(i32),
     Save,
     SaveAs,
+    ExportHtml,
+    ExportPathChosen(PathBuf),
+    ExportCancelled,
     SaveAsChosen(PathBuf),
     SaveDialogCancelled,
     WriteSucceeded,
@@ -927,12 +977,28 @@ pub enum Command {
 pub enum Effect {
     ShowOpenDialog,
     ReadFile(PathBuf),
-    WriteFile { path: PathBuf, content: String },
-    ShowSaveDialog { suggested_name: String },
+    WriteFile {
+        path: PathBuf,
+        content: String,
+    },
+    ShowSaveDialog {
+        suggested_name: String,
+    },
+    ShowExportDialog {
+        suggested_name: String,
+    },
+    WriteExportFile {
+        document_id: DocumentId,
+        path: PathBuf,
+    },
     SetWindowTitle(String),
     ShowToast(String),
-    ShowGuard { title: String },
-    ShowExternalModified { title: String },
+    ShowGuard {
+        title: String,
+    },
+    ShowExternalModified {
+        title: String,
+    },
     CloseWindow,
 }
 
@@ -2111,5 +2177,97 @@ mod tests {
         assert!(document.is_dirty());
         assert_eq!(document.find.current, 0);
         assert!(find::matches(&document.content, "foo").is_empty());
+    }
+
+    #[test]
+    fn export_uses_dirty_content_and_leaves_the_document_untouched() {
+        let mut workspace = loaded_workspace("notes.md", "before");
+        edit(&mut workspace, "after");
+        let before = workspace.active_document().unwrap().clone();
+
+        let effects = workspace.apply(Command::ExportHtml);
+
+        assert_eq!(
+            effects,
+            vec![Effect::ShowExportDialog {
+                suggested_name: "notes.html".to_owned(),
+            }]
+        );
+        assert!(workspace.export_dialog_open());
+        assert_eq!(workspace.active_document(), Some(&before));
+        assert_eq!(workspace.active_document().unwrap().mode, Mode::Preview);
+        assert!(workspace.active_document().unwrap().is_dirty());
+        assert!(workspace.guard().is_none());
+
+        let effects = workspace.apply(Command::ExportPathChosen(PathBuf::from("out.html")));
+
+        let document_id = before.id;
+        assert_eq!(
+            effects,
+            vec![Effect::WriteExportFile {
+                document_id,
+                path: PathBuf::from("out.html"),
+            }]
+        );
+        assert!(!workspace.export_dialog_open());
+        assert_eq!(workspace.active_document(), Some(&before));
+        assert!(workspace.active_document().unwrap().is_dirty());
+    }
+
+    #[test]
+    fn export_works_from_edit_mode_and_names_untitled_documents() {
+        let mut workspace = Workspace::new();
+        workspace.apply(Command::NewUntitled);
+        workspace.apply(Command::ContentChanged {
+            document_id: workspace.active_document().unwrap().id,
+            content: "# Draft".to_owned(),
+        });
+        assert_eq!(workspace.active_document().unwrap().mode, Mode::Edit);
+
+        let effects = workspace.apply(Command::ExportHtml);
+
+        assert_eq!(
+            effects,
+            vec![Effect::ShowExportDialog {
+                suggested_name: "Untitled.html".to_owned(),
+            }]
+        );
+        assert_eq!(workspace.active_document().unwrap().mode, Mode::Edit);
+        assert!(workspace.active_document().unwrap().is_dirty());
+    }
+
+    #[test]
+    fn cancelling_export_changes_nothing() {
+        let mut workspace = loaded_workspace("notes.md", "text");
+        workspace.apply(Command::ExportHtml);
+
+        assert!(workspace.apply(Command::ExportCancelled).is_empty());
+
+        assert!(!workspace.export_dialog_open());
+        assert!(!workspace.active_document().unwrap().is_dirty());
+    }
+
+    #[test]
+    fn one_dialog_at_a_time_blank_export_until_it_resolves() {
+        let mut workspace = loaded_workspace("notes.md", "text");
+        workspace.apply(Command::ExportHtml);
+
+        assert!(workspace.apply(Command::ExportHtml).is_empty());
+        assert!(workspace.apply(Command::SaveAs).is_empty());
+        assert!(workspace.apply(Command::WindowCloseRequested).is_empty());
+
+        workspace.apply(Command::ExportCancelled);
+        assert!(!workspace.apply(Command::ExportHtml).is_empty());
+    }
+
+    #[test]
+    fn export_path_without_an_open_dialog_is_ignored() {
+        let mut workspace = loaded_workspace("notes.md", "text");
+
+        assert!(
+            workspace
+                .apply(Command::ExportPathChosen(PathBuf::from("out.html")))
+                .is_empty()
+        );
     }
 }

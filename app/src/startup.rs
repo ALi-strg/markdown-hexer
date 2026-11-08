@@ -48,6 +48,8 @@ pub fn launch(paths: Vec<PathBuf>, fs: &dyn FileSystem) -> Startup {
             Effect::WriteFile { .. }
             | Effect::ShowOpenDialog
             | Effect::ShowSaveDialog { .. }
+            | Effect::ShowExportDialog { .. }
+            | Effect::WriteExportFile { .. }
             | Effect::ShowGuard { .. }
             | Effect::ShowExternalModified { .. }
             | Effect::CloseWindow => {}
