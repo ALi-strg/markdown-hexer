@@ -15,6 +15,7 @@ This is the 2.0 view of the ADR set. Older decisions stay in the repository as h
 | [0014](0014-rust-native-rewrite-for-cold-start.md) | Rust-native rewrite for cold start |
 | [0015](0015-two-mode-document-model.md) | Two-mode document model replacing split view |
 | [0016](0016-native-preview-subset.md) | Native preview subset |
+| [0017](0017-toolkit-selection.md) | egui 0.37 + glow toolkit selection |
 
 ## Deferred
 
