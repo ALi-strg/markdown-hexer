@@ -88,9 +88,9 @@ jobs:
           set -euo pipefail
           version="${{ needs.version.outputs.version }}"
           mkdir -p ../dist
-          mv "target/release/bundle/markdown-hexer_${version}_x64-setup.exe" "../dist/markdown-hexer_${version}_windows-x64.exe"
+          mv "target/release/bundle/markdown-hexer_${version}_x64-setup.exe" "dist/markdown-hexer_${version}_windows-x64.exe"
           if [[ -f "target/release/bundle/markdown-hexer_${version}_x64_en-US.msi" ]]; then
-            mv "target/release/bundle/markdown-hexer_${version}_x64_en-US.msi" "../dist/markdown-hexer_${version}_windows-x64.msi"
+            mv "target/release/bundle/markdown-hexer_${version}_x64_en-US.msi" "dist/markdown-hexer_${version}_windows-x64.msi"
           fi
 
       - uses: actions/upload-artifact@v4
@@ -98,8 +98,10 @@ jobs:
           name: windows
           if-no-files-found: error
           path: |
-            ../dist/markdown-hexer_*-windows-x64.exe
-            ../dist/markdown-hexer_*-windows-x64.msi
+            dist/markdown-hexer_*-windows-x64.exe
+            dist/markdown-hexer_*-windows-x64.msi
+            app/dist/markdown-hexer_*-windows-x64.exe
+            app/dist/markdown-hexer_*-windows-x64.msi
 
   macos:
     needs: version
@@ -140,16 +142,18 @@ jobs:
             arm64|aarch64) arch=aarch64 ;;
             *) arch=x64 ;;
           esac
-          tar -czf "../dist/markdown-hexer_${version}_macos-${arch}.app.tar.gz" -C target/release/bundle "Markdown Hexer.app"
-          mv "target/release/bundle/Markdown Hexer_${version}_${arch}.dmg" "../dist/markdown-hexer_${version}_macos-${arch}.dmg"
+          tar -czf "dist/markdown-hexer_${version}_macos-${arch}.app.tar.gz" -C target/release/bundle "Markdown Hexer.app"
+          mv "target/release/bundle/Markdown Hexer_${version}_${arch}.dmg" "dist/markdown-hexer_${version}_macos-${arch}.dmg"
 
       - uses: actions/upload-artifact@v4
         with:
           name: macos
           if-no-files-found: error
           path: |
-            ../dist/markdown-hexer_*-macos-*.dmg
-            ../dist/markdown-hexer_*-macos-*.app.tar.gz
+            dist/markdown-hexer_*-macos-*.dmg
+            dist/markdown-hexer_*-macos-*.app.tar.gz
+            app/dist/markdown-hexer_*-macos-*.dmg
+            app/dist/markdown-hexer_*-macos-*.app.tar.gz
 
   linux:
     needs: version
@@ -205,12 +209,12 @@ jobs:
           version="${{ needs.version.outputs.version }}"
           arch="$(uname -m)"
           mkdir -p ../dist
-          mv "target/release/bundle/markdown-hexer_${version}_amd64.deb" "../dist/markdown-hexer_${version}_linux-${arch}.deb"
-          mv "target/release/bundle/markdown-hexer_${version}_${arch}.AppImage" "../dist/markdown-hexer_${version}_linux-${arch}.AppImage"
+          mv "target/release/bundle/markdown-hexer_${version}_amd64.deb" "dist/markdown-hexer_${version}_linux-${arch}.deb"
+          mv "target/release/bundle/markdown-hexer_${version}_${arch}.AppImage" "dist/markdown-hexer_${version}_linux-${arch}.AppImage"
           rpm_file="$(ls target/generate-rpm/*.rpm)"
-          mv "$rpm_file" "../dist/markdown-hexer_${version}_linux-${arch}.rpm"
+          mv "$rpm_file" "dist/markdown-hexer_${version}_linux-${arch}.rpm"
           # The Flatpak manifest wraps the release .deb under a stable name (ADR-0006).
-          cp "../dist/markdown-hexer_${version}_linux-${arch}.deb" packaging/flatpak/markdown-hexer.deb
+          cp "dist/markdown-hexer_${version}_linux-${arch}.deb" packaging/flatpak/markdown-hexer.deb
 
       - name: install flatpak tooling and remote
         run: |
@@ -230,7 +234,7 @@ jobs:
             --subject="Markdown Hexer ${version} (${GITHUB_SHA})" \
             flatpak-app \
             packaging/flatpak/com.markdownhexer.editor.yml
-          flatpak build-bundle flatpak-repo "../dist/markdown-hexer_${version}_linux-x86_64.flatpak" \
+          flatpak build-bundle flatpak-repo "dist/markdown-hexer_${version}_linux-x86_64.flatpak" \
             --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo \
             com.markdownhexer.editor \
             master
@@ -240,10 +244,14 @@ jobs:
           name: linux
           if-no-files-found: error
           path: |
-            ../dist/markdown-hexer_*-linux-x86_64.deb
-            ../dist/markdown-hexer_*-linux-x86_64.AppImage
-            ../dist/markdown-hexer_*-linux-x86_64.rpm
-            ../dist/markdown-hexer_*-linux-x86_64.flatpak
+            dist/markdown-hexer_*-linux-x86_64.deb
+            dist/markdown-hexer_*-linux-x86_64.AppImage
+            dist/markdown-hexer_*-linux-x86_64.rpm
+            dist/markdown-hexer_*-linux-x86_64.flatpak
+            app/dist/markdown-hexer_*-linux-x86_64.deb
+            app/dist/markdown-hexer_*-linux-x86_64.AppImage
+            app/dist/markdown-hexer_*-linux-x86_64.rpm
+            app/dist/markdown-hexer_*-linux-x86_64.flatpak
 
   publish:
     needs: [version, windows, macos, linux]
