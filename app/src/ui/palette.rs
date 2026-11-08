@@ -33,18 +33,18 @@ impl Palette {
         bg: Color32::from_rgb(0xf5, 0xf1, 0xe3),
         surface: Color32::from_rgb(0xfd, 0xf9, 0xee),
         ink: Color32::from_rgb(0x3f, 0x32, 0x22),
-        muted: Color32::from_rgb(0x85, 0x73, 0x5a),
+        muted: Color32::from_rgb(0x7a, 0x68, 0x4f),
         border: Color32::from_rgb(0xe2, 0xd6, 0xbb),
         accent: Color32::from_rgb(0xa0, 0x52, 0x2d),
         accent_contrast: Color32::from_rgb(0xff, 0xfa, 0xf0),
         focus: Color32::from_rgb(0xa0, 0x52, 0x2d),
         code_bg: Color32::from_rgb(0xef, 0xe6, 0xd2),
-        syntax_comment: Color32::from_rgb(0x6e, 0x77, 0x81),
-        syntax_keyword: Color32::from_rgb(0xcf, 0x22, 0x2e),
+        syntax_comment: Color32::from_rgb(0x5f, 0x68, 0x72),
+        syntax_keyword: Color32::from_rgb(0xb9, 0x1c, 0x26),
         syntax_punctuation: Color32::from_rgb(0x57, 0x60, 0x6a),
         syntax_string: Color32::from_rgb(0x0a, 0x30, 0x69),
         syntax_number: Color32::from_rgb(0x05, 0x50, 0xae),
-        syntax_function: Color32::from_rgb(0x82, 0x50, 0xdf),
+        syntax_function: Color32::from_rgb(0x74, 0x40, 0xd0),
         link: Color32::from_rgb(0xa0, 0x52, 0x2d),
         selection: Color32::from_rgb(0xe6, 0xcb, 0xa5),
         toast_bg: Color32::from_rgb(0x3f, 0x32, 0x22),
@@ -55,19 +55,19 @@ impl Palette {
         bg: Color32::from_rgb(0xf7, 0xf6, 0xf0),
         surface: Color32::from_rgb(0xf7, 0xf6, 0xf0),
         ink: Color32::from_rgb(0x26, 0x30, 0x2a),
-        muted: Color32::from_rgb(0x78, 0x82, 0x7a),
+        muted: Color32::from_rgb(0x5e, 0x6a, 0x60),
         border: Color32::from_rgb(0xd2, 0xd8, 0xcf),
         accent: Color32::from_rgb(0x8f, 0xa9, 0x8f),
         accent_contrast: Color32::from_rgb(0x26, 0x30, 0x2a),
-        focus: Color32::from_rgb(0x66, 0x81, 0x6f),
+        focus: Color32::from_rgb(0x4e, 0x64, 0x58),
         code_bg: Color32::from_rgb(0xdc, 0xe9, 0xe5),
-        syntax_comment: Color32::from_rgb(0x6e, 0x77, 0x81),
-        syntax_keyword: Color32::from_rgb(0xcf, 0x22, 0x2e),
+        syntax_comment: Color32::from_rgb(0x5f, 0x68, 0x72),
+        syntax_keyword: Color32::from_rgb(0xb9, 0x1c, 0x26),
         syntax_punctuation: Color32::from_rgb(0x57, 0x60, 0x6a),
         syntax_string: Color32::from_rgb(0x0a, 0x30, 0x69),
         syntax_number: Color32::from_rgb(0x05, 0x50, 0xae),
-        syntax_function: Color32::from_rgb(0x82, 0x50, 0xdf),
-        link: Color32::from_rgb(0x66, 0x81, 0x6f),
+        syntax_function: Color32::from_rgb(0x74, 0x40, 0xd0),
+        link: Color32::from_rgb(0x52, 0x67, 0x59),
         selection: Color32::from_rgb(0xc2, 0xd4, 0xc2),
         toast_bg: Color32::from_rgb(0x26, 0x30, 0x2a),
         toast_ink: Color32::from_rgb(0xf7, 0xf6, 0xf0),
@@ -80,7 +80,7 @@ impl Palette {
         muted: Color32::from_rgb(0x8b, 0x9c, 0xb5),
         border: Color32::from_rgb(0x24, 0x32, 0x4a),
         accent: Color32::from_rgb(0x4d, 0x7c, 0xfe),
-        accent_contrast: Color32::from_rgb(0xff, 0xff, 0xff),
+        accent_contrast: Color32::from_rgb(0x0f, 0x18, 0x26),
         focus: Color32::from_rgb(0x6e, 0xa8, 0xfe),
         code_bg: Color32::from_rgb(0x0b, 0x13, 0x20),
         syntax_comment: Color32::from_rgb(0x8b, 0x94, 0x9e),
@@ -121,13 +121,13 @@ impl Palette {
         bg: Color32::from_rgb(0x2e, 0x34, 0x40),
         surface: Color32::from_rgb(0x3b, 0x42, 0x52),
         ink: Color32::from_rgb(0xd8, 0xde, 0xe9),
-        muted: Color32::from_rgb(0x7b, 0x88, 0xa1),
+        muted: Color32::from_rgb(0xa3, 0xb1, 0xca),
         border: Color32::from_rgb(0x4c, 0x56, 0x6a),
         accent: Color32::from_rgb(0x88, 0xc0, 0xd0),
         accent_contrast: Color32::from_rgb(0x2e, 0x34, 0x40),
         focus: Color32::from_rgb(0x88, 0xc0, 0xd0),
         code_bg: Color32::from_rgb(0x2b, 0x31, 0x3c),
-        syntax_comment: Color32::from_rgb(0x4c, 0x56, 0x6a),
+        syntax_comment: Color32::from_rgb(0x92, 0xa0, 0xb6),
         syntax_keyword: Color32::from_rgb(0x81, 0xa1, 0xc1),
         syntax_punctuation: Color32::from_rgb(0xd8, 0xde, 0xe9),
         syntax_string: Color32::from_rgb(0xa3, 0xbe, 0x8c),
@@ -263,24 +263,24 @@ mod tests {
     }
 
     #[test]
-    fn light_tokens_match_v1() {
+    fn light_tokens_are_stable() {
         let palette = Palette::LIGHT;
         assert_eq!(palette.bg, rgb(0xf5f1e3));
         assert_eq!(palette.surface, rgb(0xfdf9ee));
         assert_eq!(palette.ink, rgb(0x3f3222));
-        assert_eq!(palette.muted, rgb(0x85735a));
+        assert_eq!(palette.muted, rgb(0x7a684f));
         assert_eq!(palette.border, rgb(0xe2d6bb));
         assert_eq!(palette.accent, rgb(0xa0522d));
         assert_eq!(palette.accent_contrast, rgb(0xfffaf0));
         assert_eq!(palette.selection, rgb(0xe6cba5));
         assert_eq!(palette.code_bg, rgb(0xefe6d2));
         assert_eq!(palette.link, rgb(0xa0522d));
-        assert_eq!(palette.syntax_comment, rgb(0x6e7781));
-        assert_eq!(palette.syntax_keyword, rgb(0xcf222e));
+        assert_eq!(palette.syntax_comment, rgb(0x5f6872));
+        assert_eq!(palette.syntax_keyword, rgb(0xb91c26));
         assert_eq!(palette.syntax_punctuation, rgb(0x57606a));
         assert_eq!(palette.syntax_string, rgb(0x0a3069));
         assert_eq!(palette.syntax_number, rgb(0x0550ae));
-        assert_eq!(palette.syntax_function, rgb(0x8250df));
+        assert_eq!(palette.syntax_function, rgb(0x7440d0));
         assert_eq!(palette.toast_bg, rgb(0x3f3222));
         assert_eq!(palette.toast_ink, rgb(0xfdf9ee));
     }
@@ -311,15 +311,57 @@ mod tests {
             Palette::NORD,
             Palette::TERMINAL_GREEN,
         ] {
+            for surface in [palette.bg, palette.surface] {
+                assert!(
+                    contrast(palette.ink, surface) >= 4.5,
+                    "ink on surface {palette:?}"
+                );
+                assert!(
+                    contrast(palette.muted, surface) >= 4.5,
+                    "muted on surface {palette:?}"
+                );
+                assert!(
+                    contrast(palette.link, surface) >= 4.5,
+                    "link on surface {palette:?}"
+                );
+                assert!(
+                    contrast(palette.focus, surface) >= 3.0,
+                    "focus on surface {palette:?}"
+                );
+            }
             assert!(
-                contrast(palette.ink, palette.bg) >= 4.5,
-                "ink on bg {:?}",
-                palette
+                contrast(palette.ink, palette.selection) >= 4.5,
+                "ink on selection {palette:?}"
             );
             assert!(
-                contrast(palette.muted, palette.bg) >= 2.5,
-                "muted on bg {palette:?}"
+                contrast(palette.focus, palette.selection) >= 3.0,
+                "focus on selection {palette:?}"
             );
+            assert!(
+                contrast(palette.link, palette.selection) >= 3.0,
+                "link on selection {palette:?}"
+            );
+            assert!(
+                contrast(palette.accent_contrast, palette.accent) >= 4.5,
+                "accent text {palette:?}"
+            );
+            assert!(
+                contrast(palette.toast_ink, palette.toast_bg) >= 4.5,
+                "toast {palette:?}"
+            );
+            for syntax in [
+                palette.syntax_comment,
+                palette.syntax_keyword,
+                palette.syntax_punctuation,
+                palette.syntax_string,
+                palette.syntax_number,
+                palette.syntax_function,
+            ] {
+                assert!(
+                    contrast(syntax, palette.code_bg) >= 4.5,
+                    "code token on code background {palette:?}"
+                );
+            }
             assert_ne!(palette.bg, palette.border, "{palette:?}");
         }
     }

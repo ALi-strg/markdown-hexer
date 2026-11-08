@@ -2,7 +2,7 @@
 //! open flag and replacement text are UI-local.
 
 use egui::widgets::text_edit::TextEditState;
-use egui::{Frame, Id, Key, Margin, Modifiers, Panel, TextEdit, Ui};
+use egui::{Frame, Id, Key, Margin, Modifiers, Panel, Role, TextEdit, Ui, WidgetInfo};
 
 use crate::domain::{Command, DocumentId, Mode};
 use crate::find;
@@ -50,6 +50,10 @@ impl HexerApp {
                     .inner_margin(Margin::symmetric(12, 5)),
             )
             .show(ui, |ui| {
+                ui.ctx().accesskit_node_builder(ui.unique_id(), |node| {
+                    node.set_role(Role::Region);
+                    node.set_label("Find and replace");
+                });
                 let query_id = Id::unique(("find_query", document_id));
                 query_focused = ui.memory(|memory| memory.has_focus(query_id));
                 if query_focused {
@@ -71,6 +75,7 @@ impl HexerApp {
                     if focus_query {
                         response.request_focus();
                     }
+                    response.accessible_name("Find text");
                     let total = find::matches(&content, &query).len();
                     let status = if query.is_empty() {
                         "0 of 0".to_owned()
@@ -79,14 +84,18 @@ impl HexerApp {
                     } else {
                         format!("{} of {}", current.min(total - 1) + 1, total)
                     };
-                    ui.label(status);
+                    ui.label(status.clone())
+                        .widget_info(|| WidgetInfo::labeled(Role::Status, true, status.clone()));
                     if ui.button("Previous").clicked() {
                         action = Some(Action::Previous);
                     }
                     if ui.button("Next").clicked() {
                         action = Some(Action::Next);
                     }
-                    if ui.button("Close").clicked() {
+                    let close_button = ui.add(egui::Button::new("Close"));
+                    close_button
+                        .widget_info(|| WidgetInfo::labeled(Role::Button, true, "Close Find"));
+                    if close_button.clicked() {
                         close = true;
                     }
                 });
@@ -98,7 +107,8 @@ impl HexerApp {
                             .id(Id::unique(("find_replace", document_id)))
                             .hint_text("Replace with")
                             .desired_width(180.0),
-                    );
+                    )
+                    .accessible_name("Replace with");
                     if ui.button("Replace").clicked() {
                         action = Some(Action::Replace);
                     }
