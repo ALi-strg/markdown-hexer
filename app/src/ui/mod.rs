@@ -3,15 +3,15 @@ mod palette;
 
 pub use palette::Palette;
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use egui::text::{CCursor, CCursorRange, LayoutJob};
 use egui::widgets::text_edit::TextEditState;
 use egui::{
-    Align2, CentralPanel, Frame, Id, Key, Label, Margin, Modal, Modifiers, Panel, RichText,
-    ScrollArea, Sense, Stroke, TextBuffer, TextEdit, TextWrapMode, Ui, ViewportCommand,
+    Align2, CentralPanel, Frame, Id, Key, Label, Margin, Modal, Modifiers, Panel, RichText, Role,
+    ScrollArea, Sense, Stroke, TextBuffer, TextEdit, TextWrapMode, Ui, ViewportCommand, WidgetInfo,
 };
 use egui_commonmark::CommonMarkViewer;
 use egui_extras::syntax_highlighting::{CodeTheme, TokenType, highlight};
@@ -25,6 +25,7 @@ use crate::image::{ImageSource, NativeImageSource};
 use crate::platform::instance::InstanceServer;
 use crate::platform::{FileSystem, NativeFileSystem};
 use crate::preview::{self, FencedCode, PreparedPreview};
+use crate::sections::{Section, SectionState, Sections};
 use crate::startup::{Startup, StartupTimer};
 use std::ops::Range;
 
@@ -34,6 +35,7 @@ pub struct HexerApp {
     workspace: Workspace,
     preview: Option<PreparedPreview>,
     preview_revision: Option<PreviewKey>,
+    sections: SectionState,
     images: Box<dyn ImageSource>,
     cache: egui_commonmark::CommonMarkCache,
     palette: Palette,
@@ -170,6 +172,7 @@ impl HexerApp {
             workspace,
             preview,
             preview_revision,
+            sections: SectionState::default(),
             images,
             cache: egui_commonmark::CommonMarkCache::default(),
             palette: Palette::default_light(),
@@ -313,11 +316,13 @@ impl HexerApp {
             Mode::Preview => {
                 let key = (document_id, revision, scope.clone());
                 if self.preview_revision != Some(key.clone()) {
-                    self.preview = Some(preview::prepare_with_images(
+                    let prepared = preview::prepare_with_images(
                         &content,
                         scope.as_deref(),
                         self.images.as_ref(),
-                    ));
+                    );
+                    self.sections.prune(document_id, prepared.sections.keys());
+                    self.preview = Some(prepared);
                     self.preview_revision = Some(key);
                 }
             }
@@ -406,6 +411,9 @@ impl HexerApp {
         }
         self.editor_sessions
             .retain(|document_id, _| self.workspace.document(*document_id).is_some());
+        let workspace = &self.workspace;
+        self.sections
+            .retain_documents(|document_id| workspace.document(document_id).is_some());
         self.sync_editor_resources();
     }
 
@@ -913,36 +921,43 @@ impl HexerApp {
         let first_frame = self.frame_count == 0;
         let preview = self.preview.as_ref();
         let document_id = self.workspace.active_document().map(|document| document.id);
+        let collapsed = document_id.map(|document_id| self.sections.collapsed_mut(document_id));
         let cache = &mut self.cache;
 
         Frame::new()
             .fill(palette.bg)
             .inner_margin(Margin::symmetric(28, 20))
             .show(ui, |ui| {
-                if let (Some(preview), Some(document_id)) = (preview, document_id) {
-                    let code_blocks = preview.code_blocks.clone();
-                    let render_code = move |ui: &mut Ui, html: &str| {
-                        if let Some(index) = code_sentinel_index(html)
-                            && let Some(code) = code_blocks.get(index)
-                        {
-                            show_code_block(ui, &palette, code, index);
-                        }
-                    };
+                if let (Some(preview), Some(document_id), Some(collapsed)) =
+                    (preview, document_id, collapsed)
+                {
                     ScrollArea::vertical()
                         .id_salt(preview_scroll_id(document_id))
                         .auto_shrink([false, false])
                         .show(ui, |ui| {
-                            let markdown = if first_frame {
-                                preview
-                                    .first_frame_render_markdown
-                                    .as_deref()
-                                    .unwrap_or(&preview.render_markdown)
+                            let (markdown, sections) = if first_frame {
+                                (
+                                    preview
+                                        .first_frame_render_markdown
+                                        .as_deref()
+                                        .unwrap_or(&preview.render_markdown),
+                                    preview
+                                        .first_frame_sections
+                                        .as_ref()
+                                        .unwrap_or(&preview.sections),
+                                )
                             } else {
-                                &preview.render_markdown
+                                (preview.render_markdown.as_str(), &preview.sections)
                             };
-                            CommonMarkViewer::new()
-                                .render_html_fn(Some(&render_code))
-                                .show(ui, cache, markdown);
+                            show_sectioned_markdown(
+                                ui,
+                                markdown,
+                                sections,
+                                preview.code_blocks.clone(),
+                                palette,
+                                cache,
+                                collapsed,
+                            );
                         });
                 } else {
                     ui.centered_and_justified(|ui| {
@@ -1166,6 +1181,133 @@ impl eframe::App for HexerApp {
     fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
         self.palette.bg.to_normalized_gamma_f32()
     }
+}
+
+fn show_sectioned_markdown(
+    ui: &mut Ui,
+    source: &str,
+    sections: &Sections,
+    code_blocks: Vec<FencedCode>,
+    palette: Palette,
+    cache: &mut egui_commonmark::CommonMarkCache,
+    collapsed: &mut HashSet<String>,
+) {
+    let render_code = move |ui: &mut Ui, html: &str| {
+        if let Some(index) = code_sentinel_index(html)
+            && let Some(code) = code_blocks.get(index)
+        {
+            show_code_block(ui, &palette, code, index);
+        }
+    };
+
+    if sections.roots.is_empty() {
+        show_markdown_segment(ui, source, cache, &render_code);
+        return;
+    }
+
+    let preamble = &source[sections.preamble.clone()];
+    if !preamble.trim().is_empty() {
+        show_markdown_segment(ui, preamble, cache, &render_code);
+    }
+    for section in &sections.roots {
+        show_section(
+            ui,
+            source,
+            section,
+            cache,
+            collapsed,
+            &palette,
+            &render_code,
+        );
+    }
+}
+
+fn show_section(
+    ui: &mut Ui,
+    source: &str,
+    section: &Section,
+    cache: &mut egui_commonmark::CommonMarkCache,
+    collapsed: &mut HashSet<String>,
+    palette: &Palette,
+    render_code: &egui_commonmark::RenderHtmlFn,
+) {
+    ui.push_id(("preview_section", &section.key), |ui| {
+        ui.add_space(6.0);
+        let is_collapsed = collapsed.contains(&section.key);
+        ui.horizontal(|ui| {
+            if section.has_chevron(source) {
+                let (symbol, label) = if is_collapsed {
+                    (">", "Expand section")
+                } else {
+                    ("v", "Collapse section")
+                };
+                let response = ui.add(
+                    egui::Button::new(RichText::new(symbol).monospace().color(palette.muted))
+                        .frame(false)
+                        .min_size(egui::vec2(16.0, 16.0)),
+                );
+                response.widget_info(|| WidgetInfo::labeled(Role::Button, true, label));
+                if response.clicked() {
+                    if is_collapsed {
+                        collapsed.remove(&section.key);
+                    } else {
+                        collapsed.insert(section.key.clone());
+                    }
+                }
+            } else {
+                ui.add_space(16.0);
+            }
+            ui.add(
+                Label::new(section_heading_text(ui, section.level, &section.title))
+                    .selectable(true),
+            );
+        });
+
+        if is_collapsed {
+            return;
+        }
+        let body = &source[section.body.clone()];
+        if !body.trim().is_empty() {
+            ui.add_space(2.0);
+            show_markdown_segment(ui, body, cache, render_code);
+        }
+        for child in &section.children {
+            show_section(ui, source, child, cache, collapsed, palette, render_code);
+        }
+    });
+}
+
+fn show_markdown_segment(
+    ui: &mut Ui,
+    markdown: &str,
+    cache: &mut egui_commonmark::CommonMarkCache,
+    render_code: &egui_commonmark::RenderHtmlFn,
+) {
+    CommonMarkViewer::new()
+        .render_html_fn(Some(render_code))
+        .show(ui, cache, markdown);
+}
+
+fn section_heading_text(ui: &Ui, level: u8, title: &str) -> RichText {
+    let min = ui
+        .style()
+        .text_styles
+        .get(&egui::TextStyle::Body)
+        .map_or(14.0, |font| font.size);
+    let max = ui
+        .style()
+        .text_styles
+        .get(&egui::TextStyle::Heading)
+        .map_or(32.0, |font| font.size);
+    let factor = match level {
+        1 => 0.835,
+        2 => 0.668,
+        3 => 0.501,
+        4 => 0.334,
+        _ => 0.167,
+    };
+    let text = RichText::new(title).size(min + (max - min) * factor);
+    if level <= 3 { text.strong() } else { text }
 }
 
 fn code_sentinel_index(html: &str) -> Option<usize> {
