@@ -4,6 +4,7 @@ mod palette;
 pub use palette::Palette;
 
 use std::collections::{HashMap, VecDeque};
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use egui::text::LayoutJob;
@@ -18,6 +19,7 @@ use crate::dialogs::{Dialogs, NativeDialogs};
 use crate::domain::{Command, DocumentId, Mode, Workspace};
 use crate::editor::{EditorResources, EditorSession};
 use crate::first_edit::FirstEditProbe;
+use crate::image::{ImageSource, NativeImageSource};
 use crate::platform::instance::InstanceServer;
 use crate::platform::{FileSystem, NativeFileSystem};
 use crate::preview::{self, FencedCode, PreparedPreview};
@@ -28,7 +30,8 @@ const REPOSITORY: &str = "https://github.com/ALi-strg/markdown-hexer";
 pub struct HexerApp {
     workspace: Workspace,
     preview: Option<PreparedPreview>,
-    preview_revision: Option<(DocumentId, u64)>,
+    preview_revision: Option<PreviewKey>,
+    images: Box<dyn ImageSource>,
     cache: egui_commonmark::CommonMarkCache,
     palette: Palette,
     editor: Option<EditorResources>,
@@ -60,6 +63,8 @@ struct Toast {
     message: String,
     expires_at: Instant,
 }
+
+type PreviewKey = (DocumentId, u64, Option<PathBuf>);
 
 /// The bundled fonts have no CJK glyphs, so composition previews would draw
 /// tofu (or panic in tests). Load one system CJK face as a fallback.
@@ -125,20 +130,43 @@ impl HexerApp {
         files: Box<dyn FileSystem>,
         dialogs: Box<dyn Dialogs>,
     ) -> Self {
+        Self::with_platform_and_images(startup, t_main, files, dialogs, Box::new(NativeImageSource))
+    }
+
+    pub fn with_platform_and_images(
+        startup: Startup,
+        t_main: Instant,
+        files: Box<dyn FileSystem>,
+        dialogs: Box<dyn Dialogs>,
+        images: Box<dyn ImageSource>,
+    ) -> Self {
         let workspace = startup.workspace;
         let active = workspace.active_document();
         let preview = active
             .filter(|document| document.mode == Mode::Preview)
-            .map(|document| preview::prepare(&document.content));
+            .map(|document| {
+                preview::prepare_with_images(
+                    &document.content,
+                    document.image_scope(),
+                    images.as_ref(),
+                )
+            });
         let preview_revision = active
             .filter(|document| document.mode == Mode::Preview && preview.is_some())
-            .map(|document| (document.id, document.revision));
+            .map(|document| {
+                (
+                    document.id,
+                    document.revision,
+                    document.image_scope().map(Path::to_path_buf),
+                )
+            });
         let focus_editor = active.is_some_and(|document| document.mode == Mode::Edit);
 
         let mut app = Self {
             workspace,
             preview,
             preview_revision,
+            images,
             cache: egui_commonmark::CommonMarkCache::default(),
             palette: Palette::default_light(),
             editor: None,
@@ -254,13 +282,14 @@ impl HexerApp {
     /// preview in step with the active document. Preview-only Documents hold
     /// no editor resources at all.
     fn sync_editor_resources(&mut self) {
-        let Some((document_id, mode, revision, content)) =
+        let Some((document_id, mode, revision, content, scope)) =
             self.workspace.active_document().map(|document| {
                 (
                     document.id,
                     document.mode,
                     document.revision,
                     document.content.clone(),
+                    document.image_scope().map(Path::to_path_buf),
                 )
             })
         else {
@@ -277,9 +306,13 @@ impl HexerApp {
                 self.editor_sessions.entry(document_id).or_default();
             }
             Mode::Preview => {
-                let key = (document_id, revision);
-                if self.preview_revision != Some(key) {
-                    self.preview = Some(preview::prepare(&content));
+                let key = (document_id, revision, scope.clone());
+                if self.preview_revision != Some(key.clone()) {
+                    self.preview = Some(preview::prepare_with_images(
+                        &content,
+                        scope.as_deref(),
+                        self.images.as_ref(),
+                    ));
                     self.preview_revision = Some(key);
                 }
             }
@@ -767,6 +800,7 @@ impl HexerApp {
 
     fn show_preview(&mut self, ui: &mut Ui) {
         let palette = self.palette;
+        let first_frame = self.frame_count == 0;
         let preview = self.preview.as_ref();
         let document_id = self.workspace.active_document().map(|document| document.id);
         let cache = &mut self.cache;
@@ -788,9 +822,17 @@ impl HexerApp {
                         .id_salt(preview_scroll_id(document_id))
                         .auto_shrink([false, false])
                         .show(ui, |ui| {
+                            let markdown = if first_frame {
+                                preview
+                                    .first_frame_render_markdown
+                                    .as_deref()
+                                    .unwrap_or(&preview.render_markdown)
+                            } else {
+                                &preview.render_markdown
+                            };
                             CommonMarkViewer::new()
                                 .render_html_fn(Some(&render_code))
-                                .show(ui, cache, &preview.render_markdown);
+                                .show(ui, cache, markdown);
                         });
                 } else {
                     ui.centered_and_justified(|ui| {
