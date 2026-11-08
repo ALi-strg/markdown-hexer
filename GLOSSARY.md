@@ -1,6 +1,6 @@
-# Markdown Editor
+# Markdown Hexer
 
-A cross-platform desktop Markdown editor: a distraction-free editor with a native rendered preview and native file-system integration.
+A cross-platform desktop Markdown editor: a native Rust application with a rendered Preview and native file-system integration. This glossary describes the 2.0 native app; 1.x is frozen at tag `v1.5.0` and there is no settings or session migration.
 
 ## Language
 
