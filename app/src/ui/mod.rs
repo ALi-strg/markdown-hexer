@@ -146,7 +146,7 @@ impl HexerApp {
         let commands = requests
             .into_iter()
             .flat_map(|request| request.paths)
-            .map(Command::OpenPath)
+            .map(|path| Command::OpenPath(self.files.canonicalize(&path)))
             .collect();
         self.dispatch(ctx, commands);
 

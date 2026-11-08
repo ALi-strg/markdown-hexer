@@ -31,7 +31,7 @@ pub fn launch(paths: Vec<PathBuf>, fs: &dyn FileSystem) -> Startup {
     // placeholder, so it never builds editor state before the first frame.
     let mut pending: VecDeque<Effect> = workspace.apply(Command::NewUntitled).into();
     for path in paths {
-        pending.extend(workspace.apply(Command::OpenPath(path)));
+        pending.extend(workspace.apply(Command::OpenPath(fs.canonicalize(&path))));
     }
 
     while let Some(effect) = pending.pop_front() {
@@ -163,11 +163,12 @@ mod tests {
         std::fs::write(&path, "# Notes\n\nHello.").unwrap();
 
         let startup = launch(vec![path.clone()], &NativeFileSystem);
+        let canonical = NativeFileSystem.canonicalize(&path);
 
         assert!(startup.notice.is_none());
         assert_eq!(startup.workspace.tabs().len(), 1);
         let document = startup.workspace.active_document().unwrap();
-        assert_eq!(document.path.as_deref(), Some(path.as_path()));
+        assert_eq!(document.path.as_deref(), Some(canonical.as_path()));
         assert_eq!(document.content, "# Notes\n\nHello.");
         assert_eq!(document.mode, Mode::Preview);
         assert_eq!(
@@ -245,6 +246,8 @@ mod tests {
         std::fs::write(&second, "second").unwrap();
 
         let startup = launch(vec![first.clone(), second.clone()], &NativeFileSystem);
+        let first_canonical = NativeFileSystem.canonicalize(&first);
+        let second_canonical = NativeFileSystem.canonicalize(&second);
 
         let paths: Vec<_> = startup
             .workspace
@@ -259,10 +262,13 @@ mod tests {
                     .clone()
             })
             .collect();
-        assert_eq!(paths, vec![Some(first), Some(second.clone())]);
+        assert_eq!(
+            paths,
+            vec![Some(first_canonical), Some(second_canonical.clone())]
+        );
         assert_eq!(
             startup.workspace.active_document().unwrap().path,
-            Some(second)
+            Some(second_canonical)
         );
     }
 

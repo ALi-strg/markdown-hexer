@@ -686,6 +686,7 @@ impl Workspace {
         let document = &mut self.tabs[index].document;
         document.content = content.clone();
         document.saved_content = content;
+        document.revision += 1;
         vec![Effect::SetWindowTitle(self.window_title())]
     }
 
@@ -721,6 +722,7 @@ impl Workspace {
                 {
                     document.content = state.disk_content;
                     document.saved_content = document.content.clone();
+                    document.revision += 1;
                 }
                 vec![Effect::SetWindowTitle(self.window_title())]
             }
@@ -1621,6 +1623,7 @@ mod tests {
         assert_eq!(document.content, "new on disk");
         assert_eq!(document.saved_content, "new on disk");
         assert!(!document.is_dirty());
+        assert_eq!(document.revision, 1);
     }
 
     #[test]
@@ -1652,6 +1655,7 @@ mod tests {
         let document = workspace.active_document().unwrap();
         assert_eq!(document.content, "disk");
         assert!(!document.is_dirty());
+        assert_eq!(document.revision, 2);
     }
 
     #[test]
