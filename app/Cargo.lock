@@ -1786,6 +1786,7 @@ dependencies = [
  "eframe",
  "egui",
  "egui_commonmark",
+ "egui_extras",
  "egui_kittest",
  "pulldown-cmark",
  "rfd",
