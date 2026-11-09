@@ -2024,36 +2024,40 @@ fn show_code_block(
         .corner_radius(4)
         .inner_margin(Margin::symmetric(10, 8))
         .show(ui, |ui| {
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                let copy = ui.add(
-                    egui::Button::new(RichText::new("Copy").small().color(palette.muted))
-                        .frame(false),
-                );
-                copy.widget_info(|| {
-                    WidgetInfo::labeled(
-                        Role::Button,
-                        true,
-                        format!("Copy code block {}", index + 1),
-                    )
-                });
-                paint_focus_ring(ui, &copy, *palette);
-                if copy.clicked() {
-                    *copy_request.borrow_mut() = Some(code.copy_text());
-                }
-            });
-            ScrollArea::horizontal()
-                .id_salt(("preview_code_scroll", index))
-                .auto_shrink([false, true])
-                .show(ui, |ui| {
-                    let job = code_layout_job(ui.ctx(), ui.style(), palette, code);
-                    content = Some(
-                        ui.add(
-                            Label::new(job)
-                                .selectable(true)
-                                .wrap_mode(TextWrapMode::Extend),
-                        ),
+            // egui_commonmark lays the page out in a wrapping horizontal layout;
+            // the block's own widgets have to stack vertically.
+            ui.vertical(|ui| {
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let copy = ui.add(
+                        egui::Button::new(RichText::new("Copy").small().color(palette.muted))
+                            .frame(false),
                     );
+                    copy.widget_info(|| {
+                        WidgetInfo::labeled(
+                            Role::Button,
+                            true,
+                            format!("Copy code block {}", index + 1),
+                        )
+                    });
+                    paint_focus_ring(ui, &copy, *palette);
+                    if copy.clicked() {
+                        *copy_request.borrow_mut() = Some(code.copy_text());
+                    }
                 });
+                ScrollArea::horizontal()
+                    .id_salt(("preview_code_scroll", index))
+                    .auto_shrink([false, true])
+                    .show(ui, |ui| {
+                        let job = code_layout_job(ui.ctx(), ui.style(), palette, code);
+                        content = Some(
+                            ui.add(
+                                Label::new(job)
+                                    .selectable(true)
+                                    .wrap_mode(TextWrapMode::Extend),
+                            ),
+                        );
+                    });
+            });
         });
     ui.add_space(4.0);
     (
