@@ -2569,3 +2569,39 @@ fn find_panel_exposes_labelled_fields_and_escape_restores_editor() {
     assert!(h.query_by_label("Find text").is_none());
     assert!(h.get_by_role(Role::MultilineTextInput).is_focused());
 }
+
+#[test]
+fn code_block_text_starts_at_the_left_of_its_box_in_the_preview() {
+    let files = MemoryFiles::default();
+    let source = "Intro.
+
+```sh
+cd app
+cargo run
+cargo build --release
+```
+
+Outro.
+";
+    let app = file_app_with_clipboard(source, &files, FakeClipboard::default());
+    let mut h = harness(app);
+    h.run_steps(2);
+
+    let code = h.get_by_label_contains("cd app").rect();
+    let copy = h
+        .get_by_role_and_label(Role::Button, "Copy code block 1")
+        .rect();
+
+    assert!(
+        code.min.x < 100.0,
+        "code text started at the right edge: {code:?}"
+    );
+    assert!(
+        code.max.x <= 900.0,
+        "code text overflowed the preview pane: {code:?}"
+    );
+    assert!(
+        code.min.y >= copy.max.y,
+        "code text overlaps the copy row: {code:?} vs {copy:?}"
+    );
+}
