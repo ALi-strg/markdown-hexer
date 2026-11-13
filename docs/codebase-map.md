@@ -61,6 +61,7 @@ a release.
 |---|---|
 | `app/src/main.rs` | Process entry: argv paths, single-instance acquire, settings load, eframe launch |
 | `app/src/lib.rs` | Module list (library is `markdown_hexer`) |
+| `app/src/icon.rs` | Bundled 128×128 PNG decoded for the native window icon |
 | `app/src/domain.rs` | Pure domain: `Document`, `Tab`, `Workspace`, `Command`, `Effect`, guard/external/save state |
 | `app/src/startup.rs` | Launch path handling through `Workspace` (`paths_from_args`, `launch`) |
 | `app/src/editor.rs` | Markdown token scanner + cached `LayoutJob`; no AST |

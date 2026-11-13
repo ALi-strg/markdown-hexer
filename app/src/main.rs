@@ -2,6 +2,7 @@
 
 use std::time::Instant;
 
+use markdown_hexer::icon;
 use markdown_hexer::platform::NativeFileSystem;
 use markdown_hexer::platform::instance::{self, Acquire};
 use markdown_hexer::settings::{self, Settings};
@@ -36,6 +37,7 @@ fn main() -> eframe::Result {
             .with_title(startup.workspace.window_title())
             .with_inner_size([1080.0, 760.0])
             .with_min_inner_size([640.0, 420.0])
+            .with_icon(icon::window_icon())
             // eframe also starts hidden until the first frame is painted.
             .with_visible(false),
         renderer: eframe::Renderer::Glow,
