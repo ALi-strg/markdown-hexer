@@ -29,7 +29,7 @@ use crate::image::{ImageSource, NativeImageSource};
 use crate::platform::instance::InstanceServer;
 use crate::platform::{Clipboard, FileSystem, NativeClipboard, NativeFileSystem};
 use crate::preview::{self, FencedCode, PreparedPreview};
-use crate::sections::{Section, SectionState, Sections};
+use crate::sections::{Section, SectionState, Sections, has_renderable_content};
 use crate::settings::{
     CONTENT_MONO, CONTENT_SANS, CONTENT_SERIF, FontChoice, Settings, TextSize, Theme,
 };
@@ -267,16 +267,13 @@ fn apply_preview_text_style(ui: &mut Ui, font: FontChoice, text_size: TextSize) 
     let family = font.preview_family();
     let body = text_size.preview_size();
     let styles = &mut ui.style_mut().text_styles;
-    let heading = styles
-        .get(&egui::TextStyle::Heading)
-        .map_or(24.0, |font| font.size);
     styles.insert(
         egui::TextStyle::Body,
         egui::FontId::new(body, family.clone()),
     );
     styles.insert(
         egui::TextStyle::Heading,
-        egui::FontId::new(heading * body / TextSize::Medium.preview_size(), family),
+        egui::FontId::new(body * 1.6, family),
     );
     if let Some(monospace) = styles.get_mut(&egui::TextStyle::Monospace) {
         monospace.size = body;
@@ -562,7 +559,7 @@ impl HexerApp {
         };
         visuals.panel_fill = palette.bg;
         visuals.window_fill = palette.surface;
-        visuals.extreme_bg_color = palette.code_bg;
+        visuals.extreme_bg_color = palette.bg;
         visuals.text_edit_bg_color = Some(palette.surface);
         visuals.faint_bg_color = palette.surface;
         visuals.code_bg_color = palette.code_bg;
@@ -1811,6 +1808,13 @@ struct SectionSource<'a> {
     definitions: &'a str,
 }
 
+/// Whether a Section paints the hairline rule above its heading.
+#[derive(Clone, Copy)]
+enum SectionRule {
+    Draw,
+    Suppress,
+}
+
 #[allow(clippy::too_many_arguments)]
 fn show_sectioned_markdown(
     ui: &mut Ui,
@@ -1837,7 +1841,8 @@ fn show_sectioned_markdown(
     }
 
     let preamble = &source[sections.preamble.clone()];
-    if !preamble.trim().is_empty() {
+    let preamble_present = has_renderable_content(preamble);
+    if preamble_present {
         show_markdown_segment(
             ui,
             preamble,
@@ -1846,7 +1851,12 @@ fn show_sectioned_markdown(
             &sections.link_definitions,
         );
     }
-    for section in &sections.roots {
+    for (index, section) in sections.roots.iter().enumerate() {
+        let rule = if index == 0 && !preamble_present {
+            SectionRule::Suppress
+        } else {
+            SectionRule::Draw
+        };
         show_section(
             ui,
             SectionSource {
@@ -1854,6 +1864,7 @@ fn show_sectioned_markdown(
                 definitions: &sections.link_definitions,
             },
             section,
+            rule,
             cache,
             collapsed,
             &palette,
@@ -1862,37 +1873,52 @@ fn show_sectioned_markdown(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn show_section(
     ui: &mut Ui,
     source: SectionSource<'_>,
     section: &Section,
+    rule: SectionRule,
     cache: &mut egui_commonmark::CommonMarkCache,
     collapsed: &mut HashSet<String>,
     palette: &Palette,
     render_code: &egui_commonmark::RenderHtmlFn,
 ) {
     ui.push_id(("preview_section", &section.key), |ui| {
-        ui.add_space(6.0);
+        if section.level <= 3 && matches!(rule, SectionRule::Draw) {
+            ui.add_space(20.0);
+            let (_, rule) = ui.allocate_space(egui::vec2(ui.available_width(), 1.0));
+            ui.painter().rect_filled(rule, 0.0, palette.border);
+            ui.add_space(8.0);
+        } else {
+            ui.add_space(6.0);
+        }
         let is_collapsed = collapsed.contains(&section.key);
         ui.horizontal(|ui| {
             let has_chevron = section.has_chevron(source.markdown);
             let mut toggle = false;
             if has_chevron {
-                let (symbol, label) = if is_collapsed {
-                    (">", "Expand section")
+                let label = if is_collapsed {
+                    "Expand section"
                 } else {
-                    ("v", "Collapse section")
+                    "Collapse section"
                 };
-                let response = ui.add(
-                    egui::Button::new(
-                        RichText::new(symbol)
-                            .monospace()
-                            .size(14.0)
-                            .color(palette.muted),
-                    )
-                    .frame(false)
-                    .min_size(egui::vec2(16.0, 16.0)),
-                );
+                let response = ui
+                    .scope(|ui| {
+                        let widgets = &mut ui.style_mut().visuals.widgets;
+                        widgets.inactive.fg_stroke.color = palette.muted;
+                        widgets.hovered.fg_stroke.color = palette.ink;
+                        widgets.active.fg_stroke.color = palette.ink;
+                        let response = ui.add(
+                            egui::Button::new("")
+                                .frame(false)
+                                .min_size(egui::vec2(16.0, 16.0)),
+                        );
+                        let openness = if is_collapsed { 0.0 } else { 1.0 };
+                        egui::collapsing_header::paint_default_icon(ui, openness, &response);
+                        response
+                    })
+                    .inner;
                 response.widget_info(|| WidgetInfo::labeled(Role::Button, true, label));
                 paint_focus_ring(ui, &response, *palette);
                 if response.clicked() {
@@ -1935,7 +1961,16 @@ fn show_section(
             show_markdown_segment(ui, body, cache, render_code, source.definitions);
         }
         for child in &section.children {
-            show_section(ui, source, child, cache, collapsed, palette, render_code);
+            show_section(
+                ui,
+                source,
+                child,
+                SectionRule::Draw,
+                cache,
+                collapsed,
+                palette,
+                render_code,
+            );
         }
     });
 }
@@ -1959,25 +1994,36 @@ fn show_markdown_segment(
     }
 }
 
+/// Native Preview heading ladder: H1 is the Heading style and H2–H6 step
+/// toward Body by the factors `egui_commonmark_backend 0.26` uses in its
+/// private heading renderer, in level order. The ladder test pins these
+/// values, so a dependency update must revisit them.
+fn preview_heading_size(body: f32, heading: f32, level: u8) -> f32 {
+    if level <= 1 {
+        return heading;
+    }
+    let factor = match level {
+        2 => 0.835,
+        3 => 0.668,
+        4 => 0.501,
+        5 => 0.334,
+        _ => 0.167,
+    };
+    body + (heading - body) * factor
+}
+
 fn section_heading_text(ui: &Ui, level: u8, title: &str) -> RichText {
-    let min = ui
+    let body = ui
         .style()
         .text_styles
         .get(&egui::TextStyle::Body)
         .map_or(14.0, |font| font.size);
-    let max = ui
+    let heading = ui
         .style()
         .text_styles
         .get(&egui::TextStyle::Heading)
         .map_or(32.0, |font| font.size);
-    let factor = match level {
-        1 => 0.835,
-        2 => 0.668,
-        3 => 0.501,
-        4 => 0.334,
-        _ => 0.167,
-    };
-    let text = RichText::new(title).size(min + (max - min) * factor);
+    let text = RichText::new(title).size(preview_heading_size(body, heading, level));
     if level <= 3 { text.strong() } else { text }
 }
 
