@@ -2,7 +2,7 @@
 
 ### Issue tracker
 
-Issues live as local markdown files under `.scratch/<feature>/`. See `D:\SW_Dev\github\home\docs\agents\issue-tracker.md`.
+Issues live as tracked markdown files under `.scratch/<feature>/`; worktrees see them. See `D:\SW_Dev\github\home\docs\agents\issue-tracker.md`.
 
 ### Triage labels
 

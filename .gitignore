@@ -14,8 +14,8 @@ logs
 *.sln
 *.sw?
 
-# Local issue tracker and scratch notes
-.scratch
+# Issue tracker and scratch notes are not ignored; track the specs and tickets
+# so worktrees and collaborators can read them.
 
 # Cargo output (app/.gitignore also covers /target)
 target

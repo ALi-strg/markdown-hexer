@@ -51,3 +51,7 @@ The House token values are duplicated from the alitools-pages canonical token se
   the default light appearance is unchanged and that the House syntax colours
   reuse the GitHub-light token values, **for those tokens only**. The rest of
   this ADR still governs.
+- **2026-11-13 — Preview screenshot harness.** The Preview screenshot set is no
+  longer a manual capture task: the GPU test in `app/tests/screenshots.rs`
+  renders the fixture in every Palette and Text Size. The download-page crops
+  still need a human.
