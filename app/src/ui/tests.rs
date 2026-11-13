@@ -2209,6 +2209,7 @@ fn every_theme_drives_the_chrome_tokens_it_resolves_to() {
         let visuals = &h.ctx.global_style().visuals;
         assert_eq!(visuals.panel_fill, palette.bg, "{theme:?}");
         assert_eq!(visuals.window_fill, palette.surface, "{theme:?}");
+        assert_eq!(visuals.extreme_bg_color, palette.bg, "{theme:?}");
         assert_eq!(visuals.code_bg_color, palette.code_bg, "{theme:?}");
         assert_eq!(visuals.hyperlink_color, palette.link, "{theme:?}");
         assert_eq!(visuals.selection.bg_fill, palette.selection, "{theme:?}");

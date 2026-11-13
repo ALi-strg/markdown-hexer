@@ -562,7 +562,7 @@ impl HexerApp {
         };
         visuals.panel_fill = palette.bg;
         visuals.window_fill = palette.surface;
-        visuals.extreme_bg_color = palette.code_bg;
+        visuals.extreme_bg_color = palette.bg;
         visuals.text_edit_bg_color = Some(palette.surface);
         visuals.faint_bg_color = palette.surface;
         visuals.code_bg_color = palette.code_bg;
