@@ -10,7 +10,9 @@ The automated checks live in:
 - `app/src/settings.rs` — parse, defaults, roundtrip, corrupt input, unknown
   fields, version fallback, font and Text Size mappings.
 - `app/src/ui/palette.rs` — all six Palettes resolve their expected tokens,
-  System resolves Light/Dark, contrast for ink/muted/focus/selection.
+  System resolves Light/Dark, contrast for ink/muted/focus/selection, the code
+  surface against the page (at least 1.2:1), and syntax tokens against the code
+  surface (at least 4.5:1).
 - `app/src/ui/tests.rs` — first-frame Palette and `clear_color`, live System
   switch, Appearance menu persistence, font/Text Size helpers, Preview content
   style, chrome token wiring for every Theme.
@@ -42,20 +44,20 @@ the Dark row when the OS is dark.
 
 | Palette | bg | surface | ink | muted | border | accent | selection | code bg |
 |---|---|---|---|---|---|---|---|---|
-| Light | `#f5f1e3` | `#fdf9ee` | `#3f3222` | `#85735a` | `#e2d6bb` | `#a0522d` | `#e6cba5` | `#efe6d2` |
-| House | `#f7f6f0` | `#f7f6f0` | `#26302a` | `#78827a` | `#d2d8cf` | `#8fa98f` | `#c2d4c2` | `#dce9e5` |
-| Dark | `#0f1826` | `#131e2f` | `#e6ecf5` | `#8b9cb5` | `#24324a` | `#4d7cfe` | `#2f4a75` | `#0b1320` |
-| High Contrast | `#000000` | `#141414` | `#ffffff` | `#c4c4c4` | `#555555` | `#ffd60a` | `#3d3d3d` | `#0a0a0a` |
-| Nord | `#2e3440` | `#3b4252` | `#d8dee9` | `#7b88a1` | `#4c566a` | `#88c0d0` | `#434c5e` | `#2b313c` |
-| Terminal Green | `#0a0a0a` | `#101510` | `#3dff6e` | `#2ea84e` | `#1f5c2f` | `#3dff6e` | `#173d22` | `#0d120d` |
+| Light | `#f5f1e3` | `#fdf9ee` | `#3f3222` | `#7a684f` | `#e2d6bb` | `#a0522d` | `#e6cba5` | `#e7dabf` |
+| House | `#f7f6f0` | `#f7f6f0` | `#26302a` | `#5e6a60` | `#d2d8cf` | `#8fa98f` | `#c2d4c2` | `#d6e5e0` |
+| Dark | `#0f1826` | `#131e2f` | `#e6ecf5` | `#8b9cb5` | `#24324a` | `#4d7cfe` | `#2f4a75` | `#1b2942` |
+| High Contrast | `#000000` | `#141414` | `#ffffff` | `#c4c4c4` | `#555555` | `#ffd60a` | `#3d3d3d` | `#1a1a1a` |
+| Nord | `#2e3440` | `#3b4252` | `#d8dee9` | `#a3b1ca` | `#4c566a` | `#88c0d0` | `#434c5e` | `#20262f` |
+| Terminal Green | `#0a0a0a` | `#101510` | `#3dff6e` | `#2ea84e` | `#1f5c2f` | `#3dff6e` | `#173d22` | `#16261a` |
 
 | Palette | link | focus | toast bg | toast ink | comments | keywords | punctuation | strings | numbers | functions |
 |---|---|---|---|---|---|---|---|---|---|---|
-| Light | `#a0522d` | `#a0522d` | `#3f3222` | `#fdf9ee` | `#6e7781` | `#cf222e` | `#57606a` | `#0a3069` | `#0550ae` | `#8250df` |
-| House | `#66816f` | `#66816f` | `#26302a` | `#f7f6f0` | `#6e7781` | `#cf222e` | `#57606a` | `#0a3069` | `#0550ae` | `#8250df` |
+| Light | `#a0522d` | `#a0522d` | `#3f3222` | `#fdf9ee` | `#565f69` | `#b91c26` | `#57606a` | `#0a3069` | `#0550ae` | `#6c39c4` |
+| House | `#526759` | `#4e6458` | `#26302a` | `#f7f6f0` | `#565f69` | `#b91c26` | `#57606a` | `#0a3069` | `#0550ae` | `#6c39c4` |
 | Dark | `#6ea8fe` | `#6ea8fe` | `#1a2739` | `#e6ecf5` | `#8b949e` | `#ff7b72` | `#e6edf3` | `#a5d6ff` | `#79c0ff` | `#d2a8ff` |
 | High Contrast | `#ffd60a` | `#ffffff` | `#ffffff` | `#000000` | `#a8a8a8` | `#ff6b6b` | `#ffffff` | `#6fff8f` | `#82cfff` | `#d2a8ff` |
-| Nord | `#88c0d0` | `#88c0d0` | `#3b4252` | `#d8dee9` | `#4c566a` | `#81a1c1` | `#d8dee9` | `#a3be8c` | `#b48ead` | `#88c0d0` |
+| Nord | `#88c0d0` | `#88c0d0` | `#3b4252` | `#d8dee9` | `#92a0b6` | `#81a1c1` | `#d8dee9` | `#a3be8c` | `#b48ead` | `#88c0d0` |
 | Terminal Green | `#a5ffc4` | `#3dff6e` | `#173d22` | `#3dff6e` | `#2e9e4f` | `#3dff6e` | `#3dff6e` | `#a5ffc4` | `#7dff9e` | `#3dff6e` |
 
 House intentionally uses `bg == surface`; it has no separate card surface.
@@ -123,9 +125,9 @@ System must be checked twice, because it has two resolved Palettes:
 - Background and surface are both `#f7f6f0`; the layout is flat, separated by
   `#d2d8cf` hairlines.
 - Headings in the Editor use the sage `#8fa98f` accent, not the Light brown.
-- Links and the caret use `#66816f`, not the sage accent, so they remain
-  readable on paper.
-- Selection `#c2d4c2` is visibly different from code `#dce9e5`.
+- Links use `#526759` and the caret `#4e6458`, not the sage accent, so they
+  remain readable on paper.
+- Selection `#c2d4c2` is visibly different from code `#d6e5e0`.
 
 ### Terminal Green specifics
 

@@ -41,3 +41,13 @@ The app reads as part of the alitools-pages family in every Palette without forc
 The global chrome restyle touches controls, tabs, dialogs, code surfaces, and the toast. Screenshots need to be regenerated after the restyle. Product copy must describe six curated Palettes, not five. The screenshot files remain a manual capture task because the repository has no screenshot-generation command.
 
 The House token values are duplicated from the alitools-pages canonical token set. `docs/theme-mapping.md` records that mapping and the app-specific role adjustments. No automated mirror guard is added yet; a future token change can add one when the duplicated values start to drift.
+
+## Amendments
+
+- **2026-11-13 — Light and House code surfaces.** Preview visual polish retuned
+  the Light `code_bg` token to `#e7dabf` and the shared Light/House
+  `syntax_comment` and `syntax_function` tokens to `#565f69` and `#6c39c4`;
+  House `code_bg` became `#d6e5e0`. This supersedes the statements above that
+  the default light appearance is unchanged and that the House syntax colours
+  reuse the GitHub-light token values, **for those tokens only**. The rest of
+  this ADR still governs.

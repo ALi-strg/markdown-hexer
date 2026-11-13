@@ -29,7 +29,7 @@ use crate::image::{ImageSource, NativeImageSource};
 use crate::platform::instance::InstanceServer;
 use crate::platform::{Clipboard, FileSystem, NativeClipboard, NativeFileSystem};
 use crate::preview::{self, FencedCode, PreparedPreview};
-use crate::sections::{Section, SectionState, Sections};
+use crate::sections::{Section, SectionState, Sections, has_renderable_content};
 use crate::settings::{
     CONTENT_MONO, CONTENT_SANS, CONTENT_SERIF, FontChoice, Settings, TextSize, Theme,
 };
@@ -1808,6 +1808,13 @@ struct SectionSource<'a> {
     definitions: &'a str,
 }
 
+/// Whether a Section paints the hairline rule above its heading.
+#[derive(Clone, Copy)]
+enum SectionRule {
+    Draw,
+    Suppress,
+}
+
 #[allow(clippy::too_many_arguments)]
 fn show_sectioned_markdown(
     ui: &mut Ui,
@@ -1834,7 +1841,7 @@ fn show_sectioned_markdown(
     }
 
     let preamble = &source[sections.preamble.clone()];
-    let preamble_present = !preamble.trim().is_empty();
+    let preamble_present = has_renderable_content(preamble);
     if preamble_present {
         show_markdown_segment(
             ui,
@@ -1845,6 +1852,11 @@ fn show_sectioned_markdown(
         );
     }
     for (index, section) in sections.roots.iter().enumerate() {
+        let rule = if index == 0 && !preamble_present {
+            SectionRule::Suppress
+        } else {
+            SectionRule::Draw
+        };
         show_section(
             ui,
             SectionSource {
@@ -1852,7 +1864,7 @@ fn show_sectioned_markdown(
                 definitions: &sections.link_definitions,
             },
             section,
-            index == 0 && !preamble_present,
+            rule,
             cache,
             collapsed,
             &palette,
@@ -1866,14 +1878,14 @@ fn show_section(
     ui: &mut Ui,
     source: SectionSource<'_>,
     section: &Section,
-    suppress_rule: bool,
+    rule: SectionRule,
     cache: &mut egui_commonmark::CommonMarkCache,
     collapsed: &mut HashSet<String>,
     palette: &Palette,
     render_code: &egui_commonmark::RenderHtmlFn,
 ) {
     ui.push_id(("preview_section", &section.key), |ui| {
-        if section.level <= 3 && !suppress_rule {
+        if section.level <= 3 && matches!(rule, SectionRule::Draw) {
             ui.add_space(20.0);
             let (_, rule) = ui.allocate_space(egui::vec2(ui.available_width(), 1.0));
             ui.painter().rect_filled(rule, 0.0, palette.border);
@@ -1953,7 +1965,7 @@ fn show_section(
                 ui,
                 source,
                 child,
-                false,
+                SectionRule::Draw,
                 cache,
                 collapsed,
                 palette,
@@ -1983,7 +1995,9 @@ fn show_markdown_segment(
 }
 
 /// Native Preview heading ladder: H1 is the Heading style and H2–H6 step
-/// toward Body by the renderer's factors, in level order.
+/// toward Body by the factors `egui_commonmark_backend 0.26` uses in its
+/// private heading renderer, in level order. The ladder test pins these
+/// values, so a dependency update must revisit them.
 fn preview_heading_size(body: f32, heading: f32, level: u8) -> f32 {
     if level <= 1 {
         return heading;
