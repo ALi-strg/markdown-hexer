@@ -5,6 +5,7 @@ pub mod export;
 pub mod find;
 pub mod first_edit;
 pub mod format;
+pub mod icon;
 pub mod image;
 pub mod platform;
 pub mod preview;
