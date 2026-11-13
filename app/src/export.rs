@@ -701,7 +701,7 @@ Hello <b>world</b>.
 
         assert!(html.contains("--bg: #0f1826"));
         assert!(html.contains("--ink: #e6ecf5"));
-        assert!(html.contains("--code-bg: #0b1320"));
+        assert!(html.contains("--code-bg: #1b2942"));
         assert!(html.contains("--accent: #4d7cfe"));
         assert!(html.contains("font-size: 17px"));
         assert!(html.contains("font-family: ui-monospace"));
