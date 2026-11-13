@@ -36,31 +36,27 @@ Use `app/tests/fixtures/readme.md`. It contains:
 Open the fixture from the command line or through Open. Preview is the default
 Mode and the first frame must already use the persisted Theme.
 
+## Screenshots
+
+Run from `app/`:
+
+```sh
+cargo test --features screenshots --test screenshots -- --ignored --nocapture
+```
+
+This renders the fixture in every Palette and Text Size to
+`.scratch/preview-polish/screenshots` (override with `PREVIEW_SCREENSHOT_DIR`).
+Use the images as before/after evidence. The OS title bar is not part of the
+rendered frame.
+
 ## Token expectations
 
-Values are the source of truth in `app/src/ui/palette.rs`. `System` is a
-preference, not a Palette: it resolves to the Light row when the OS is light and
-the Dark row when the OS is dark.
-
-| Palette | bg | surface | ink | muted | border | accent | selection | code bg |
-|---|---|---|---|---|---|---|---|---|
-| Light | `#f5f1e3` | `#fdf9ee` | `#3f3222` | `#7a684f` | `#e2d6bb` | `#a0522d` | `#e6cba5` | `#e7dabf` |
-| House | `#f7f6f0` | `#f7f6f0` | `#26302a` | `#5e6a60` | `#d2d8cf` | `#8fa98f` | `#c2d4c2` | `#d6e5e0` |
-| Dark | `#0f1826` | `#131e2f` | `#e6ecf5` | `#8b9cb5` | `#24324a` | `#4d7cfe` | `#2f4a75` | `#1b2942` |
-| High Contrast | `#000000` | `#141414` | `#ffffff` | `#c4c4c4` | `#555555` | `#ffd60a` | `#3d3d3d` | `#1a1a1a` |
-| Nord | `#2e3440` | `#3b4252` | `#d8dee9` | `#a3b1ca` | `#4c566a` | `#88c0d0` | `#434c5e` | `#20262f` |
-| Terminal Green | `#0a0a0a` | `#101510` | `#3dff6e` | `#2ea84e` | `#1f5c2f` | `#3dff6e` | `#173d22` | `#16261a` |
-
-| Palette | link | focus | toast bg | toast ink | comments | keywords | punctuation | strings | numbers | functions |
-|---|---|---|---|---|---|---|---|---|---|---|
-| Light | `#a0522d` | `#a0522d` | `#3f3222` | `#fdf9ee` | `#565f69` | `#b91c26` | `#57606a` | `#0a3069` | `#0550ae` | `#6c39c4` |
-| House | `#526759` | `#4e6458` | `#26302a` | `#f7f6f0` | `#565f69` | `#b91c26` | `#57606a` | `#0a3069` | `#0550ae` | `#6c39c4` |
-| Dark | `#6ea8fe` | `#6ea8fe` | `#1a2739` | `#e6ecf5` | `#8b949e` | `#ff7b72` | `#e6edf3` | `#a5d6ff` | `#79c0ff` | `#d2a8ff` |
-| High Contrast | `#ffd60a` | `#ffffff` | `#ffffff` | `#000000` | `#a8a8a8` | `#ff6b6b` | `#ffffff` | `#6fff8f` | `#82cfff` | `#d2a8ff` |
-| Nord | `#88c0d0` | `#88c0d0` | `#3b4252` | `#d8dee9` | `#92a0b6` | `#81a1c1` | `#d8dee9` | `#a3be8c` | `#b48ead` | `#88c0d0` |
-| Terminal Green | `#a5ffc4` | `#3dff6e` | `#173d22` | `#3dff6e` | `#2e9e4f` | `#3dff6e` | `#3dff6e` | `#a5ffc4` | `#7dff9e` | `#3dff6e` |
-
-House intentionally uses `bg == surface`; it has no separate card surface.
+The Palette tokens live in `app/src/ui/palette.rs`, and its tests are the source
+of truth for values and contrast. Do not copy the values into this checklist;
+run `cargo test --all-targets` before the manual pass, then check the rendered
+result below. `System` is a preference, not a Palette: it resolves to Light or
+Dark from the OS. House intentionally uses `bg == surface`; it has no separate
+card surface.
 
 ## Per-Palette pass
 
@@ -85,7 +81,7 @@ and Terminal Green, then run the System pass below. For each Palette confirm:
    markers, `link` link text, and a `focus` caret.
 7. **Code** — code blocks and inline code use `code_bg`; the frame uses
    `border`; comments/keywords/punctuation/strings/numbers/functions match the
-   table; the Copy label is `muted`.
+   active Palette's syntax tokens; the Copy label is `muted`.
 8. **Selection** — drag-select text in Preview and Editor. The highlight is
    `selection`; the selection outline uses `focus`.
 9. **Sections** — every heading has a `muted` chevron in the left margin;
@@ -102,18 +98,18 @@ and Terminal Green, then run the System pass below. For each Palette confirm:
 System must be checked twice, because it has two resolved Palettes:
 
 1. With the OS in light mode, select **System**. The fixture and the whole
-   shell must match the Light row token-for-token, including the table, fenced
-   code, missing-image fallback, and collapsible Sections.
+   shell must match the Light Palette, including the table, fenced code,
+   missing-image fallback, and collapsible Sections.
 2. Change the OS to dark mode while the app stays open. The same document must
-   switch to the Dark row without a restart or a white intermediate frame.
+   switch to the Dark Palette without a restart or a white intermediate frame.
 3. Change the OS back to light and confirm the switch reverses.
 4. Select Light manually, then change the OS to dark. The app must stay Light.
    Select System again and confirm it follows the OS.
 
 ### High Contrast specifics
 
-- Keyboard focus and hovered/active controls have a 2 px `focus` (`#ffffff`)
-  stroke that is clearly visible on `#000000`.
+- Keyboard focus and hovered/active controls have a 2 px `focus` stroke that is
+  clearly visible on the High Contrast `bg`.
 - The selection outline is `focus`, not the selection fill, so a selection
   inside a dark table still shows its extent.
 - Ink on bg, focus on bg, and selection against ink meet the contrast
@@ -122,18 +118,19 @@ System must be checked twice, because it has two resolved Palettes:
 
 ### House specifics
 
-- Background and surface are both `#f7f6f0`; the layout is flat, separated by
-  `#d2d8cf` hairlines.
-- Headings in the Editor use the sage `#8fa98f` accent, not the Light brown.
-- Links use `#526759` and the caret `#4e6458`, not the sage accent, so they
-  remain readable on paper.
-- Selection `#c2d4c2` is visibly different from code `#d6e5e0`.
+- Background and surface are both the House paper fill; the layout is flat,
+  separated by `border` hairlines.
+- Headings in the Editor use the sage `accent`, not the Light brown.
+- Links use the House `link` token and the caret uses `focus`, not the sage
+  accent, so they remain readable on paper.
+- Selection and the code background are distinct pale surfaces.
 
 ### Terminal Green specifics
 
 - All text is green-family; check that comments and punctuation remain
   distinguishable from body ink and from each other.
-- Toast is `#173d22` with `#3dff6e` text, not an inverted white flash.
+- Toast uses the Terminal Green `toast_bg` with `toast_ink`, not an inverted
+  white flash.
 
 ## Text Size pass
 

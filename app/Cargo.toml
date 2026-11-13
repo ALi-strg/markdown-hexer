@@ -52,6 +52,11 @@ serde_json = "1"
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
+[features]
+# Preview screenshot harness. Off by default: the wgpu test renderer is heavy
+# and CI's normal test run does not need it.
+screenshots = ["egui_kittest/wgpu"]
+
 [dev-dependencies]
 egui_kittest = { version = "0.37", features = ["eframe"] }
 tempfile = "3"

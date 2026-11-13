@@ -29,7 +29,7 @@ Commands. Platform work is behind traits (`FileSystem`, `Clipboard`, `Dialogs`,
 | Single instance | `interprocess` local socket / named pipe |
 | Settings | `serde` + `serde_json`, one atomically-written file |
 | Packaging | `cargo-packager` (NSIS, WiX, DMG, deb, AppImage), `cargo-generate-rpm`, Flatpak |
-| Tests | inline `#[cfg(test)]` unit tests; `egui_kittest` UI tests in `app/src/ui/tests.rs`; `tempfile` |
+| Tests | inline `#[cfg(test)]` unit tests; `egui_kittest` UI tests in `app/src/ui/tests.rs`; GPU screenshot harness in `app/tests/screenshots.rs`; `tempfile` |
 
 ## Commands
 
@@ -38,9 +38,17 @@ cd app
 cargo run                     # debug app
 cargo build --release         # target/release/markdown-hexer(.exe)
 cargo test --all-targets      # unit + kittest UI tests
+cargo test --features screenshots --test screenshots -- --ignored --nocapture  # Preview screenshots (GPU)
 cargo clippy --all-targets -- -D warnings
 cargo fmt --check
 ```
+
+Use the screenshot harness for any visual change to the Preview, Palette, Section
+layout, or in-app chrome; attach the images as before/after evidence. It is
+feature-gated and ignored, so CI does not run it. It renders the fixture in every
+Palette and Text Size to `.scratch/preview-polish/screenshots` by default; set
+`PREVIEW_SCREENSHOT_DIR` to override the output directory. It does not capture
+the OS title bar.
 
 Packaging (from `app/`):
 
@@ -80,9 +88,11 @@ a release.
 | `app/src/ui/palette.rs` | Complete colour-token palettes (Light, House, Dark, High Contrast, Nord, Terminal Green) |
 | `app/src/ui/find.rs` | Find & Replace panel |
 | `app/src/ui/tests.rs` | `egui_kittest` UI tests (harness, dialogs, clipboard, temp files) |
+| `app/tests/screenshots.rs` | Ignored GPU test that renders Preview screenshots for every Palette and Text Size |
 | `app/packaging/` | Packaging config, association contract, NSIS/WiX/macOS/Linux/Flatpak assets |
 | `app/packaging/icons/` | App icons used by all bundles |
 | `docs/adr/` | Architecture decision records (index says which still govern 2.0) |
+| `docs/visual-checklist.md` | Manual visual pass and Preview screenshot harness; use for visual changes |
 | `.github/workflows/build.yml` | App-only PR/push checks |
 | `.github/workflows/release.yml` | Tag-driven draft release with all platform bundles |
 
@@ -174,7 +184,9 @@ persisted.
 - Unit tests are inline `#[cfg(test)]` next to each module. UI tests use
   `egui_kittest` in `app/src/ui/tests.rs` with temp files and fake dialogs.
 - Colour comes only from `ui/palette.rs` tokens; a new Theme must be a complete
-  token set. System is a preference, not a Palette.
+  token set. System is a preference, not a Palette. For any visual change to the
+  Preview, Palette, Section layout, or in-app chrome, render the screenshot set
+  and check `docs/visual-checklist.md`.
 - No `unwrap()` on user-controlled I/O paths; recoverable failures become
   notices or dialog choices.
 - No network calls in the startup path; images may load over HTTP only when a

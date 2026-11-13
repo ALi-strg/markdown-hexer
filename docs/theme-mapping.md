@@ -12,7 +12,8 @@ The canonical House tokens live in the `:root` block of the alitools-pages Hub t
 
 `alitools-pages/sites/root/template.html`
 
-The House Palette in `src/styles.css` mirrors the six shared colors by value:
+The 2.0 app's Palette values live in `app/src/ui/palette.rs`; the table below
+records the canonical House tokens the House Palette derives from:
 
 | House token | Value | Markdown Hexer role |
 |---|---|---|
@@ -23,25 +24,27 @@ The House Palette in `src/styles.css` mirrors the six shared colors by value:
 | sage | `#8fa98f` | active controls, accents, and blockquote borders |
 | blue | `#dce9e5` | the base for the House code surface and soft table tint |
 
-The app keeps its existing token names because the other Palettes already use those roles:
+The app maps the canonical tokens to its Palette fields because the other
+Palettes already use those roles:
 
-| App token | House value or treatment |
+| Palette field | House treatment |
 |---|---|
-| `--background-color` | `paper` |
-| `--surface-color` | `paper`, with no separate card surface |
-| `--text-color` | `ink` |
-| `--text-muted` | `muted` |
-| `--border-color` / `--code-border` | `line` |
-| `--accent-color` | `sage` |
-| `--accent-contrast-color` | `ink` |
-| `--selection-background` | `#c2d4c2`, a darker `blue` so ink stays readable |
-| `--code-background` | `#d6e5e0`, a slightly deeper `blue` that separates code from the page |
-| `--link-color` / `--caret-color` | `#66816f`, the higher-contrast sage text value |
+| `bg` | `paper` |
+| `surface` | `paper`, with no separate card surface |
+| `ink` | `ink` |
+| `muted` | `muted`, darkened in the Palette for contrast |
+| `border` | `line` |
+| `accent` | `sage` |
+| `accent_contrast` | `ink` |
+| `selection` | a darker `blue` so ink stays readable |
+| `code_bg` | a deeper `blue` that separates code from the page |
+| `link` | the higher-contrast sage text value |
+| `focus` | the focus and caret value |
 
-The House syntax variables reuse the Light Palette's syntax tokens. Both sets
-were retuned (`#565f69` comments, `#6c39c4` functions) so every token stays at
-least 4.5:1 on the stronger code background. Syntax is content styling, not app
-chrome, and stays readable without inventing a second syntax palette.
+The House syntax fields reuse the Light Palette's syntax tokens. Both sets are
+retuned in `palette.rs` so every token stays at least 4.5:1 on the code
+background. Syntax is content styling, not app chrome, and stays readable
+without inventing a second syntax palette.
 
 ## Global Design language
 
@@ -57,15 +60,21 @@ The Editor Pane and Preview Pane keep their existing user-selectable Font choice
 
 ## Screenshots
 
-The intended download page screenshot set shows three different Palettes so the feature is visible: Light, High Contrast, and House. The old Nord screenshot is replaced by a House screenshot after a manual desktop capture.
+The intended download page screenshot set shows three different Palettes so the
+feature is visible: Light, High Contrast, and House. The Preview screenshot
+harness renders the fixture in every Palette and Text Size (see
+`docs/visual-checklist.md`); the download-page crops still need a human.
 
 ## Maintenance
 
 When the canonical House tokens change:
 
-1. Compare the Hub template's `:root` values with the House block in `src/styles.css`.
-2. Port the six shared values.
-3. Recheck contrast for `--link-color`, `--caret-color`, active controls, syntax, and code surfaces.
-4. Regenerate the three download-page screenshots if the rendered chrome changes.
+1. Compare the Hub template's `:root` values with the canonical table above.
+2. Port the shared values into the House Palette in `app/src/ui/palette.rs`.
+3. Run the Palette tests from `app/` and recheck the contrast assertions; adjust
+   the app-specific values if needed.
+4. Regenerate the Preview screenshots and the download-page set if the rendered
+   chrome changes.
 
-There is no automated mirror guard yet. Add one if the duplicated token set begins to drift repeatedly.
+There is no automated mirror guard for the canonical House tokens; the Palette
+tests guard the app values.
