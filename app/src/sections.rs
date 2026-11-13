@@ -33,12 +33,8 @@ impl Sections {
         let mut quote_depth = 0usize;
         let mut footnote_depth = 0usize;
         let mut open: Option<OpenHeading> = None;
-        let options = Options::ENABLE_TABLES
-            | Options::ENABLE_STRIKETHROUGH
-            | Options::ENABLE_TASKLISTS
-            | Options::ENABLE_FOOTNOTES;
 
-        let mut parser = Parser::new_ext(source, options).into_offset_iter();
+        let mut parser = Parser::new_ext(source, parser_options()).into_offset_iter();
         for (event, range) in &mut parser {
             match event {
                 Event::Start(Tag::Heading { level, .. }) => {
@@ -131,6 +127,31 @@ impl Section {
     pub fn has_chevron(&self, source: &str) -> bool {
         !self.children.is_empty() || !source[self.body.clone()].trim().is_empty()
     }
+}
+
+fn parser_options() -> Options {
+    Options::ENABLE_TABLES
+        | Options::ENABLE_STRIKETHROUGH
+        | Options::ENABLE_TASKLISTS
+        | Options::ENABLE_FOOTNOTES
+}
+
+/// Whether a Markdown fragment renders visible content. Link reference
+/// definitions produce no events, and footnote definitions only register a
+/// note, so a preamble made only of definitions leaves nothing to show.
+pub fn has_renderable_content(markdown: &str) -> bool {
+    let mut footnote_depth = 0usize;
+    for event in Parser::new_ext(markdown, parser_options()) {
+        match event {
+            Event::Start(Tag::FootnoteDefinition(_)) => footnote_depth += 1,
+            Event::End(TagEnd::FootnoteDefinition) => {
+                footnote_depth = footnote_depth.saturating_sub(1);
+            }
+            _ if footnote_depth == 0 => return true,
+            _ => {}
+        }
+    }
+    false
 }
 
 /// Session-only collapse state, keyed by Document and Section identity.
@@ -329,6 +350,18 @@ mod tests {
             source[sections.roots[0].children[0].body.clone()].trim(),
             "body two"
         );
+    }
+
+    #[test]
+    fn definition_only_fragments_have_no_renderable_content() {
+        assert!(!has_renderable_content(""));
+        assert!(!has_renderable_content("\n\n"));
+        assert!(!has_renderable_content("[ref]: https://example.com\n"));
+        assert!(!has_renderable_content("[^1]: a note\n"));
+        assert!(has_renderable_content("intro\n"));
+        assert!(has_renderable_content(
+            "[ref]: https://example.com\n\nintro\n"
+        ));
     }
 
     #[test]

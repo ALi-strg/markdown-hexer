@@ -227,6 +227,15 @@ mod tests {
         (light + 0.05) / (dark + 0.05)
     }
 
+    const PALETTES: [Palette; 6] = [
+        Palette::LIGHT,
+        Palette::HOUSE,
+        Palette::DARK,
+        Palette::HIGH_CONTRAST,
+        Palette::NORD,
+        Palette::TERMINAL_GREEN,
+    ];
+
     #[test]
     fn every_theme_resolves_to_its_expected_palette() {
         let expected = [
@@ -303,14 +312,7 @@ mod tests {
 
     #[test]
     fn every_palette_separates_the_code_surface_from_the_page() {
-        for palette in [
-            Palette::LIGHT,
-            Palette::HOUSE,
-            Palette::DARK,
-            Palette::HIGH_CONTRAST,
-            Palette::NORD,
-            Palette::TERMINAL_GREEN,
-        ] {
+        for palette in PALETTES {
             assert!(
                 contrast(palette.code_bg, palette.bg) >= 1.2,
                 "code background on page {palette:?}"
@@ -320,14 +322,7 @@ mod tests {
 
     #[test]
     fn every_palette_keeps_content_readable() {
-        for palette in [
-            Palette::LIGHT,
-            Palette::HOUSE,
-            Palette::DARK,
-            Palette::HIGH_CONTRAST,
-            Palette::NORD,
-            Palette::TERMINAL_GREEN,
-        ] {
+        for palette in PALETTES {
             for surface in [palette.bg, palette.surface] {
                 assert!(
                     contrast(palette.ink, surface) >= 4.5,
