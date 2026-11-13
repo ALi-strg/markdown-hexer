@@ -267,16 +267,13 @@ fn apply_preview_text_style(ui: &mut Ui, font: FontChoice, text_size: TextSize) 
     let family = font.preview_family();
     let body = text_size.preview_size();
     let styles = &mut ui.style_mut().text_styles;
-    let heading = styles
-        .get(&egui::TextStyle::Heading)
-        .map_or(24.0, |font| font.size);
     styles.insert(
         egui::TextStyle::Body,
         egui::FontId::new(body, family.clone()),
     );
     styles.insert(
         egui::TextStyle::Heading,
-        egui::FontId::new(heading * body / TextSize::Medium.preview_size(), family),
+        egui::FontId::new(body * 1.6, family),
     );
     if let Some(monospace) = styles.get_mut(&egui::TextStyle::Monospace) {
         monospace.size = body;
@@ -1837,7 +1834,8 @@ fn show_sectioned_markdown(
     }
 
     let preamble = &source[sections.preamble.clone()];
-    if !preamble.trim().is_empty() {
+    let preamble_present = !preamble.trim().is_empty();
+    if preamble_present {
         show_markdown_segment(
             ui,
             preamble,
@@ -1846,7 +1844,7 @@ fn show_sectioned_markdown(
             &sections.link_definitions,
         );
     }
-    for section in &sections.roots {
+    for (index, section) in sections.roots.iter().enumerate() {
         show_section(
             ui,
             SectionSource {
@@ -1854,6 +1852,7 @@ fn show_sectioned_markdown(
                 definitions: &sections.link_definitions,
             },
             section,
+            index == 0 && !preamble_present,
             cache,
             collapsed,
             &palette,
@@ -1862,17 +1861,26 @@ fn show_sectioned_markdown(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn show_section(
     ui: &mut Ui,
     source: SectionSource<'_>,
     section: &Section,
+    suppress_rule: bool,
     cache: &mut egui_commonmark::CommonMarkCache,
     collapsed: &mut HashSet<String>,
     palette: &Palette,
     render_code: &egui_commonmark::RenderHtmlFn,
 ) {
     ui.push_id(("preview_section", &section.key), |ui| {
-        ui.add_space(6.0);
+        if section.level <= 3 && !suppress_rule {
+            ui.add_space(20.0);
+            let (_, rule) = ui.allocate_space(egui::vec2(ui.available_width(), 1.0));
+            ui.painter().rect_filled(rule, 0.0, palette.border);
+            ui.add_space(8.0);
+        } else {
+            ui.add_space(6.0);
+        }
         let is_collapsed = collapsed.contains(&section.key);
         ui.horizontal(|ui| {
             let has_chevron = section.has_chevron(source.markdown);
@@ -1935,7 +1943,16 @@ fn show_section(
             show_markdown_segment(ui, body, cache, render_code, source.definitions);
         }
         for child in &section.children {
-            show_section(ui, source, child, cache, collapsed, palette, render_code);
+            show_section(
+                ui,
+                source,
+                child,
+                false,
+                cache,
+                collapsed,
+                palette,
+                render_code,
+            );
         }
     });
 }
@@ -1959,25 +1976,34 @@ fn show_markdown_segment(
     }
 }
 
+/// Native Preview heading ladder: H1 is the Heading style and H2–H6 step
+/// toward Body by the renderer's factors, in level order.
+fn preview_heading_size(body: f32, heading: f32, level: u8) -> f32 {
+    if level <= 1 {
+        return heading;
+    }
+    let factor = match level {
+        2 => 0.835,
+        3 => 0.668,
+        4 => 0.501,
+        5 => 0.334,
+        _ => 0.167,
+    };
+    body + (heading - body) * factor
+}
+
 fn section_heading_text(ui: &Ui, level: u8, title: &str) -> RichText {
-    let min = ui
+    let body = ui
         .style()
         .text_styles
         .get(&egui::TextStyle::Body)
         .map_or(14.0, |font| font.size);
-    let max = ui
+    let heading = ui
         .style()
         .text_styles
         .get(&egui::TextStyle::Heading)
         .map_or(32.0, |font| font.size);
-    let factor = match level {
-        1 => 0.835,
-        2 => 0.668,
-        3 => 0.501,
-        4 => 0.334,
-        _ => 0.167,
-    };
-    let text = RichText::new(title).size(min + (max - min) * factor);
+    let text = RichText::new(title).size(preview_heading_size(body, heading, level));
     if level <= 3 { text.strong() } else { text }
 }
 
