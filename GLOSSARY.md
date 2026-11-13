@@ -95,8 +95,12 @@ _Avoid_: Deferred loading, code splitting
 ## Sections
 
 **Section**:
-A collapsible region of the Preview View spanning one heading and everything under it until the next heading of the same or higher level. Every heading of any level — ATX (`#`) or Setext — starts a Section; content before the first heading belongs to no Section and is never collapsible. Headings nested inside lists or blockquotes do not start a Section. A Section is collapsed or expanded via a chevron in the heading's left margin; a heading with no content under it has no chevron. Collapsing a Section hides its entire subtree, including nested Sections. Collapse state is session-only per Tab, survives edits, re-renders, and Mode switches, and is not persisted across launches.
+A collapsible region of the Preview View spanning one heading and everything under it until the next heading of the same or higher level. Every heading of any level — ATX (`#`) or Setext — starts a Section; content before the first heading belongs to no Section and is never collapsible. Headings nested inside lists or blockquotes do not start a Section. A Section is collapsed or expanded via a Section Chevron in the heading's left margin; a heading with no content under it has no Section Chevron. Collapsing a Section hides its entire subtree, including nested Sections. Collapse state is session-only per Tab, survives edits, re-renders, and Mode switches, and is not persisted across launches.
 _Avoid_: fold, block group, outline
+
+**Section Chevron**:
+The disclosure triangle in a Section heading's left margin that collapses or expands the Section. It points right when collapsed and down when expanded, is always visible when the heading has content, and is keyboard-focusable.
+_Avoid_: expand icon, arrow, twisty, collapse icon
 
 ## Copying
 
