@@ -2164,7 +2164,6 @@ fn choice_helpers_apply_and_persist_font_and_text_size() {
 #[test]
 fn preview_content_style_applies_font_and_size_but_not_chrome() {
     let ctx = egui::Context::default();
-    let base_heading = ctx.global_style().text_styles[&egui::TextStyle::Heading].size;
     let base_body = ctx.global_style().text_styles[&egui::TextStyle::Body].size;
     let mut captured = None;
     let mut chrome = None;
@@ -2186,13 +2185,33 @@ fn preview_content_style_applies_font_and_size_but_not_chrome() {
         body.family,
         egui::FontFamily::Name(crate::settings::CONTENT_SERIF.into())
     );
-    assert_eq!(heading, base_heading * 17.0 / 15.0);
+    assert_eq!(heading, 27.2);
     assert_eq!(monospace, TextSize::Large.preview_size());
     assert_eq!(chrome.expect("small style captured").size, 9.0);
     assert_eq!(
         ctx.global_style().text_styles[&egui::TextStyle::Body].size,
         base_body
     );
+}
+
+#[test]
+fn preview_heading_size_follows_the_native_preview_ladder() {
+    for (text_size, expected) in [
+        (TextSize::Small, [20.8, 19.5, 18.2, 16.9, 15.6, 14.3]),
+        (TextSize::Medium, [24.0, 22.5, 21.0, 19.5, 18.0, 16.5]),
+        (TextSize::Large, [27.2, 25.5, 23.8, 22.1, 20.4, 18.7]),
+    ] {
+        let body = text_size.preview_size();
+        let heading = body * 1.6;
+        for (index, expected) in expected.iter().enumerate() {
+            let level = index as u8 + 1;
+            let actual = preview_heading_size(body, heading, level);
+            assert!(
+                (actual - expected).abs() < 0.06,
+                "{text_size:?} H{level}: {actual} != {expected}"
+            );
+        }
+    }
 }
 
 #[test]
