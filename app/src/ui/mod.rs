@@ -1886,21 +1886,27 @@ fn show_section(
             let has_chevron = section.has_chevron(source.markdown);
             let mut toggle = false;
             if has_chevron {
-                let (symbol, label) = if is_collapsed {
-                    (">", "Expand section")
+                let label = if is_collapsed {
+                    "Expand section"
                 } else {
-                    ("v", "Collapse section")
+                    "Collapse section"
                 };
-                let response = ui.add(
-                    egui::Button::new(
-                        RichText::new(symbol)
-                            .monospace()
-                            .size(14.0)
-                            .color(palette.muted),
-                    )
-                    .frame(false)
-                    .min_size(egui::vec2(16.0, 16.0)),
-                );
+                let response = ui
+                    .scope(|ui| {
+                        let widgets = &mut ui.style_mut().visuals.widgets;
+                        widgets.inactive.fg_stroke.color = palette.muted;
+                        widgets.hovered.fg_stroke.color = palette.ink;
+                        widgets.active.fg_stroke.color = palette.ink;
+                        let response = ui.add(
+                            egui::Button::new("")
+                                .frame(false)
+                                .min_size(egui::vec2(16.0, 16.0)),
+                        );
+                        let openness = if is_collapsed { 0.0 } else { 1.0 };
+                        egui::collapsing_header::paint_default_icon(ui, openness, &response);
+                        response
+                    })
+                    .inner;
                 response.widget_info(|| WidgetInfo::labeled(Role::Button, true, label));
                 paint_focus_ring(ui, &response, *palette);
                 if response.clicked() {
