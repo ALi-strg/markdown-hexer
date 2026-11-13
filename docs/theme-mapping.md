@@ -21,7 +21,7 @@ The House Palette in `src/styles.css` mirrors the six shared colors by value:
 | muted | `#78827a` | secondary text and gutters |
 | line | `#d2d8cf` | borders, separators, and code borders |
 | sage | `#8fa98f` | active controls, accents, and blockquote borders |
-| blue | `#dce9e5` | selection, code surfaces, and soft table tint |
+| blue | `#dce9e5` | the base for the House code surface and soft table tint |
 
 The app keeps its existing token names because the other Palettes already use those roles:
 
@@ -34,10 +34,14 @@ The app keeps its existing token names because the other Palettes already use th
 | `--border-color` / `--code-border` | `line` |
 | `--accent-color` | `sage` |
 | `--accent-contrast-color` | `ink` |
-| `--selection-background` / `--code-background` | `blue` |
+| `--selection-background` | `#c2d4c2`, a darker `blue` so ink stays readable |
+| `--code-background` | `#d6e5e0`, a slightly deeper `blue` that separates code from the page |
 | `--link-color` / `--caret-color` | `#66816f`, the higher-contrast sage text value |
 
-The House syntax variables reuse the Light Palette's GitHub-light hues. Syntax is content styling, not app chrome, and stays readable without inventing a second syntax palette.
+The House syntax variables reuse the Light Palette's syntax tokens. Both sets
+were retuned (`#565f69` comments, `#6c39c4` functions) so every token stays at
+least 4.5:1 on the stronger code background. Syntax is content styling, not app
+chrome, and stays readable without inventing a second syntax palette.
 
 ## Global Design language
 
