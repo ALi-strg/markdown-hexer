@@ -24,3 +24,7 @@ Resolved on `preview-polish` (merge `f0d5b79`; code review fixes `c793a0e`).
 The code-review pass refreshed `docs/visual-checklist.md` to the new token
 values and aligned the rest of its tables. The manual six-Palette and browser
 checks remain for reviewer confirmation.
+
+Superseded on 2026-11-14 by `05-code-panel-contrast.md`, which raised the
+code-surface floor from 1.2:1 to 1.45:1 and retuned the syntax tokens that
+followed.

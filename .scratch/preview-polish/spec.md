@@ -105,16 +105,18 @@ Preview's reading width stays the full window width.
   toggle, keyboard toggle, and per-Document session collapse state stay
   unchanged. No animation, no font glyph, no new dependency.
 - **Code background.** Keep one `code_bg` token for inline code and fenced
-  blocks. Every Palette's `code_bg` must reach at least 1.2:1 contrast against
-  `bg`. Starting values: Light `#E7DABF`, House `#D6E5E0`, Dark `#1B2942`, High
-  Contrast `#1A1A1A`, Nord `#20262F`, Terminal Green `#16261A`. Dark, High
-  Contrast, and Terminal Green use a lighter code surface; Light, House, and
-  Nord use a darker one.
+  blocks. Every Palette's `code_bg` must reach at least 1.45:1 contrast against
+  `bg` (ticket 05 raised this from the original 1.2:1 floor). Values: Light
+  `#D3C7AE`, House `#C2D0CB`, Dark `#2A374D`, High Contrast `#2B2B2B`, Nord
+  `#4C566A`, Terminal Green `#243327`. Dark, High Contrast, Nord, and Terminal
+  Green use a lighter code surface; Light and House use a darker one.
 - **Light/House syntax retune.** The shared Light and House syntax set is
   retuned so every token stays at least 4.5:1 on the new code background:
-  comment `#565F69`, function `#6C39C4`; the other four tokens already pass.
-  The tokens are shared with the Editor View, so its syntax colours change as a
-  consequence; accepted.
+  comment and punctuation `#4A525B`, keyword `#A01720`, function `#5E31AD`;
+  string and number already pass. Dark, Nord, and Terminal Green need their own
+  comment/keyword/string/number/function retune (see ticket 05). The tokens are
+  shared with the Editor View, so its syntax colours change as a consequence;
+  accepted.
 - **Scrollbar decoupling.** `visuals.extreme_bg_color` is set to the page
   background instead of `code_bg`, so the scrollbar track does not inherit the
   stronger code fill.
@@ -145,7 +147,7 @@ and the embedded icon decoding. No pixel diffs, no assertions on paint calls or
 internal widget structure.
 
 - **Palette token seam (unit tests).** The existing Palette tests gain a
-  `code_bg` vs `bg` minimum of 1.2:1 for all six Palettes, keep the existing
+  `code_bg` vs `bg` minimum of 1.45:1 for all six Palettes, keep the existing
   4.5:1 syntax-on-code assertion, and update the stable Light token values.
   This is the external design contract, not an implementation detail.
 - **Preview style seam (unit + kittest).** The existing Preview content-style
