@@ -11,7 +11,7 @@ The automated checks live in:
   fields, version fallback, font and Text Size mappings.
 - `app/src/ui/palette.rs` — all six Palettes resolve their expected tokens,
   System resolves Light/Dark, contrast for ink/muted/focus/selection, the code
-  surface against the page (at least 1.2:1), and syntax tokens against the code
+  surface against the page (at least 1.45:1), and syntax tokens against the code
   surface (at least 4.5:1).
 - `app/src/ui/tests.rs` — first-frame Palette and `clear_color`, live System
   switch, Appearance menu persistence, font/Text Size helpers, Preview content
@@ -79,7 +79,8 @@ and Terminal Green, then run the System pass below. For each Palette confirm:
    Preview's heading style and at the Preview Text Size.
 6. **Editor** — `surface` frame, `ink` body text, `accent` headings, `muted`
    markers, `link` link text, and a `focus` caret.
-7. **Code** — code blocks and inline code use `code_bg`; the frame uses
+7. **Code** — code blocks and inline code use `code_bg`, which reads as a
+   separate surface from the page, not just a bordered box; the frame uses
    `border`; comments/keywords/punctuation/strings/numbers/functions match the
    active Palette's syntax tokens; the Copy label is `muted`.
 8. **Selection** — drag-select text in Preview and Editor. The highlight is

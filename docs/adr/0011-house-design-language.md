@@ -51,6 +51,15 @@ The House token values are duplicated from the alitools-pages canonical token se
   the default light appearance is unchanged and that the House syntax colours
   reuse the GitHub-light token values, **for those tokens only**. The rest of
   this ADR still governs.
+- **2026-11-14 — Code surface contrast.** `code_bg` now clears 1.45:1 against
+  `bg` in every Palette (Light `#d3c7ae`, House `#c2d0cb`, Dark `#2a374d`, High
+  Contrast `#2b2b2b`, Nord `#4c566a`, Terminal Green `#243327`), so a code
+  block reads as its own surface rather than a bordered patch of paper. The
+  syntax tokens that fell under 4.5:1 on the new surfaces were retuned with
+  their hue kept. This supersedes the `code_bg` values in the 2026-11-13
+  amendment; Nord's code surface is now lighter than its page, because a
+  1.45:1 step darker lands near black and loses the Palette's blue-grey
+  character.
 - **2026-11-13 — Preview screenshot harness.** The Preview screenshot set is no
   longer a manual capture task: the GPU test in `app/tests/screenshots.rs`
   renders the fixture in every Palette and Text Size. The download-page crops
